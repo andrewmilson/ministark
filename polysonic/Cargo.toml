@@ -1,0 +1,17 @@
+[package]
+name = "polysonic"
+version = "0.1.0"
+edition = "2021"
+
+[profile.test]
+opt-level = 2
+
+[dependencies]
+metal = { path = "../../metal-rs" }
+objc = "0.2.7"
+num-traits = "0.2.14"
+libc = "0.2"
+
+[dev-dependencies]
+rand = "0.8.5"
+rand_pcg = "0.3.1"

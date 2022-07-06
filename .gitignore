@@ -1,0 +1,6 @@
+/target
+/Cargo.lock
+
+# Metal GPU artifacts
+*.air
+*.metallib
