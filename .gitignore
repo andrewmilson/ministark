@@ -1,6 +1,8 @@
 /target
 /Cargo.lock
 
+.DS_Store
+
 # Metal GPU artifacts
 *.air
 *.metallib

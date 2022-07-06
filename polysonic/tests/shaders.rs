@@ -11,7 +11,6 @@ use polysonic::NttOrdering;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_pcg::Pcg64;
-use std::time::Instant;
 
 // Number theory transform
 fn ntt_control<E: StarkFelt>(values: &[E]) -> Vec<E> {
