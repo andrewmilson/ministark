@@ -1,19 +1,16 @@
-#![feature(int_log, test)]
+#![feature(int_log, test, allocator_api)]
 
 pub mod number_theory_transform;
 pub mod polynomial;
-pub mod prime_field_u128;
 
-mod field;
 mod fri;
 mod merkle_tree;
 mod protocol;
 mod stark;
 
-pub use {
-    field::*,
-    fri::Fri,
-    merkle_tree::MerkleTree,
-    protocol::{ProofObject, ProofStream, StandardProofStream},
-    stark::*,
-};
+pub use fri::Fri;
+pub use merkle_tree::MerkleTree;
+pub use protocol::ProofObject;
+pub use protocol::ProofStream;
+pub use protocol::StandardProofStream;
+pub use stark::*;

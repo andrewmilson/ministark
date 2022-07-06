@@ -1,7 +1,11 @@
+use crate::polynomial::*;
+use crate::MerkleTree;
+use crate::ProofObject;
+use crate::ProofStream;
+use polysonic::fields::Felt;
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
-use crate::{polynomial::*, FieldElement, MerkleTree, ProofObject, ProofStream};
+use std::hash::Hash;
+use std::hash::Hasher;
 
 pub struct Fri<E> {
     offset: E,
@@ -11,7 +15,7 @@ pub struct Fri<E> {
     num_colinearity_tests: usize,
 }
 
-impl<E: FieldElement> Fri<E> {
+impl<E: Felt> Fri<E> {
     pub fn new(
         offset: E,
         omega: E,
@@ -262,8 +266,9 @@ impl<E: FieldElement> Fri<E> {
         // let last_domain = (0..last_codeword.len())
         //     .map(|i| last_offset * (last_omega.pow((i as u32).into())))
         //     .collect::<Vec<E>>();
-        // let coefficients = inverse_number_theory_transfer(last_omega, &last_codeword);
-        // let poly = Polynomial::new(coefficients).scale(last_offset.inverse());
+        // let coefficients = inverse_number_theory_transfer(last_omega,
+        // &last_codeword); let poly =
+        // Polynomial::new(coefficients).scale(last_offset.inverse());
         // println!("Fri 35");
 
         assert_eq!(
@@ -424,8 +429,8 @@ impl<E: FieldElement> Fri<E> {
 //         }
 
 //         // opening leafs to a different root should not work
-//         let fake_root = MerkleTree::commit(&(0..n).map(|_| rng.gen::<u128>()).collect());
-//         for i in 0..n {
+//         let fake_root = MerkleTree::commit(&(0..n).map(|_|
+// rng.gen::<u128>()).collect());         for i in 0..n {
 //             let path = MerkleTree::open(i, &leafs);
 //             assert!(!MerkleTree::verify(fake_root, i, &path, leafs[i]));
 //         }
@@ -452,8 +457,8 @@ impl<E: FieldElement> Fri<E> {
 //             "log not computed correctly"
 //         );
 
-//         let omega = field.primitive_nth_root(initial_codeword_length as u128);
-//         let generator = field.generator();
+//         let omega = field.primitive_nth_root(initial_codeword_length as
+// u128);         let generator = field.generator();
 
 //         assert!(
 //             omega ^ (1 << log_codeword_length) == field.one(),

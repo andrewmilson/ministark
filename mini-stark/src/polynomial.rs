@@ -1,18 +1,27 @@
-use crate::field::*;
-
-use serde::{Deserialize, Serialize};
+use polysonic::fields::batch_inverse;
+use polysonic::fields::Felt;
+use serde::Deserialize;
+use serde::Serialize;
 use std::char;
 use std::cmp::Ordering;
 use std::fmt;
-use std::iter::{once, repeat, zip};
-use std::ops::{Add, BitXor, Div, Mul, Neg, Rem, Sub};
+use std::iter::once;
+use std::iter::repeat;
+use std::iter::zip;
+use std::ops::Add;
+use std::ops::BitXor;
+use std::ops::Div;
+use std::ops::Mul;
+use std::ops::Neg;
+use std::ops::Rem;
+use std::ops::Sub;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Polynomial<E> {
     pub coefficients: Vec<E>,
 }
 
-impl<E: FieldElement> fmt::Display for Polynomial<E> {
+impl<E: Felt> fmt::Display for Polynomial<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let formatted_coefficients: Vec<String> = self
             .coefficients
@@ -35,14 +44,14 @@ impl<E: FieldElement> fmt::Display for Polynomial<E> {
 }
 
 // impl Deref for Polynomial {
-//     type Target = Vec<FieldElement>;
+//     type Target = Vec<Felt>;
 
 //     fn deref(&self) -> &Self::Target {
 //         &self.coefficients
 //     }
 // }
 
-impl<E: FieldElement> Polynomial<E> {
+impl<E: Felt> Polynomial<E> {
     pub fn degree(&self) -> isize {
         let mut all_zero = true;
         let mut max_index = 0;
@@ -149,7 +158,8 @@ impl<E: FieldElement> Polynomial<E> {
             values.len(),
             "number of elements in domain does not match number of values -- cannot interpolate"
         );
-        // Generate master numerator polynomial: (x - domain[0]) * (x - domain[1]) * ....
+        // Generate master numerator polynomial: (x - domain[0]) * (x - domain[1]) *
+        // ....
         let root = Self::zerofier_domain(domain);
 
         // Generate the numerator for each item in the domain
@@ -161,7 +171,7 @@ impl<E: FieldElement> Polynomial<E> {
             .collect::<Vec<Polynomial<E>>>();
 
         // Generate denominators by evaluating numerator polys at each x
-        let inverse_denominators = E::batch_inverse(
+        let inverse_denominators = batch_inverse(
             &numerators
                 .iter()
                 .zip(domain.iter().copied())
@@ -207,7 +217,8 @@ impl<E: FieldElement> Polynomial<E> {
         //         }
         //         prod = &prod
         //             * &(x.clone() - Polynomial::new(vec![domain[j]]))
-        //             * Polynomial::new(vec![(domain[i] - domain[j]).inverse()]);
+        //             * Polynomial::new(vec![(domain[i] -
+        //               domain[j]).inverse()]);
         //     }
         //     accumulator = &accumulator + &prod;
         // }
@@ -241,7 +252,7 @@ impl<E: FieldElement> Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> Div for Polynomial<E> {
+impl<E: Felt> Div for Polynomial<E> {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -254,7 +265,7 @@ impl<E: FieldElement> Div for Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> Rem for Polynomial<E> {
+impl<E: Felt> Rem for Polynomial<E> {
     type Output = Self;
 
     fn rem(self, rhs: Self) -> Self::Output {
@@ -263,7 +274,7 @@ impl<E: FieldElement> Rem for Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> Neg for Polynomial<E> {
+impl<E: Felt> Neg for Polynomial<E> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -276,7 +287,7 @@ impl<E: FieldElement> Neg for Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> Add for Polynomial<E> {
+impl<E: Felt> Add for Polynomial<E> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -302,7 +313,7 @@ impl<E: FieldElement> Add for Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> Add for &Polynomial<E> {
+impl<E: Felt> Add for &Polynomial<E> {
     type Output = Polynomial<E>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -328,7 +339,7 @@ impl<E: FieldElement> Add for &Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> Sub for Polynomial<E> {
+impl<E: Felt> Sub for Polynomial<E> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -336,7 +347,7 @@ impl<E: FieldElement> Sub for Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> Mul for Polynomial<E> {
+impl<E: Felt> Mul for Polynomial<E> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -360,7 +371,7 @@ impl<E: FieldElement> Mul for Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> Mul for &Polynomial<E> {
+impl<E: Felt> Mul for &Polynomial<E> {
     type Output = Polynomial<E>;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -384,7 +395,7 @@ impl<E: FieldElement> Mul for &Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> BitXor<u128> for Polynomial<E> {
+impl<E: Felt> BitXor<u128> for Polynomial<E> {
     type Output = Self;
 
     fn bitxor(self, exponent: u128) -> Self::Output {
@@ -409,7 +420,7 @@ impl<E: FieldElement> BitXor<u128> for Polynomial<E> {
     }
 }
 
-impl<E: FieldElement> PartialEq for Polynomial<E> {
+impl<E: Felt> PartialEq for Polynomial<E> {
     fn eq(&self, other: &Self) -> bool {
         if self.degree() != other.degree() {
             false
@@ -422,12 +433,12 @@ impl<E: FieldElement> PartialEq for Polynomial<E> {
 }
 
 #[derive(Clone)]
-pub struct MultivariatePolynomial<E: FieldElement> {
+pub struct MultivariatePolynomial<E: Felt> {
     pub powers: Vec<Vec<u128>>,
     pub coefficients: Vec<E>,
 }
 
-impl<E: FieldElement> MultivariatePolynomial<E> {
+impl<E: Felt> MultivariatePolynomial<E> {
     fn search_for_power<'a>(seek: &'a [u128]) -> impl FnMut(&'a Vec<u128>) -> Ordering {
         move |probe: &Vec<u128>| {
             assert_eq!(seek.len(), probe.len());
@@ -547,7 +558,7 @@ impl<E: FieldElement> MultivariatePolynomial<E> {
     }
 }
 
-impl<E: FieldElement> Add for MultivariatePolynomial<E> {
+impl<E: Felt> Add for MultivariatePolynomial<E> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -597,7 +608,7 @@ impl<E: FieldElement> Add for MultivariatePolynomial<E> {
     }
 }
 
-impl<E: FieldElement> Sub for MultivariatePolynomial<E> {
+impl<E: Felt> Sub for MultivariatePolynomial<E> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -605,7 +616,7 @@ impl<E: FieldElement> Sub for MultivariatePolynomial<E> {
     }
 }
 
-impl<E: FieldElement> Neg for MultivariatePolynomial<E> {
+impl<E: Felt> Neg for MultivariatePolynomial<E> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -620,7 +631,7 @@ impl<E: FieldElement> Neg for MultivariatePolynomial<E> {
     }
 }
 
-impl<E: FieldElement> Mul for MultivariatePolynomial<E> {
+impl<E: Felt> Mul for MultivariatePolynomial<E> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -665,7 +676,7 @@ impl<E: FieldElement> Mul for MultivariatePolynomial<E> {
     }
 }
 
-impl<E: FieldElement> BitXor<u128> for MultivariatePolynomial<E> {
+impl<E: Felt> BitXor<u128> for MultivariatePolynomial<E> {
     type Output = Self;
 
     fn bitxor(self, exponent: u128) -> Self::Output {
@@ -688,7 +699,7 @@ impl<E: FieldElement> BitXor<u128> for MultivariatePolynomial<E> {
     }
 }
 
-impl<E: FieldElement> fmt::Display for MultivariatePolynomial<E> {
+impl<E: Felt> fmt::Display for MultivariatePolynomial<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let formatted_coefficients: Vec<String> = self
             .powers
@@ -752,16 +763,19 @@ impl<E: FieldElement> fmt::Display for MultivariatePolynomial<E> {
 //     fn coliniarity() {
 //         let field_elements = vec![
 //             (
-//                 FieldElement::new(227292946527062975142212960787649844118, Field::main()),
-//                 FieldElement::new(198529779817252628145467949537111849632, Field::main()),
+//                 Felt::new(227292946527062975142212960787649844118,
+// Field::main()),
+// Felt::new(198529779817252628145467949537111849632, Field::main()),
 //             ),
 //             (
-//                 FieldElement::new(43204950615167404993711775979400277099, Field::main()),
-//                 FieldElement::new(39518110489409123482753928896191159935, Field::main()),
+//                 Felt::new(43204950615167404993711775979400277099,
+// Field::main()),
+// Felt::new(39518110489409123482753928896191159935, Field::main()),
 //             ),
 //             (
-//                 FieldElement::new(49439774929837278997840997361743450321, Field::main()),
-//                 FieldElement::new(203026432109815629425002792571619313110, Field::main()),
+//                 Felt::new(49439774929837278997840997361743450321,
+// Field::main()),
+// Felt::new(203026432109815629425002792571619313110, Field::main()),
 //             ),
 //         ];
 
@@ -775,10 +789,11 @@ impl<E: FieldElement> fmt::Display for MultivariatePolynomial<E> {
 //     fn symbolic_evaluate() {
 //         let field = Field::main();
 //         let poly_1 =
-//             MultivariatePolynomial::lift(Polynomial::new(vec![field.zero(), field.one()]), 0);
-//         let poly_2 =
-//             MultivariatePolynomial::lift(Polynomial::new(vec![field.zero(), field.one()]), 1);
-//         let poly_3 = MultivariatePolynomial::lift(Polynomial::new(vec![field.one()]), 0);
+//             MultivariatePolynomial::lift(Polynomial::new(vec![field.zero(),
+// field.one()]), 0);         let poly_2 =
+//             MultivariatePolynomial::lift(Polynomial::new(vec![field.zero(),
+// field.one()]), 1);         let poly_3 =
+// MultivariatePolynomial::lift(Polynomial::new(vec![field.one()]), 0);
 
 //         let combined = poly_1 + poly_2 + poly_3;
 
@@ -802,17 +817,18 @@ impl<E: FieldElement> fmt::Display for MultivariatePolynomial<E> {
 //         let variables = MultivariatePolynomial::variables(4, field);
 //         let zero = field.zero();
 //         let one = field.one();
-//         let two = FieldElement::new(2, field);
-//         let five = FieldElement::new(5, field);
+//         let two = Felt::new(2, field);
+//         let five = Felt::new(5, field);
 
-//         let mpoly1 = MultivariatePolynomial::constant(one) * variables[0].clone()
-//             + MultivariatePolynomial::constant(two) * variables[1].clone()
-//             + MultivariatePolynomial::constant(five) * (variables[2].clone() ^ 3);
-//         let mpoly2 =
-//             MultivariatePolynomial::constant(one) * variables[0].clone() * variables[3].clone()
-//                 + MultivariatePolynomial::constant(five) * (variables[3].clone() ^ 3)
-//                 + MultivariatePolynomial::constant(five);
-//         let mpoly3 = mpoly1.clone() * mpoly2.clone();
+//         let mpoly1 = MultivariatePolynomial::constant(one) *
+// variables[0].clone()             + MultivariatePolynomial::constant(two) *
+// variables[1].clone()             + MultivariatePolynomial::constant(five) *
+// (variables[2].clone() ^ 3);         let mpoly2 =
+//             MultivariatePolynomial::constant(one) * variables[0].clone() *
+// variables[3].clone()                 + MultivariatePolynomial::constant(five)
+// * (variables[3].clone() ^ 3)                 +
+// MultivariatePolynomial::constant(five);         let mpoly3 = mpoly1.clone() *
+// mpoly2.clone();
 
 //         let point = vec![zero, five, five, two];
 
@@ -823,13 +839,13 @@ impl<E: FieldElement> fmt::Display for MultivariatePolynomial<E> {
 //         assert_eq!(
 //             eval1 * eval2,
 //             eval3,
-//             "multivariate polynomial multiplication does not commute with evaluation",
-//         );
+//             "multivariate polynomial multiplication does not commute with
+// evaluation",         );
 //         assert_eq!(
 //             eval1 + eval2,
 //             (mpoly1 + mpoly2).evaluate(&point),
-//             "multivariate polynomial addition does not commute with evaluation",
-//         );
+//             "multivariate polynomial addition does not commute with
+// evaluation",         );
 
 //         println!("eval3: {}", eval3.value);
 //         println!("multivariate evaluate test success \\o/");
@@ -841,35 +857,36 @@ impl<E: FieldElement> fmt::Display for MultivariatePolynomial<E> {
 //         let variables = MultivariatePolynomial::variables(4, field);
 //         let zero = field.zero();
 //         let one = field.one();
-//         let two = FieldElement::new(2, field);
-//         let five = FieldElement::new(5, field);
+//         let two = Felt::new(2, field);
+//         let five = Felt::new(5, field);
 
-//         let upoly = Polynomial::interpolate(&vec![zero, one, two], &vec![two, five, five]);
-//         let mpoly = MultivariatePolynomial::lift(upoly.clone(), 3);
+//         let upoly = Polynomial::interpolate(&vec![zero, one, two], &vec![two,
+// five, five]);         let mpoly = MultivariatePolynomial::lift(upoly.clone(),
+// 3);
 
 //         println!("{}", upoly);
 //         println!("{}", mpoly);
 
 //         assert!(
-//             upoly.evaluate(five) == mpoly.evaluate(&vec![zero, zero, zero, five]),
-//             "lifting univariate to multivariate failed",
+//             upoly.evaluate(five) == mpoly.evaluate(&vec![zero, zero, zero,
+// five]),             "lifting univariate to multivariate failed",
 //         );
 
-//         println!("lifting univariate to multivariate polynomial success \\o/");
-//     }
+//         println!("lifting univariate to multivariate polynomial success
+// \\o/");     }
 
 //     #[test]
 //     fn test_interpolate() {
 //         let field = Field::main();
 //         let domain = vec![
-//             FieldElement::new(3, field),
-//             FieldElement::new(4, field),
-//             FieldElement::new(5, field),
+//             Felt::new(3, field),
+//             Felt::new(4, field),
+//             Felt::new(5, field),
 //         ];
 //         let values = vec![
-//             FieldElement::new(1, field),
-//             FieldElement::new(2, field),
-//             FieldElement::new(100, field),
+//             Felt::new(1, field),
+//             Felt::new(2, field),
+//             Felt::new(100, field),
 //         ];
 
 //         let interpolant = Polynomial::interpolate(&domain, &values);

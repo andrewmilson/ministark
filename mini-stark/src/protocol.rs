@@ -1,11 +1,11 @@
+use crate::polynomial::*;
+use polysonic::fields::Felt;
+use polysonic::fields::StarkFelt;
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
-
 use std::hash::Hash;
 use std::hash::Hasher;
-
-use crate::field::FieldElement;
-use crate::polynomial::*;
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ProofObject<E> {
@@ -17,7 +17,7 @@ pub enum ProofObject<E> {
     YValues((E, E, E)),
 }
 
-pub trait ProofStream<E: FieldElement> {
+pub trait ProofStream<E: Felt> {
     fn push(&mut self, object: ProofObject<E>);
     fn pull(&mut self) -> ProofObject<E>;
     fn serialize(&self) -> Vec<u8>;
@@ -30,13 +30,13 @@ pub struct StandardProofStream<E> {
     pub read_index: usize,
 }
 
-impl<E: FieldElement> StandardProofStream<E> {
+impl<E: Felt> StandardProofStream<E> {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl<E: FieldElement> Default for StandardProofStream<E> {
+impl<E: Felt> Default for StandardProofStream<E> {
     fn default() -> Self {
         StandardProofStream {
             objects: vec![],
@@ -45,7 +45,7 @@ impl<E: FieldElement> Default for StandardProofStream<E> {
     }
 }
 
-impl<E: FieldElement> ProofStream<E> for StandardProofStream<E> {
+impl<E: Felt> ProofStream<E> for StandardProofStream<E> {
     fn push(&mut self, object: ProofObject<E>) {
         self.objects.push(object);
     }

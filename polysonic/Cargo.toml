@@ -11,6 +11,7 @@ metal = { path = "../../metal-rs" }
 objc = "0.2.7"
 num-traits = "0.2.14"
 libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 rand = "0.8.5"

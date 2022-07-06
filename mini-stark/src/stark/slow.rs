@@ -1,12 +1,17 @@
+use crate::polynomial::MultivariatePolynomial;
+use crate::polynomial::Polynomial;
+use crate::Fri;
+use crate::MerkleTree;
+use crate::ProofObject;
+use crate::ProofStream;
+use polysonic::fields::StarkFelt;
+use rand::Rng;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::iter::{once, repeat};
-
-use crate::field::StarkElement;
-use crate::polynomial::{MultivariatePolynomial, Polynomial};
-use crate::{Fri, MerkleTree, ProofObject, ProofStream};
-use rand::Rng;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::iter::once;
+use std::iter::repeat;
 
 pub struct Stark<E> {
     expansion_factor: usize,
@@ -20,7 +25,7 @@ pub struct Stark<E> {
     fri: Fri<E>,
 }
 
-impl<E: StarkElement> Stark<E> {
+impl<E: StarkFelt> Stark<E> {
     pub fn new(
         expansion_factor: usize,
         num_colinearity_checks: usize,
@@ -508,7 +513,8 @@ impl<E: StarkElement> Stark<E> {
 
         // verify leafs of combination polynomial
         for (i, current_index) in indices.into_iter().enumerate() {
-            // get trace values by applying a correction to the boundary quotient values (which are the leafs)
+            // get trace values by applying a correction to the boundary quotient values
+            // (which are the leafs)
             let domain_current_index =
                 E::GENERATOR * self.omega.pow((current_index as u128).into());
             let next_index = (current_index + self.expansion_factor) % self.fri.domain_length;
@@ -578,8 +584,8 @@ impl<E: StarkElement> Stark<E> {
 
 // #[cfg(test)]
 // mod tests {
-//     use crate::{protocol::StandardProofStream, rescue_prime::RescuePrime, stark};
-//     use rand::Rng;
+//     use crate::{protocol::StandardProofStream, rescue_prime::RescuePrime,
+// stark};     use rand::Rng;
 
 //     use super::*;
 
@@ -644,15 +650,16 @@ impl<E: StarkElement> Stark<E> {
 //             let output_element_ = output_element + field.one();
 //             let boundary_ = rp.boundary_constraints(output_element_);
 //             let mut verifier_proof_stream = StandardProofStream::new();
-//             let verdict = stark.verify(proof, air.clone(), &boundary_, &mut verifier_proof_stream);
+//             let verdict = stark.verify(proof, air.clone(), &boundary_, &mut
+// verifier_proof_stream);
 
 //             assert!(verdict.is_err(), "invalid stark proof verifies");
 //             println!("proof rejected! \\o/");
 
 //             if trial == 19 {
 //                 // verify with false witness
-//                 print!("attempting to prove with false witness (should fail) ...");
-//                 let mut rng = rand::thread_rng();
+//                 print!("attempting to prove with false witness (should fail)
+// ...");                 let mut rng = rand::thread_rng();
 //                 let cycle = rng.gen::<usize>() % trace.len();
 //                 let register = rng.gen::<usize>() % state_width;
 //                 let error = field.sample(rng.gen());
@@ -661,8 +668,8 @@ impl<E: StarkElement> Stark<E> {
 
 //                 let mut proover_proof_stream = StandardProofStream::new();
 //                 // should fail
-//                 let proof = stark.prove(trace, air.clone(), &boundary, &mut proover_proof_stream);
-//             }
+//                 let proof = stark.prove(trace, air.clone(), &boundary, &mut
+// proover_proof_stream);             }
 //         }
 //     }
 // }

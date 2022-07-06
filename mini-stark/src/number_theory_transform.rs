@@ -1,11 +1,11 @@
 extern crate test;
 
-use crate::{
-    field::StarkElement,
-    polynomial::{MultivariatePolynomial, Polynomial},
-};
+use crate::polynomial::MultivariatePolynomial;
+use crate::polynomial::Polynomial;
+use polysonic::fields::batch_inverse;
+use polysonic::fields::StarkFelt;
 
-pub fn number_theory_transform<E: StarkElement>(primitive_root: E, values: &[E]) -> Vec<E> {
+pub fn number_theory_transform<E: StarkFelt>(primitive_root: E, values: &[E]) -> Vec<E> {
     assert_eq!(
         values.len() & (values.len() - 1),
         0,
@@ -44,7 +44,7 @@ pub fn number_theory_transform<E: StarkElement>(primitive_root: E, values: &[E])
         .collect()
 }
 
-pub fn inverse_number_theory_transfer<E: StarkElement>(primitive_root: E, values: &[E]) -> Vec<E> {
+pub fn inverse_number_theory_transfer<E: StarkFelt>(primitive_root: E, values: &[E]) -> Vec<E> {
     let ninv = E::from(values.len() as u32).inverse().unwrap();
     // Inverse primitive root to calculate in reverse order
     let transformed_values = number_theory_transform(primitive_root.inverse().unwrap(), values);
@@ -54,7 +54,7 @@ pub fn inverse_number_theory_transfer<E: StarkElement>(primitive_root: E, values
         .collect()
 }
 
-pub fn fast_multiply<E: StarkElement>(
+pub fn fast_multiply<E: StarkFelt>(
     lhs: &Polynomial<E>,
     rhs: &Polynomial<E>,
     primitive_root: E,
@@ -112,7 +112,7 @@ pub fn fast_multiply<E: StarkElement>(
     Polynomial::new(product_coefficients[..(degree + 1)].to_vec())
 }
 
-pub fn fast_zerofier<E: StarkElement>(
+pub fn fast_zerofier<E: StarkFelt>(
     domain: &[E],
     primitive_root: E,
     root_order: usize,
@@ -142,7 +142,7 @@ pub fn fast_zerofier<E: StarkElement>(
     fast_multiply(&left, &right, primitive_root, root_order)
 }
 
-pub fn fast_evaluate_symbolic<E: StarkElement>(
+pub fn fast_evaluate_symbolic<E: StarkFelt>(
     polynomial: &MultivariatePolynomial<E>,
     point: &[Polynomial<E>],
     primitive_root: E,
@@ -165,7 +165,7 @@ pub fn fast_evaluate_symbolic<E: StarkElement>(
     accumulator
 }
 
-fn fast_evaluate_domain<E: StarkElement>(
+fn fast_evaluate_domain<E: StarkFelt>(
     polynomial: &Polynomial<E>,
     domain: &[E],
     primitive_root: E,
@@ -211,7 +211,7 @@ fn fast_evaluate_domain<E: StarkElement>(
     left.into_iter().chain(right.into_iter()).collect()
 }
 
-pub fn fast_interpolate<E: StarkElement>(
+pub fn fast_interpolate<E: StarkFelt>(
     domain: &[E],
     values: &[E],
     primitive_root: E,
@@ -262,13 +262,13 @@ pub fn fast_interpolate<E: StarkElement>(
     // if not all(not v.is_zero() for v in left_offset):
     //     print("left_offset:", " ".join(str(v) for v in left_offset))
 
-    let left_offset_inverse = E::batch_inverse(&left_offset);
+    let left_offset_inverse = batch_inverse(&left_offset);
     let left_targets = left_offset_inverse
         .into_iter()
         .zip(values[..half].iter().copied())
         .map(|(inverse_denominator, numerator)| numerator * inverse_denominator.unwrap())
         .collect::<Vec<E>>();
-    let right_offset_inverse = E::batch_inverse(&right_offset);
+    let right_offset_inverse = batch_inverse(&right_offset);
     let right_targets = right_offset_inverse
         .into_iter()
         .zip(values[half..].iter().copied())
@@ -303,7 +303,7 @@ pub fn fast_interpolate<E: StarkElement>(
     // left_interpolant * right_zerofier + right_interpolant * left_zerofier
 }
 
-pub fn fast_coset_evaluate<E: StarkElement>(
+pub fn fast_coset_evaluate<E: StarkFelt>(
     polynomial: &Polynomial<E>,
     offset: E,
     generator: E,
@@ -318,7 +318,7 @@ pub fn fast_coset_evaluate<E: StarkElement>(
 }
 
 // Clean division only
-pub fn fast_coset_divide<E: StarkElement>(
+pub fn fast_coset_divide<E: StarkFelt>(
     lhs: &Polynomial<E>,
     rhs: &Polynomial<E>,
     offset: E,
@@ -374,7 +374,7 @@ pub fn fast_coset_divide<E: StarkElement>(
 
     let lhs_codeword = number_theory_transform(root, &lhs_coefficients);
     let rhs_codeword = number_theory_transform(root, &rhs_coefficients);
-    let rhs_codeword_inverse = E::batch_inverse(&rhs_codeword);
+    let rhs_codeword_inverse = batch_inverse(&rhs_codeword);
     let quotient_codeword = lhs_codeword
         .into_iter()
         .zip(rhs_codeword_inverse)
@@ -389,15 +389,16 @@ pub fn fast_coset_divide<E: StarkElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{prime_field_u128::BaseElement, FieldElement};
-
     use super::*;
-    use num_traits::{One, Zero};
+    use num_traits::One;
+    use num_traits::Zero;
+    use polysonic::fields::fp_u128::BaseFelt;
+    use polysonic::fields::Felt;
     use test::Bencher;
 
     #[test]
     fn test_number_theory_transform() {
-        let primitive_root = BaseElement::get_root_of_unity(1);
+        let primitive_root = BaseFelt::get_root_of_unity(1);
 
         println!(
             "{}, {}, {}, {}",
@@ -409,7 +410,7 @@ mod tests {
 
         println!(
             "{:?}",
-            number_theory_transform(primitive_root, &[BaseElement::zero(), BaseElement::one()])
+            number_theory_transform(primitive_root, &[BaseFelt::zero(), BaseFelt::one()])
         );
     }
 
@@ -418,11 +419,11 @@ mod tests {
     fn bench_interpolate_100_points(b: &mut Bencher) {
         let points = 100;
         let domain = (0u128..points)
-            .map(|i| BaseElement::GENERATOR.pow(i))
+            .map(|i| BaseFelt::GENERATOR.pow(i))
             .collect::<Vec<_>>();
-        let values = (0u128..points).map(BaseElement::new).collect::<Vec<_>>();
+        let values = (0u128..points).map(BaseFelt::new).collect::<Vec<_>>();
         let root_order = (domain.len() + 1).next_power_of_two();
-        let primitive_root = BaseElement::get_root_of_unity(root_order.log2());
+        let primitive_root = BaseFelt::get_root_of_unity(root_order.log2());
 
         b.iter(|| fast_interpolate(&domain, &values, primitive_root, root_order))
     }

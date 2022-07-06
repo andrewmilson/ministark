@@ -1,6 +1,8 @@
 use core::iter::Sum;
 use num_traits::One;
 use num_traits::Zero;
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -28,6 +30,8 @@ pub trait Felt:
     + Hash
     + Neg<Output = Self>
     + Sized
+    + Serialize
+    + for<'a> Deserialize<'a>
     + Add<Self, Output = Self>
     + Sub<Self, Output = Self>
     + Mul<Self, Output = Self>
@@ -55,7 +59,7 @@ pub trait Felt:
 {
     /// A positive integer big enough to describe a field modulus for
     /// `Self::BaseField` with no loss of precision.
-    type PositiveInteger: num_traits::NumAssign + TryFrom<usize> + Display;
+    type PositiveInteger: num_traits::NumAssign + TryFrom<usize> + From<u32> + From<u128> + Display;
 
     /// Bytes needed to store the field element.
     const ELEMENT_BYTES: usize;

@@ -1,14 +1,21 @@
+use crate::number_theory_transform::*;
+use crate::polynomial::MultivariatePolynomial;
+use crate::polynomial::Polynomial;
+use crate::Fri;
+use crate::MerkleTree;
+use crate::ProofObject;
+use crate::ProofStream;
+use polysonic::allocator::PageAlignedAllocator;
+use polysonic::fields::StarkFelt;
+use rand::Rng;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::iter::{once, repeat};
-use std::time::{Duration, Instant};
-
-use crate::field::StarkElement;
-use crate::number_theory_transform::*;
-use crate::polynomial::{MultivariatePolynomial, Polynomial};
-use crate::{Fri, MerkleTree, ProofObject, ProofStream};
-use rand::Rng;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::iter::once;
+use std::iter::repeat;
+use std::time::Duration;
+use std::time::Instant;
 
 pub struct Stark<E> {
     expansion_factor: usize,
@@ -22,7 +29,7 @@ pub struct Stark<E> {
     pub fri: Fri<E>,
 }
 
-impl<E: StarkElement> Stark<E> {
+impl<E: StarkFelt> Stark<E> {
     pub fn new(
         expansion_factor: usize,
         num_colinearity_checks: usize,
@@ -223,7 +230,7 @@ impl<E: StarkElement> Stark<E> {
 
     pub fn prove<T: ProofStream<E>>(
         &self,
-        trace: Vec<Vec<E>>,
+        trace: Vec<Vec<E, PageAlignedAllocator>>,
         transition_constraints: Vec<MultivariatePolynomial<E>>,
         boundary: &[(usize, usize, E)],
         transition_zerofier: &Polynomial<E>,
@@ -237,14 +244,25 @@ impl<E: StarkElement> Stark<E> {
         let mut rng = rand::thread_rng();
 
         // concatenate randomizers
+        // let trace = trace
+        //     .into_iter()
+        //     .chain((0..self.num_randomizers).map(|_| {
+        //         (0..self.num_registers)
+        //             .map(|_| E::from(rng.gen::<u64>()))
+        //             .collect::<Vec<E>>()
+        //     }))
+        //     .collect::<Vec<Vec<E>>>();
+
+        // concatenate randomizers
         let trace = trace
             .into_iter()
             .chain((0..self.num_randomizers).map(|_| {
-                (0..self.num_registers)
-                    .map(|_| E::from(rng.gen::<u64>()))
-                    .collect::<Vec<E>>()
+                let mut res = Vec::new_in(PageAlignedAllocator);
+                res.resize(self.num_registers, E::zero());
+                res.iter_mut().for_each(|v| *v = E::from(rng.gen::<u64>()));
+                res
             }))
-            .collect::<Vec<Vec<E>>>();
+            .collect::<Vec<Vec<E, PageAlignedAllocator>>>();
 
         // interpolate
         let now = Instant::now();
@@ -654,7 +672,8 @@ impl<E: StarkElement> Stark<E> {
 
         // verify leafs of combination polynomial
         for (i, current_index) in indices.into_iter().enumerate() {
-            // get trace values by applying a correction to the boundary quotient values (which are the leafs)
+            // get trace values by applying a correction to the boundary quotient values
+            // (which are the leafs)
             let domain_current_index =
                 E::GENERATOR * self.omega.pow((current_index as u128).into());
             let next_index = (current_index + self.expansion_factor) % self.fri.domain_length;
@@ -746,8 +765,8 @@ impl<E: StarkElement> Stark<E> {
 // #[cfg(test)]
 // mod tests {
 //     use crate::{
-//         prime_field_u128::BaseElement, protocol::StandardProofStream, rescue_prime::RescuePrime,
-//     };
+//         prime_field_u128::BaseElement, protocol::StandardProofStream,
+// rescue_prime::RescuePrime,     };
 //     use num_traits::One;
 //     use rand::Rng;
 
@@ -787,8 +806,8 @@ impl<E: StarkElement> Stark<E> {
 //                 2,
 //             );
 
-//             let (transition_zerofier, transition_zerofier_codeword, transition_zerofier_root) =
-//                 stark.preprocess();
+//             let (transition_zerofier, transition_zerofier_codeword,
+// transition_zerofier_root) =                 stark.preprocess();
 
 //             // prove honestly
 //             println!("honest proof generation ...");
@@ -849,8 +868,8 @@ impl<E: StarkElement> Stark<E> {
 
 //             if trial == 19 {
 //                 // verify with false witness
-//                 print!("attempting to prove with false witness (should fail) ...");
-//                 let mut rng = rand::thread_rng();
+//                 print!("attempting to prove with false witness (should fail)
+// ...");                 let mut rng = rand::thread_rng();
 //                 let cycle = rng.gen::<usize>() % trace.len();
 //                 let register = rng.gen::<usize>() % state_width;
 //                 let error = BaseElement::from(rng.gen::<u64>());

@@ -18,6 +18,8 @@ use super::PrimeFelt;
 use super::StarkFelt;
 use num_traits::One;
 use num_traits::Zero;
+use serde::Deserialize;
+use serde::Serialize;
 // use serde::Deserialize;
 // use serde::Serialize;
 use std::fmt::Display;
@@ -84,7 +86,7 @@ const N_PRIME: u128 = 270497897142230380135924736767050121215;
 /// 2^119`
 ///
 /// Values are stored internally in Montgomery form.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BaseFelt(pub u128);
 
 impl BaseFelt {
