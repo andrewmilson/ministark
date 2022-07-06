@@ -1,9 +1,6 @@
 use crate::fields::PrimeFelt;
 use crate::fields::StarkFelt;
 use crate::NttDirection;
-use core::num;
-use metal::MTLCommandBuffer;
-use metal::MTLSize;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]
@@ -88,8 +85,8 @@ impl<E: StarkFelt + PrimeFelt> NttGpuStage<E> {
     pub fn encode(
         &self,
         command_buffer: &metal::CommandBufferRef,
-        grid_dim: MTLSize,
-        threadgroup_dim: MTLSize,
+        grid_dim: metal::MTLSize,
+        threadgroup_dim: metal::MTLSize,
         input_buffer: &mut metal::BufferRef,
         twiddles_buffer: &mut metal::BufferRef,
     ) {

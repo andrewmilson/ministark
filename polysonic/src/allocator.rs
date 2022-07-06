@@ -1,4 +1,3 @@
-use crate::fields::StarkFelt;
 use libc::sysconf;
 use libc::_SC_PAGESIZE;
 use std::alloc::AllocError;

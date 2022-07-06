@@ -7,14 +7,6 @@ pub mod stage;
 pub mod twiddles;
 pub mod utils;
 
-use allocator::PageAlignedAllocator;
-use core::num;
-use fields::fp_u128::BaseFelt;
-use fields::Felt;
-use fields::PrimeFelt;
-use fields::StarkFelt;
-use std::marker::PhantomData;
-
 /// Represents a NTT direction
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum NttDirection {
