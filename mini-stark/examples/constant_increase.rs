@@ -2,12 +2,12 @@
 //! `+1` each cycle.
 #![feature(allocator_api)]
 
+use fast_poly::allocator::PageAlignedAllocator;
+use fast_poly::fields::fp_u128::BaseFelt;
 use mini_stark::polynomial::MultivariatePolynomial;
 use mini_stark::polynomial::Polynomial;
 use mini_stark::StandardProofStream;
 use mini_stark::Stark;
-use polysonic::allocator::PageAlignedAllocator;
-use polysonic::fields::fp_u128::BaseFelt;
 use std::time::Instant;
 
 /// Takes a number `x` as input and returns `x + 1`.
@@ -80,7 +80,7 @@ fn execute_program_with_trace(
 fn main() {
     // Parameters for the program
     let starting_number = 7;
-    let increment_times = 100;
+    let increment_times = 2090;
 
     // Execution and generation of the trace. Prover would provide the output along
     // with the STARK proof to the verifier. The program increments the number

@@ -2,8 +2,8 @@ extern crate test;
 
 use crate::polynomial::MultivariatePolynomial;
 use crate::polynomial::Polynomial;
-use polysonic::fields::batch_inverse;
-use polysonic::fields::StarkFelt;
+use fast_poly::fields::batch_inverse;
+use fast_poly::fields::StarkFelt;
 
 pub fn number_theory_transform<E: StarkFelt>(primitive_root: E, values: &[E]) -> Vec<E> {
     assert_eq!(
@@ -390,10 +390,10 @@ pub fn fast_coset_divide<E: StarkFelt>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fast_poly::fields::fp_u128::BaseFelt;
+    use fast_poly::fields::Felt;
     use num_traits::One;
     use num_traits::Zero;
-    use polysonic::fields::fp_u128::BaseFelt;
-    use polysonic::fields::Felt;
     use test::Bencher;
 
     #[test]

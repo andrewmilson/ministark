@@ -1,13 +1,13 @@
 #![feature(allocator_api, int_log)]
 
+use fast_poly::allocator::PageAlignedAllocator;
+use fast_poly::fields::fp_u128::BaseFelt;
+use fast_poly::fields::Felt;
+use fast_poly::fields::StarkFelt;
+use fast_poly::plan::NttPlanner;
+use fast_poly::utils::bit_reverse;
+use fast_poly::NttOrdering;
 use objc::rc::autoreleasepool;
-use polysonic::allocator::PageAlignedAllocator;
-use polysonic::fields::fp_u128::BaseFelt;
-use polysonic::fields::Felt;
-use polysonic::fields::StarkFelt;
-use polysonic::plan::NttPlanner;
-use polysonic::utils::bit_reverse;
-use polysonic::NttOrdering;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_pcg::Pcg64;

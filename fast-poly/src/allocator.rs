@@ -16,6 +16,7 @@ unsafe impl Allocator for PageAlignedAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         Global.allocate(layout.align_to(get_pagesize()).unwrap().pad_to_align())
     }
+
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         Global.deallocate(ptr, layout.align_to(get_pagesize()).unwrap().pad_to_align())
     }

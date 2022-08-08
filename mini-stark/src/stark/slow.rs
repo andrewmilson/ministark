@@ -4,7 +4,7 @@ use crate::Fri;
 use crate::MerkleTree;
 use crate::ProofObject;
 use crate::ProofStream;
-use polysonic::fields::StarkFelt;
+use fast_poly::fields::StarkFelt;
 use rand::Rng;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;

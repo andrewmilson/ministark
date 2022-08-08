@@ -2,7 +2,7 @@ use crate::polynomial::*;
 use crate::MerkleTree;
 use crate::ProofObject;
 use crate::ProofStream;
-use polysonic::fields::Felt;
+use fast_poly::fields::Felt;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;

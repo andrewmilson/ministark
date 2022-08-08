@@ -1,6 +1,6 @@
 use crate::polynomial::*;
-use polysonic::fields::Felt;
-use polysonic::fields::StarkFelt;
+use fast_poly::fields::Felt;
+use fast_poly::fields::StarkFelt;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
@@ -17,7 +17,7 @@ pub enum ProofObject<E> {
     YValues((E, E, E)),
 }
 
-pub trait ProofStream<E: Felt> {
+pub trait ProofStream<E> {
     fn push(&mut self, object: ProofObject<E>);
     fn pull(&mut self) -> ProofObject<E>;
     fn serialize(&self) -> Vec<u8>;

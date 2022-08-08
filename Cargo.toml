@@ -1,5 +1,6 @@
 [workspace]
 members = [
-    "polysonic",
+    "fast-poly",
     "mini-stark",
+    "elliptic-curve"
 ]

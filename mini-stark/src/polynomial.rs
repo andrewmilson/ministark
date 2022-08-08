@@ -1,5 +1,5 @@
-use polysonic::fields::batch_inverse;
-use polysonic::fields::Felt;
+use fast_poly::fields::batch_inverse;
+use fast_poly::fields::Felt;
 use serde::Deserialize;
 use serde::Serialize;
 use std::char;
