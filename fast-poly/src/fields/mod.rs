@@ -17,7 +17,7 @@ use std::ops::Sub;
 use std::ops::SubAssign;
 
 pub mod fp_u128;
-// pub mod fp_u64;
+pub mod fp_u256;
 
 pub trait Felt:
     Copy

@@ -1,4 +1,10 @@
-#![feature(test, int_log, allocator_api)]
+#![feature(
+    test,
+    int_log,
+    allocator_api,
+    bigint_helper_methods,
+    const_bigint_helper_methods
+)]
 
 pub mod allocator;
 pub mod fields;

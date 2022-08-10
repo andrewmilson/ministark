@@ -20,8 +20,6 @@ use num_traits::One;
 use num_traits::Zero;
 use serde::Deserialize;
 use serde::Serialize;
-// use serde::Deserialize;
-// use serde::Serialize;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::Product;
@@ -514,6 +512,8 @@ const fn mul(lhs: u128, rhs: u128) -> u128 {
     let overflows_r = overflows_r as u128;
     let overflows_modulus = (t >= N) as u128;
 
+    // TODO: overflows_r * 0u128.wrapping_sub(N) might need to be within the
+    // overflows_modulus check above.
     t + overflows_r * 0u128.wrapping_sub(N) - overflows_modulus * N
 }
 

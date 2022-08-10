@@ -143,30 +143,30 @@ public:
         products[3][0] = top[0] * bottom[0];
 
         // first row
-        unsigned long fourth32 = (products[0][3] & 0xffffffff);
+        unsigned long fourth32 = products[0][3] & 0xffffffff;
         unsigned long third32 = (products[0][2] & 0xffffffff) + (products[0][3] >> 32);
         unsigned long second32 = (products[0][1] & 0xffffffff) + (products[0][2] >> 32);
         unsigned long first32 = (products[0][0] & 0xffffffff) + (products[0][1] >> 32);
 
         // second row
-        third32 += (products[1][3] & 0xffffffff);
+        third32 += products[1][3] & 0xffffffff;
         second32 += (products[1][2] & 0xffffffff) + (products[1][3] >> 32);
         first32 += (products[1][1] & 0xffffffff) + (products[1][2] >> 32);
 
         // third row
-        second32 += (products[2][3] & 0xffffffff);
+        second32 += products[2][3] & 0xffffffff;
         first32 += (products[2][2] & 0xffffffff) + (products[2][3] >> 32);
 
         // fourth row
-        first32 += (products[3][3] & 0xffffffff);
+        first32 += products[3][3] & 0xffffffff;
 
         // move carry to next digit
-        third32 += fourth32 >> 32;
+        third32 += fourth32 >> 32; // TODO: figure out if this is a nop
         second32 += third32 >> 32;
         first32 += second32 >> 32;
 
         // remove carry from current digit
-        fourth32 &= 0xffffffff;
+        fourth32 &= 0xffffffff; // TODO: figure out if this is a nop
         third32 &= 0xffffffff;
         second32 &= 0xffffffff;
         first32 &= 0xffffffff;

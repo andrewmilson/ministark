@@ -2,5 +2,4 @@
 members = [
     "fast-poly",
     "mini-stark",
-    "elliptic-curve"
 ]
