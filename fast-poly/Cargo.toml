@@ -9,8 +9,8 @@ opt-level = 2
 [dependencies]
 metal = { path = "../../metal-rs" }
 objc = "0.2.7"
-num-traits = "0.2.14"
 libc = "0.2"
+num-traits = "0.2.14"
 serde = { version = "1.0", features = ["derive"] }
 rand = "0.8.5"
 

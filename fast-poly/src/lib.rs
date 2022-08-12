@@ -3,10 +3,12 @@
     int_log,
     allocator_api,
     bigint_helper_methods,
-    const_bigint_helper_methods
+    const_bigint_helper_methods,
+    const_try
 )]
 
 pub mod allocator;
+pub mod ec;
 pub mod fields;
 pub mod plan;
 pub mod stage;

@@ -38,39 +38,75 @@ use std::ops::SubAssign;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct U256 {
-    high: u128,
-    low: u128,
+    pub high: u128,
+    pub low: u128,
 }
 
 impl U256 {
-    const ZERO: U256 = U256 { high: 0, low: 0 };
-    const ONE: U256 = U256 { high: 0, low: 1 };
-    const MAX: U256 = U256 {
+    pub const ZERO: U256 = U256 { high: 0, low: 0 };
+    pub const ONE: U256 = U256 { high: 0, low: 1 };
+    pub const MAX: U256 = U256 {
         high: u128::MAX,
         low: u128::MAX,
     };
 
-    const fn is_zero(&self) -> bool {
+    pub const fn is_zero(&self) -> bool {
         self.high == 0 && self.low == 0
     }
 
-    const fn is_one(&self) -> bool {
-        self.high == 0 && self.low == 0
+    pub const fn is_one(&self) -> bool {
+        self.high == 0 && self.low == 1
     }
 
-    // Calculates equality
-    const fn eq(self, rhs: Self) -> bool {
-        self.high == rhs.high || self.low == rhs.low
+    /// Calculates equality
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use fast_poly::fields::fp_u256::U256;
+    /// # use num_traits::identities::Zero;
+    /// # use num_traits::identities::One;
+    /// assert_eq!(U256::eq(U256::zero(), U256::one()), false);
+    /// assert_eq!(U256::eq(U256::zero(), U256::zero()), true);
+    /// assert_eq!(U256::eq(U256 {high: 1, low: 1}, U256 {high: 1, low: 2}), false);
+    /// assert_eq!(U256::eq(U256 {high: 2, low: 1}, U256 {high: 2, low: 1}), true);
+    /// ```
+    pub const fn eq(self, rhs: Self) -> bool {
+        self.high == rhs.high && self.low == rhs.low
     }
 
-    // Calculates greater than
-    const fn gt(self, rhs: Self) -> bool {
-        self.high > rhs.high || (self.high == rhs.high) && self.low > rhs.low
+    /// Calculates less than
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use fast_poly::fields::fp_u256::U256;
+    /// # use num_traits::identities::Zero;
+    /// # use num_traits::identities::One;
+    /// assert_eq!(U256::gt(U256::zero(), U256::one()), false);
+    /// assert_eq!(U256::gt(U256::zero(), U256::zero()), false);
+    /// assert_eq!(U256::gt(U256 {high: 1, low: 1}, U256 {high: 1, low: 2}), false);
+    /// assert_eq!(U256::gt(U256 {high: 2, low: 1}, U256 {high: 1, low: 2}), true);
+    /// ```
+    pub const fn gt(self, rhs: Self) -> bool {
+        self.high > rhs.high || self.high == rhs.high && self.low > rhs.low
     }
 
-    // Calculates greater than
-    const fn lt(self, rhs: Self) -> bool {
-        self.high < rhs.high || (self.high == rhs.high) && self.low < rhs.low
+    /// Calculates less than
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use fast_poly::fields::fp_u256::U256;
+    /// # use num_traits::identities::Zero;
+    /// # use num_traits::identities::One;
+    /// assert_eq!(U256::lt(U256::zero(), U256::one()), true);
+    /// assert_eq!(U256::lt(U256::zero(), U256::zero()), false);
+    /// assert_eq!(U256::lt(U256 {high: 1, low: 1}, U256 {high: 1, low: 2}), true);
+    /// assert_eq!(U256::lt(U256 {high: 2, low: 1}, U256 {high: 1, low: 2}), false);
+    /// ```
+    pub const fn lt(self, rhs: Self) -> bool {
+        self.high < rhs.high || self.high == rhs.high && self.low < rhs.low
     }
 
     // Adds and returns result and if overflow occurred
@@ -135,7 +171,7 @@ impl U256 {
         }
     }
 
-    const fn bit_and(&self, rhs: Self) -> Self {
+    const fn bit_and(self, rhs: Self) -> Self {
         U256 {
             high: self.high & rhs.high,
             low: self.low & rhs.low,
@@ -233,11 +269,8 @@ impl U256 {
                 },
             )
         } else {
-            let mut quotient = U256::ZERO;
-            let mut remainder = U256::ZERO;
-            // for i in 0..256 {
-            //     remainder
-            // }
+            // let mut quotient = U256::ZERO;
+            // let mut remainder = U256::ZERO;
             todo!()
         }
     }
@@ -296,7 +329,7 @@ impl BitAnd for U256 {
     type Output = U256;
 
     fn bitand(self, rhs: Self) -> Self::Output {
-        todo!()
+        U256::bit_and(self, rhs)
     }
 }
 
@@ -514,8 +547,82 @@ impl Display for U256 {
 impl Num for U256 {
     type FromStrRadixErr = ParseIntError;
 
-    fn from_str_radix(str: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+    fn from_str_radix(_str: &str, _radix: u32) -> Result<U256, Self::FromStrRadixErr> {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod U256_tests {
+    use super::N;
+    use super::U256;
+    use num_traits::One;
+    use num_traits::Zero;
+
+    #[test]
+    fn adds_small_numbers() {
+        let a = U256 { high: 0, low: 10 };
+        let b = U256 { high: 0, low: 10 };
+
+        assert_eq!(a + b, 20u32.into());
+    }
+
+    #[test]
+    fn add_with_overflow() {
+        let a = U256::MAX;
+        let b = U256 { high: 1, low: 10 };
+
+        assert_eq!(a + b, U256 { high: 1, low: 9 });
+    }
+
+    #[test]
+    fn subtract_with_overflow() {
+        assert_eq!(U256::zero() - U256::one(), U256::MAX);
+        assert_eq!(
+            U256::ZERO - N,
+            U256 {
+                high: 0,
+                low: 0x1000003d1
+            }
+        );
+    }
+
+    #[test]
+    fn displays_correctly() {
+        assert_eq!(format!("{}", N), "test");
+    }
+
+    #[test]
+    fn overflowing_add_with_overflow() {
+        let a = U256::MAX;
+        let b = U256::one();
+        assert_eq!(a.overflowing_add(b), (U256::zero(), true));
+    }
+
+    #[test]
+    fn overflowing_add_without_overflow() {
+        let a = U256 {
+            high: 0,
+            low: u128::MAX,
+        };
+        let b = U256::one();
+        assert_eq!(a.overflowing_add(b), (U256 { high: 1, low: 0 }, false));
+    }
+
+    #[test]
+    fn multiplies_max_128_bit_numbers() {
+        let a = U256 {
+            high: 0,
+            low: u128::MAX,
+        };
+
+        assert_eq!(
+            a.mul(a),
+            U256 {
+                high: 0xfffffffffffffffffffffffffffffffe,
+                low: 0x00000000000000000000000000000001
+            }
+        );
     }
 }
 
@@ -587,7 +694,10 @@ const N_PRIME: U256 = U256 {
 pub struct BaseFelt(pub U256);
 
 impl BaseFelt {
-    pub fn new(value: U256) -> BaseFelt {
+    pub const ZERO: BaseFelt = BaseFelt::new(U256::ZERO);
+    pub const ONE: BaseFelt = BaseFelt::new(U256::ONE);
+
+    pub const fn new(value: U256) -> BaseFelt {
         // Convert to Montgomery form
         BaseFelt(mul(value, R_SQUARED))
     }
@@ -615,7 +725,7 @@ impl Felt for BaseFelt {
     }
 
     fn double(&self) -> Self {
-        if self.0 <= Self::MODULUS / 2u64 {
+        if self.0 <= Self::MODULUS >> U256::one() {
             BaseFelt(self.0 + self.0)
         } else {
             BaseFelt(self.0 - (Self::MODULUS - self.0))
@@ -623,7 +733,7 @@ impl Felt for BaseFelt {
     }
 
     fn double_in_place(&mut self) -> &mut Self {
-        *self = if self.0 <= Self::MODULUS / 2u64 {
+        *self = if self.0 <= Self::MODULUS >> U256::one() {
             BaseFelt(self.0 + self.0)
         } else {
             BaseFelt(self.0 - (Self::MODULUS - self.0))
@@ -756,24 +866,24 @@ impl PrimeFelt for BaseFelt {
 impl One for BaseFelt {
     #[inline]
     fn one() -> Self {
-        BaseFelt(mul(U256::one(), R_SQUARED))
+        Self::ONE
     }
 
     #[inline]
     fn is_one(&self) -> bool {
-        self.0 == Self::one().0
+        self.0 == Self::ONE.0
     }
 }
 
 impl Zero for BaseFelt {
     #[inline]
     fn zero() -> Self {
-        BaseFelt(U256::zero())
+        Self::ZERO
     }
 
     #[inline]
     fn is_zero(&self) -> bool {
-        self.0 == U256::zero()
+        self.0 == Self::ZERO.0
     }
 }
 
@@ -904,6 +1014,7 @@ impl Div for BaseFelt {
 /// Returns None if `GCD(b, N) != 1` i.e. when `b = N` or `b = 0`.
 #[inline(always)]
 fn modular_inverse(b: U256) -> Option<U256> {
+    // TODO: change to fermat inverse to prevent side channel attacks
     let a = N;
 
     let mut u = a;
@@ -913,19 +1024,19 @@ fn modular_inverse(b: U256) -> Option<U256> {
     let mut k = 0;
 
     // First phase
-    while v > U256::zero() {
-        if u & U256::one() == U256::zero() {
-            u /= 2u64;
-            s *= 2u64;
-        } else if v & U256::one() == U256::zero() {
-            v /= 2u64;
-            r *= 2u64;
+    while !v.is_zero() {
+        if (u & U256::one()).is_zero() {
+            u >>= 1u64;
+            s <<= 1u64;
+        } else if (v & U256::one()).is_zero() {
+            v >>= 1u64;
+            r <<= 1u64;
         } else if u > v {
-            u = (u - v) / 2u64;
+            u = (u - v) >> 1u64;
             r += s;
-            s *= 2u64;
+            s <<= 1u64;
         } else {
-            v = (v - u) / 2u64;
+            v = (v - u) >> 1u64;
             s += r;
 
             // Can cause overflow. re-use add to reduce by the MODULUS
@@ -936,7 +1047,7 @@ fn modular_inverse(b: U256) -> Option<U256> {
     }
 
     // GCD needs to be 1
-    if u != U256::one() {
+    if !u.is_one() {
         return None;
     }
 
@@ -946,11 +1057,11 @@ fn modular_inverse(b: U256) -> Option<U256> {
 
     // Second phase
     for _ in 0..(k - 256) {
-        if r & U256::one() == U256::zero() {
-            r /= 2u64;
+        if (r & U256::one()).is_zero() {
+            r >>= 1u64;
         } else {
             // Non overflowing (r + a) / 2
-            r = r / 2u64 + a / 2u64 + (U256::one() & a & r);
+            r = (r >> 1u64) + (a >> 1u64) + (U256::one() & a & r);
         }
     }
 
@@ -964,7 +1075,7 @@ fn modular_inverse(b: U256) -> Option<U256> {
 ///   algorithm)
 /// - https://www.youtube.com/watch?v=2UmQDKcelBQ
 #[inline(always)]
-fn mul(lhs: U256, rhs: U256) -> U256 {
+const fn mul(lhs: U256, rhs: U256) -> U256 {
     // let half_bits = U256 { high: 0, low: 128 };
     let lhs_low = U256 {
         high: 0,
@@ -1022,11 +1133,8 @@ fn mul(lhs: U256, rhs: U256) -> U256 {
         .add(partial_t_mid_b_high)
         .add(carry);
 
-    println!("t_low: {:?}", t_low);
-    println!("N_PRIME: {:?}", N_PRIME);
     // Compute `m = T * N' mod R`
     let m = t_low.mul(N_PRIME); // overflowing mult
-    println!("m: {:?}", m);
 
     // Compute `t = (T + m * N) / R`
     let n_low = U256 {
@@ -1252,89 +1360,20 @@ mod tests {
             .collect::<Vec<BaseFelt>>();
 
         b.iter(|| items.iter().product::<BaseFelt>());
-
-        println!("{}", items.iter().product::<BaseFelt>().as_integer());
-    }
-
-    #[test]
-    fn u256_adds() {
-        let a = U256 { high: 0, low: 10 };
-        let b = U256 { high: 0, low: 10 };
-
-        assert_eq!(a + b, 20u32.into());
-    }
-
-    #[test]
-    fn u256_overflowing_add() {
-        let a = U256 {
-            high: u128::MAX,
-            low: u128::MAX,
-        };
-        let b = U256 { high: 1, low: 10 };
-
-        assert_eq!(a + b, U256 { high: 1, low: 9 });
-    }
-
-    #[test]
-    fn u256_overflowing_mul() {
-        assert_eq!(
-            U256::ZERO.sub(N),
-            U256 {
-                high: 0,
-                low: 0x1000003d1
-            }
-        );
-    }
-
-    #[test]
-    fn u256_displays_correctly() {
-        assert_eq!(format!("{}", N), "test");
-    }
-
-    #[test]
-    fn u256_sub() {
-        assert_eq!(U256::zero() - U256::one(), U256::MAX);
     }
 
     #[test]
     fn converts_to_montgomery_form() {
-        println!("{:?}", BaseFelt::new(U256 { high: 1, low: 2 }));
-        println!("{:?}", BaseFelt::new(U256 { high: 0, low: 4 }));
         assert_eq!(
-            BaseFelt::new(U256 { high: 0, low: 2 }).as_integer(),
-            U256::one()
+            BaseFelt::new(U256 { high: 96, low: 75 }).as_integer(),
+            U256 { high: 96, low: 75 }
         );
     }
 
-    #[test]
-    fn overflowing_add() {
-        let a = U256::MAX;
-        let b = U256::one();
-        assert_eq!(a.overflowing_add(b), (U256::zero(), true));
-    }
-
-    #[test]
-    fn u128_overflowing_add() {
-        let a = U256 {
-            high: 0,
-            low: u128::MAX,
-        };
-        let b = U256::one();
-        assert_eq!(a.overflowing_add(b), (U256 { high: 1, low: 0 }, false));
-    }
-
-    #[test]
-    fn u128_multiply() {
-        let a = U256 {
-            high: 0,
-            low: u128::MAX,
-        };
-        assert_eq!(
-            a.mul(a),
-            U256 {
-                high: 0xfffffffffffffffffffffffffffffffe,
-                low: 0x00000000000000000000000000000001
-            }
-        );
-    }
+    // #[test]
+    // fn strange_reduce() {
+    //     let a = BaseFelt::new(U256 { high: 0, low: 9 });
+    //     let cube = BaseFelt(a.0 * a.0 * a.0);
+    //     assert_eq!((a * a * a).0, BaseFelt(cube.as_integer()).as_integer());
+    // }
 }
