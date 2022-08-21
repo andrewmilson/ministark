@@ -8,6 +8,7 @@ use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Mul;
 
+pub mod schoofs;
 pub mod secp256k;
 /// Config of an elliptic curve
 pub trait CurveConfig: Sized {

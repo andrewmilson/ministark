@@ -160,6 +160,9 @@ impl Felt for BaseFelt {
 
         res
     }
+
+    // Computes the identity in a prime field
+    fn frobenius(&mut self) {}
 }
 
 impl Display for BaseFelt {

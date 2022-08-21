@@ -16,6 +16,7 @@ use std::ops::Neg;
 use std::ops::Sub;
 use std::ops::SubAssign;
 
+pub mod fp_u1;
 pub mod fp_u128;
 pub mod fp_u256;
 
@@ -59,7 +60,8 @@ pub trait Felt:
 {
     /// A positive integer big enough to describe a field modulus for
     /// `Self::BaseField` with no loss of precision.
-    type PositiveInteger: num_traits::NumAssign + TryFrom<usize> + From<u32> + From<u128> + Display;
+    /// TODO: remove `From<u128>`
+    type PositiveInteger: num_traits::NumAssign + TryFrom<usize> + From<u32> + Display;
 
     /// Bytes needed to store the field element.
     const ELEMENT_BYTES: usize;
@@ -103,6 +105,9 @@ pub trait Felt:
 
     // TODO: find out if difference in performance if borrowed or owned self.
     fn pow(self, power: Self::PositiveInteger) -> Self;
+
+    /// Exponentiates this element by a power of the base prime modulus
+    fn frobenius(&mut self);
 
     /// Returns a canonical integer representation of this field element.
     fn as_integer(&self) -> Self::PositiveInteger;
