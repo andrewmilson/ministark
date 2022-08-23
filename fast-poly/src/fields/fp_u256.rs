@@ -50,6 +50,28 @@ impl U256 {
         low: u128::MAX,
     };
 
+    pub const fn sqrt(&self) -> U256 {
+        let mut low = U256::ZERO;
+        let mut high = U256 {
+            high: 0,
+            low: u128::MAX,
+        };
+        let mut mid = U256::ZERO;
+        while low.lt(high) || low.eq(high) {
+            mid = low.add(high).shr(U256::ONE);
+            let square = mid.mul(mid);
+
+            if square.eq(*self) {
+                return mid;
+            } else if square.lt(*self) {
+                low = mid.add(U256::ONE);
+            } else {
+                high = mid.sub(U256::ONE);
+            }
+        }
+        mid
+    }
+
     pub const fn is_zero(&self) -> bool {
         self.high == 0 && self.low == 0
     }
@@ -110,30 +132,30 @@ impl U256 {
     }
 
     // Adds and returns result and if overflow occurred
-    const fn add(self, rhs: Self) -> Self {
+    pub const fn add(self, rhs: Self) -> Self {
         let (low, overflow) = self.low.overflowing_add(rhs.low);
         let high = self.high.carrying_add(rhs.high, overflow).0;
         U256 { high, low }
     }
 
     // Adds and returns result and if overflow occurred
-    const fn overflowing_add(self, rhs: Self) -> (Self, bool) {
+    pub const fn overflowing_add(self, rhs: Self) -> (Self, bool) {
         let (low, overflow_low) = self.low.overflowing_add(rhs.low);
         let (high, overflow_high) = self.high.carrying_add(rhs.high, overflow_low);
         (U256 { high, low }, overflow_high)
     }
 
-    const fn sub(self, rhs: Self) -> Self {
+    pub const fn sub(self, rhs: Self) -> Self {
         let (low, overflow) = self.low.overflowing_sub(rhs.low);
         let high = self.high.borrowing_sub(rhs.high, overflow).0;
         U256 { high, low }
     }
 
-    const fn as_usize(&self) -> usize {
+    pub const fn as_usize(&self) -> usize {
         self.low as usize
     }
 
-    const fn shl(self, rhs: Self) -> Self {
+    pub const fn shl(self, rhs: Self) -> Self {
         let shift = rhs.as_usize();
         if shift == 0 {
             self
@@ -152,7 +174,7 @@ impl U256 {
         }
     }
 
-    const fn shr(self, rhs: Self) -> Self {
+    pub const fn shr(self, rhs: Self) -> Self {
         let shift = rhs.as_usize();
         if shift == 0 {
             self
@@ -171,14 +193,14 @@ impl U256 {
         }
     }
 
-    const fn bit_and(self, rhs: Self) -> Self {
+    pub const fn bit_and(self, rhs: Self) -> Self {
         U256 {
             high: self.high & rhs.high,
             low: self.low & rhs.low,
         }
     }
 
-    const fn mul(self, rhs: Self) -> Self {
+    pub const fn mul(self, rhs: Self) -> Self {
         // split values into 4 64-bit parts
         let top = [
             self.high >> 64,
@@ -248,7 +270,7 @@ impl U256 {
     }
 
     #[allow(const_err)]
-    const fn div_rem(self, rhs: Self) -> (Self, Self) {
+    pub const fn div_rem(self, rhs: Self) -> (Self, Self) {
         if rhs.is_zero() {
             panic!("division by 0");
         } else if rhs.is_one() {
@@ -273,6 +295,24 @@ impl U256 {
             // let mut remainder = U256::ZERO;
             todo!()
         }
+    }
+
+    pub fn to_be_bytes(self) -> [u8; 32] {
+        let high_bytes = self.high.to_be_bytes();
+        let low_bytes = self.low.to_be_bytes();
+        let mut res = [0u8; 32];
+        res[..high_bytes.len()].copy_from_slice(&high_bytes);
+        res[high_bytes.len()..].copy_from_slice(&low_bytes);
+        res
+    }
+
+    pub fn to_le_bytes(self) -> [u8; 32] {
+        let low_bytes = self.low.to_le_bytes();
+        let high_bytes = self.high.to_le_bytes();
+        let mut res = [0u8; 32];
+        res[..low_bytes.len()].copy_from_slice(&low_bytes);
+        res[low_bytes.len()..].copy_from_slice(&high_bytes);
+        res
     }
 }
 
@@ -523,6 +563,12 @@ impl From<u128> for U256 {
     }
 }
 
+// impl Into<Integer> for U256 {
+//     fn into(self) -> Integer {
+//         (Integer::from(self.high) << 128) + self.low
+//     }
+// }
+
 impl Display for U256 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ten = U256 { high: 0, low: 10 };
@@ -556,6 +602,7 @@ impl Num for U256 {
 mod U256_tests {
     use super::N;
     use super::U256;
+    use crate::fields::PrimeFelt;
     use num_traits::One;
     use num_traits::Zero;
 
@@ -621,6 +668,23 @@ mod U256_tests {
             U256 {
                 high: 0xfffffffffffffffffffffffffffffffe,
                 low: 0x00000000000000000000000000000001
+            }
+        );
+    }
+
+    #[test]
+    fn sqrt_small() {
+        let num = U256 { high: 0, low: 25 };
+        assert_eq!(num.sqrt(), U256 { high: 0, low: 5 });
+    }
+
+    #[test]
+    fn sqrt_big() {
+        assert_eq!(
+            N.sqrt(),
+            U256 {
+                high: 0,
+                low: u128::MAX
             }
         );
     }
