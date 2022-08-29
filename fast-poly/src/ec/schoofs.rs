@@ -20,6 +20,7 @@ const fn hasse_bound_size(field_size: U256) -> U256 {
 }
 
 /// Returns the smallest list of odd primes that that multiply to at least n
+#[inline]
 fn inverse_primorial(n: U256) -> &'static [u32] {
     let mut accumulator = U256::ONE;
     let mut i = 0;
