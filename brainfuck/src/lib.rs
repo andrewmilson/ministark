@@ -1,5 +1,7 @@
 //! Implementation inspired by https://github.com/Overv/bf
 
+use algebra::Felt;
+
 pub mod stark;
 
 /// Opcodes determined by the lexer
@@ -13,6 +15,36 @@ enum OpCode {
     Read,
     LoopBegin,
     LoopEnd,
+}
+
+// impl OpCode {
+//     fn into_felt<E: Felt>(self) -> E {
+//         match self {
+//             OpCode::IncrementPointer => E::from(b'>'),
+//             OpCode::DecrementPointer => E::from(b'<'),
+//             OpCode::Increment => E::from(b'+'),
+//             OpCode::Decrement => E::from(b'-'),
+//             OpCode::Write => E::from(b'.'),
+//             OpCode::Read => E::from(b','),
+//             OpCode::LoopBegin => E::from(b'['),
+//             OpCode::LoopEnd => E::from(b']'),
+//         }
+//     }
+// }
+
+impl std::convert::Into<usize> for OpCode {
+    fn into(self) -> usize {
+        match self {
+            OpCode::IncrementPointer => b'>'.into(),
+            OpCode::DecrementPointer => b'<'.into(),
+            OpCode::Increment => b'+'.into(),
+            OpCode::Decrement => b'-'.into(),
+            OpCode::Write => b'.'.into(),
+            OpCode::Read => b','.into(),
+            OpCode::LoopBegin => b'['.into(),
+            OpCode::LoopEnd => b']'.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -125,7 +157,7 @@ fn run(
             Instr::Read => {
                 let mut x = [0u8; 1];
                 input.read_exact(&mut x).expect("failed to read input");
-                tape[*data_pointer] += x[0];
+                tape[*data_pointer] = x[0];
             }
             Instr::Loop(nested_instrs) => {
                 while tape[*data_pointer] != 0 {
