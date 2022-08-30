@@ -1,15 +1,7 @@
-#![feature(
-    test,
-    int_log,
-    allocator_api,
-    bigint_helper_methods,
-    const_bigint_helper_methods,
-    const_try
-)]
+#![feature(test, allocator_api, const_try, int_log)]
 
 pub mod allocator;
 pub mod ec;
-pub mod fields;
 pub mod plan;
 pub mod stage;
 pub mod twiddles;

@@ -1,9 +1,9 @@
 #![feature(test, allocator_api)]
 
 extern crate test;
+use algebra::fp_u128::BaseFelt;
+use algebra::Felt;
 use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::fields::fp_u128::BaseFelt;
-use fast_poly::fields::Felt;
 use fast_poly::plan::NttPlanner;
 use fast_poly::NttOrdering;
 use objc::rc::autoreleasepool;

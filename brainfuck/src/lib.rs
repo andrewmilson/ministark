@@ -1,5 +1,7 @@
 //! Implementation inspired by https://github.com/Overv/bf
 
+pub mod stark;
+
 /// Opcodes determined by the lexer
 #[derive(Debug, Clone)]
 enum OpCode {

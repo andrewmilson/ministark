@@ -2,9 +2,11 @@
 //! - 2^32 + 1` Code taken and adapted from the winterfell STARK library.
 extern crate test;
 
+use super::ExtensibleField;
 use super::Felt;
 use super::PrimeFelt;
 use super::StarkFelt;
+use super::Univariate;
 use num_traits::One;
 use num_traits::Zero;
 use serde::Deserialize;
@@ -67,7 +69,7 @@ const R_SQUARED: u64 = 18446744065119617025;
 /// g, R_prime, N_prime = gcdExtended(R, N)
 /// print(N_prime)
 /// ```
-const N_PRIME: u64 = 4294967297;
+// const N_PRIME: u64 = 4294967297;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct BaseFelt(pub u64);
@@ -191,7 +193,7 @@ impl From<u32> for BaseFelt {
 
 impl From<u64> for BaseFelt {
     fn from(item: u64) -> Self {
-        BaseFelt::new(item.into())
+        BaseFelt::new(item)
     }
 }
 
@@ -267,7 +269,7 @@ impl One for BaseFelt {
 
     #[inline]
     fn is_one(&self) -> bool {
-        self.0 == Self::one().0
+        equals(self.0, Self::one().0) == 0xFFFFFFFFFFFFFFFF
     }
 }
 
@@ -477,6 +479,54 @@ fn div(lhs: u64, rhs: u64) -> u64 {
     mul(lhs, modular_inverse(rhs))
 }
 
+/// Irreducible polynomial for degree 4 extension field
+fn irreducible_poly() -> Univariate<BaseFelt> {
+    // X^3 - X + 1
+    Univariate::new(vec![
+        BaseFelt::one(),
+        BaseFelt::zero() - BaseFelt::one(),
+        BaseFelt::zero(),
+        BaseFelt::one(),
+    ])
+}
+
+impl ExtensibleField<4> for BaseFelt {
+    fn is_zero(a: [Self; 4]) -> bool {
+        a[0].is_zero() && a[1].is_zero() && a[2].is_zero() && a[3].is_zero()
+    }
+
+    fn is_one(a: [Self; 4]) -> bool {
+        a[0].is_one() && a[1].is_zero() && a[2].is_zero() && a[3].is_zero()
+    }
+
+    fn mul(a: [Self; 4], b: [Self; 4]) -> [Self; 4] {
+        let a = Univariate::new(a.to_vec());
+        let b = Univariate::new(b.to_vec());
+        let res = (a * b) % irreducible_poly();
+        [
+            res.coefficients[0],
+            res.coefficients[1],
+            res.coefficients[2],
+            res.coefficients[3],
+        ]
+    }
+
+    fn add(a: [Self; 4], b: [Self; 4]) -> [Self; 4] {
+        let mut res = [BaseFelt(0); 4];
+        for i in 0..4 {
+            res[i] = a[i] + b[i];
+        }
+        res
+    }
+
+    fn negate(a: [Self; 4]) -> [Self; 4] {
+        a.map(|v| -v)
+    }
+
+    fn inverse(_a: [Self; 4]) -> [Self; 4] {
+        todo!()
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::super::batch_inverse;

@@ -1,20 +1,15 @@
 [package]
-name = "fast-poly"
+name = "algebra"
 version = "0.1.0"
 edition = "2021"
 
 [profile.test]
-opt-level = 3
+opt-level = 2
 
 [dependencies]
-metal = { path = "../../metal-rs" }
-objc = "0.2.7"
-libc = "0.2"
 num-traits = "0.2.14"
-algebra = { path = "../algebra" }
 serde = { version = "1.0", features = ["derive"] }
 rand = "0.8.5"
-# rug = "1.17.0"
 
 [dev-dependencies]
 rand_pcg = "0.3.1"

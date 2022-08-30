@@ -599,10 +599,9 @@ impl Num for U256 {
 }
 
 #[cfg(test)]
-mod U256_tests {
+mod u256_tests {
     use super::N;
     use super::U256;
-    use crate::fields::PrimeFelt;
     use num_traits::One;
     use num_traits::Zero;
 
@@ -1313,7 +1312,7 @@ fn div(lhs: U256, rhs: U256) -> U256 {
 }
 
 #[cfg(test)]
-mod tests {
+mod felt_tests {
     use super::super::batch_inverse;
     use super::*;
     use rand::Rng;

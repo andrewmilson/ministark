@@ -1,6 +1,6 @@
 use super::AffinePoint;
 use super::WeierstrassCurveConfig;
-use crate::fields::fp_u256::U256;
+use algebra::fp_u256::U256;
 
 const ODD_PRIMES: [u32; 53] = [
     3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
@@ -39,9 +39,9 @@ fn schoofs_algorithm() {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fields::fp_u256::BaseFelt;
-    use crate::fields::fp_u256::U256;
-    use crate::fields::PrimeFelt;
+    use algebra::fp_u256::BaseFelt;
+    use algebra::fp_u256::U256;
+    use algebra::PrimeFelt;
 
     #[test]
     fn produces_small_primes() {

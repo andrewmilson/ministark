@@ -1,6 +1,6 @@
-use crate::fields::PrimeFelt;
-use crate::fields::StarkFelt;
 use crate::NttDirection;
+use algebra::PrimeFelt;
+use algebra::StarkFelt;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]

@@ -2,7 +2,7 @@ use crate::allocator::PageAlignedAllocator;
 
 fn bit_reverse_index(n: usize, i: usize) -> usize {
     assert!(n.is_power_of_two());
-    i.reverse_bits() >> (usize::BITS - n.log2())
+    i.reverse_bits() >> (usize::BITS - n.ilog2())
 }
 
 pub fn bit_reverse<T>(v: &mut [T]) {

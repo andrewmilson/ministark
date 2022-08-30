@@ -1,8 +1,8 @@
 use super::AffinePoint;
 use super::CurveConfig;
 use super::WeierstrassCurveConfig;
-use crate::fields::fp_u256::BaseFelt;
-use crate::fields::fp_u256::U256;
+use algebra::fp_u256::BaseFelt;
+use algebra::fp_u256::U256;
 
 /// secp256k curve
 struct Curve;

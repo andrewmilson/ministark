@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "algebra",
     "fast-poly",
     "mini-stark",
     "brainfuck",

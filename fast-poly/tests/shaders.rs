@@ -1,9 +1,9 @@
 #![feature(allocator_api, int_log)]
 
+use algebra::fp_u128::BaseFelt;
+use algebra::Felt;
+use algebra::StarkFelt;
 use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::fields::fp_u128::BaseFelt;
-use fast_poly::fields::Felt;
-use fast_poly::fields::StarkFelt;
 use fast_poly::plan::NttPlanner;
 use fast_poly::utils::bit_reverse;
 use fast_poly::NttOrdering;
@@ -17,7 +17,7 @@ fn ntt_control<E: StarkFelt>(values: &[E]) -> Vec<E> {
     if values.len() <= 1 {
         values.to_vec()
     } else {
-        let twiddle = E::get_root_of_unity(values.len().log2());
+        let twiddle = E::get_root_of_unity(values.len().ilog2());
         let half = values.len() / 2;
         let odd_values = values
             .iter()

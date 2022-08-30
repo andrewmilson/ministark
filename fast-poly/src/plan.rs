@@ -1,6 +1,4 @@
 use crate::allocator::PageAlignedAllocator;
-use crate::fields::PrimeFelt;
-use crate::fields::StarkFelt;
 use crate::stage::NttGpuStage;
 use crate::stage::Variant;
 use crate::twiddles::fill_twiddles;
@@ -8,6 +6,8 @@ use crate::utils::bit_reverse;
 use crate::utils::buffer_no_copy;
 use crate::NttDirection;
 use crate::NttOrdering;
+use algebra::PrimeFelt;
+use algebra::StarkFelt;
 use std::time::Instant;
 
 pub struct Ntt<'a, E> {

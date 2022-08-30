@@ -1,3 +1,5 @@
+#![feature(test, bigint_helper_methods, const_bigint_helper_methods)]
+
 use core::iter::Sum;
 use num_traits::One;
 use num_traits::Zero;
@@ -15,6 +17,12 @@ use std::ops::MulAssign;
 use std::ops::Neg;
 use std::ops::Sub;
 use std::ops::SubAssign;
+
+mod multivariate;
+pub(crate) use multivariate::Multivariate;
+
+mod univariate;
+pub(crate) use univariate::Univariate;
 
 pub mod fp_u1;
 pub mod fp_u128;
@@ -186,4 +194,36 @@ pub fn batch_inverse<E: Felt>(values: &[E]) -> Vec<Option<E>> {
     }
 
     output
+}
+
+/// Degree `N` extension of a prime field
+///
+/// The irreducible polynomial over the extension field is implicitly defined.
+pub trait ExtensibleField<const N: usize>: PrimeFelt {
+    fn is_zero(a: [Self; N]) -> bool;
+
+    fn is_one(a: [Self; N]) -> bool;
+
+    /// Returns a product of `a` and `b`
+    fn mul(a: [Self; N], b: [Self; N]) -> [Self; N];
+
+    /// Returns the addition of `a` and `b`
+    fn add(a: [Self; N], b: [Self; N]) -> [Self; N];
+
+    /// Returns the subtraction of `a` and `b`
+    fn sub(a: [Self; N], b: [Self; N]) -> [Self; N] {
+        ExtensibleField::add(a, ExtensibleField::negate(b))
+    }
+
+    /// Returns the negation of `a`
+    fn negate(a: [Self; N]) -> [Self; N];
+
+    // Returns the inverse of `a`
+    fn inverse(a: [Self; N]) -> [Self; N];
+
+    // Return the division result of `a / b`
+    fn divide(a: [Self; N], b: [Self; N]) -> [Self; N] {
+        assert!(!ExtensibleField::is_zero(b), "divide by zero");
+        ExtensibleField::mul(a, ExtensibleField::inverse(b))
+    }
 }

@@ -1,5 +1,5 @@
-use crate::fields::fp_u256::U256;
-use crate::fields::Felt;
+use algebra::fp_u256::U256;
+use algebra::Felt;
 use num_traits::One;
 use num_traits::Zero;
 use std::fmt::Debug;
@@ -179,7 +179,7 @@ impl<C: WeierstrassCurveConfig> ProjectivePoint<C> {
 impl<C: WeierstrassCurveConfig> Add for ProjectivePoint<C> {
     type Output = Self;
 
-    fn add(self, rhs: Self) -> Self::Output {
+    fn add(self, _rhs: Self) -> Self::Output {
         todo!()
     }
 }
