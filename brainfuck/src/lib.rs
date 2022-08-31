@@ -1,8 +1,8 @@
 //! Implementation inspired by https://github.com/Overv/bf
 
-use algebra::Felt;
-
+mod memory_table;
 pub mod stark;
+mod table;
 
 /// Opcodes determined by the lexer
 #[derive(Debug, Clone)]
