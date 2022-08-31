@@ -1,6 +1,8 @@
 #![feature(test, bigint_helper_methods, const_bigint_helper_methods)]
 
+use bigint::BigInteger;
 use core::iter::Sum;
+use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::Zero;
 use serde::Deserialize;
@@ -23,6 +25,8 @@ pub(crate) use multivariate::Multivariate;
 
 mod univariate;
 pub(crate) use univariate::Univariate;
+
+mod bigint;
 
 pub mod fp_u1;
 pub mod fp_u128;
@@ -67,17 +71,6 @@ pub trait Felt:
     + From<u16>
     + From<u8>
 {
-    /// A positive integer big enough to describe a field modulus for
-    /// `Self::BaseField` with no loss of precision.
-    /// TODO: remove `From<u128>`
-    type PositiveInteger: num_traits::NumAssign + TryFrom<usize> + From<u32> + Display;
-
-    /// Bytes needed to store the field element.
-    const ELEMENT_BYTES: usize;
-
-    /// Number of bits needed to represent the field's order.
-    const FIELD_ORDER_BITS: u32;
-
     /// Returns `self * self`.
     #[must_use]
     fn square(&self) -> Self {
@@ -113,13 +106,22 @@ pub trait Felt:
     fn inverse_in_place(&mut self) -> Option<&mut Self>;
 
     // TODO: find out if difference in performance if borrowed or owned self.
-    fn pow(self, power: Self::PositiveInteger) -> Self;
+    fn pow<S: AsRef<[u64]>>(self, exp: S) -> Self {
+        let mut res = Self::one();
+
+        for i in BitIterator::new_be(exp) {
+            res.square_in_place();
+
+            if i {
+                res *= self;
+            }
+        }
+
+        res
+    }
 
     /// Exponentiates this element by a power of the base prime modulus
     fn frobenius(&mut self);
-
-    /// Returns a canonical integer representation of this field element.
-    fn as_integer(&self) -> Self::PositiveInteger;
 }
 
 /// Field element that facilitates efficient construction a stark proofs.
@@ -145,9 +147,21 @@ pub trait StarkFelt: Felt {
 }
 
 /// Prime field element.
-pub trait PrimeFelt: Felt {
+pub trait PrimeFelt:
+    Felt
+    + From<<Self as PrimeFelt>::BigInt>
+    + Into<<Self as PrimeFelt>::BigInt>
+    + From<BigUint>
+    + Into<BigUint>
+{
+    /// A `BigInteger` type that can represent elements of this field.
+    type BigInt: BigInteger;
+
     /// Prime modulus of the field.
-    const MODULUS: Self::PositiveInteger;
+    const MODULUS: Self::BigInt;
+
+    /// Returns a canonical integer representation of this field element.
+    fn into_bigint(self) -> Self::BigInt;
 }
 
 /// Montgomery batch inversion.
@@ -225,5 +239,50 @@ pub trait ExtensibleField<const N: usize>: PrimeFelt {
     fn divide(a: [Self; N], b: [Self; N]) -> [Self; N] {
         assert!(!ExtensibleField::is_zero(b), "divide by zero");
         ExtensibleField::mul(a, ExtensibleField::inverse(b))
+    }
+}
+
+struct BitIterator<S> {
+    s: S,
+    pos: usize,
+    end: usize,
+}
+
+impl<S: AsRef<[u64]>> BitIterator<S> {
+    // Iterator in big-endian order
+    fn new_be(slice: S) -> BitIterator<S> {
+        BitIterator {
+            pos: slice.as_ref().len() * 64,
+            s: slice,
+            end: 0,
+        }
+    }
+
+    // Iterator in little-endian order
+    fn new_le(slice: S) -> BitIterator<S> {
+        BitIterator {
+            end: slice.as_ref().len() * 64,
+            s: slice,
+            pos: 0,
+        }
+    }
+}
+
+impl<S: AsRef<[u64]>> Iterator for BitIterator<S> {
+    type Item = bool;
+
+    fn next(&mut self) -> Option<bool> {
+        if self.pos == self.end {
+            None
+        } else {
+            let part = self.pos / 64;
+            let bit = self.pos - part * 64;
+            if self.pos < self.end {
+                self.pos += 1;
+            } else {
+                self.pos -= 1;
+            }
+            Some(self.s.as_ref()[part] & (1 << bit) > 0)
+        }
     }
 }

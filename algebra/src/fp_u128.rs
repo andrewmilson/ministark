@@ -16,6 +16,7 @@ extern crate test;
 use super::Felt;
 use super::PrimeFelt;
 use super::StarkFelt;
+use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::Zero;
 use serde::Deserialize;
@@ -95,12 +96,6 @@ impl BaseFelt {
 }
 
 impl Felt for BaseFelt {
-    type PositiveInteger = PositiveInteger;
-
-    const ELEMENT_BYTES: usize = core::mem::size_of::<u128>();
-
-    const FIELD_ORDER_BITS: u32 = 128;
-
     fn inverse(&self) -> Option<Self> {
         Some(BaseFelt(modular_inverse(self.0)?))
     }
@@ -132,42 +127,13 @@ impl Felt for BaseFelt {
         self
     }
 
-    /// Converts internal value out of Montgomery form.
-    fn as_integer(&self) -> Self::PositiveInteger {
-        mul(1, self.0)
-    }
-
-    // TODO: find out if difference in performance if borrowed or owned self.
-    fn pow(self, power: Self::PositiveInteger) -> Self {
-        let mut res = Self::one();
-
-        if power.is_zero() {
-            return Self::one();
-        } else if self.is_zero() {
-            return Self::zero();
-        }
-
-        let mut power = power;
-        let mut accumulator = self;
-
-        while !power.is_zero() {
-            if (power & Self::PositiveInteger::one()).is_one() {
-                res *= accumulator;
-            }
-            power >>= Self::PositiveInteger::one();
-            accumulator.square_in_place();
-        }
-
-        res
-    }
-
     // Computes the identity in a prime field
     fn frobenius(&mut self) {}
 }
 
 impl Display for BaseFelt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_integer())
+        write!(f, "{}", self.into_bigint())
     }
 }
 
@@ -204,6 +170,12 @@ impl From<u128> for BaseFelt {
 impl From<usize> for BaseFelt {
     fn from(item: usize) -> Self {
         BaseFelt::new(item.try_into().unwrap())
+    }
+}
+
+impl From<BigUint> for BaseFelt {
+    fn from(item: BigUint) -> Self {
+        todo!()
     }
 }
 
@@ -246,13 +218,31 @@ impl StarkFelt for BaseFelt {
             "n must be less than {}",
             Self::TWO_ADICITY
         );
-        let power = Self::PositiveInteger::one() << (Self::TWO_ADICITY - n);
-        Self::TWO_ADIC_ROOT_OF_UNITY.pow(power)
+        let power = 1u128 << (Self::TWO_ADICITY - n);
+        Self::TWO_ADIC_ROOT_OF_UNITY.pow(&[power as u64, (power >> 64) as u64])
     }
 }
 
 impl PrimeFelt for BaseFelt {
+    type BigInt = u128;
     const MODULUS: u128 = N;
+
+    /// Converts internal value out of Montgomery form.
+    fn into_bigint(self) -> Self::BigInt {
+        mul(1, self.0)
+    }
+}
+
+impl Into<BigUint> for BaseFelt {
+    fn into(self) -> BigUint {
+        self.into_bigint().into()
+    }
+}
+
+impl Into<u128> for BaseFelt {
+    fn into(self) -> u128 {
+        self.into_bigint()
+    }
 }
 
 impl One for BaseFelt {
@@ -554,7 +544,7 @@ mod tests {
     fn add_adds() {
         let a = BaseFelt::new(5);
         let b = a + a;
-        assert_eq!(b.as_integer(), 10);
+        assert_eq!(b.into_bigint(), 10);
     }
 
     #[test]
@@ -564,16 +554,16 @@ mod tests {
         let batch_inversed = batch_inverse(&values);
 
         assert_eq!(
-            batch_inversed[0].unwrap().as_integer(),
-            values[0].inverse().unwrap().as_integer()
+            batch_inversed[0].unwrap().into_bigint(),
+            values[0].inverse().unwrap().into_bigint()
         );
         assert_eq!(
-            batch_inversed[1].unwrap().as_integer(),
-            values[1].inverse().unwrap().as_integer()
+            batch_inversed[1].unwrap().into_bigint(),
+            values[1].inverse().unwrap().into_bigint()
         );
         assert_eq!(
-            batch_inversed[2].unwrap().as_integer(),
-            values[2].inverse().unwrap().as_integer()
+            batch_inversed[2].unwrap().into_bigint(),
+            values[2].inverse().unwrap().into_bigint()
         );
     }
 
@@ -582,7 +572,7 @@ mod tests {
         // Large compared to u128::MAX
         let a = BaseFelt::new(BaseFelt::MODULUS - 2);
 
-        assert_eq!((a + a).as_integer(), BaseFelt::MODULUS - 4);
+        assert_eq!((a + a).into_bigint(), BaseFelt::MODULUS - 4);
     }
 
     #[test]
@@ -590,7 +580,7 @@ mod tests {
         // Large compared to u128::MAX
         let a = BaseFelt::new(BaseFelt::MODULUS - 2);
 
-        assert_eq!((a * a).as_integer(), 4);
+        assert_eq!((a * a).into_bigint(), 4);
     }
 
     #[test]
@@ -599,7 +589,7 @@ mod tests {
         let a = BaseFelt::new(BaseFelt::MODULUS - 1);
         let b = BaseFelt::new(BaseFelt::MODULUS - 2);
 
-        assert_eq!((a * b).as_integer(), 2);
+        assert_eq!((a * b).into_bigint(), 2);
     }
 
     #[test]
@@ -607,14 +597,14 @@ mod tests {
         let a = BaseFelt::new(1);
         let b = BaseFelt::new(2);
 
-        assert_eq!((a - b).as_integer(), BaseFelt::MODULUS - 1);
+        assert_eq!((a - b).into_bigint(), BaseFelt::MODULUS - 1);
     }
 
     #[test]
     fn division_divides() {
         let two = BaseFelt::new(2);
 
-        assert_eq!((two / two).as_integer(), 1);
+        assert_eq!((two / two).into_bigint(), 1);
     }
 
     #[bench]
@@ -656,6 +646,6 @@ mod tests {
 
         b.iter(|| items.iter().product::<BaseFelt>());
 
-        println!("{}", items.iter().product::<BaseFelt>().as_integer());
+        println!("{}", items.iter().product::<BaseFelt>().into_bigint());
     }
 }

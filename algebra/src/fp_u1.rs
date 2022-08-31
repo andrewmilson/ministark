@@ -3,6 +3,7 @@ extern crate test;
 
 use super::Felt;
 use super::PrimeFelt;
+use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::Zero;
 use serde::Deserialize;
@@ -21,10 +22,8 @@ use std::ops::Neg;
 use std::ops::Sub;
 use std::ops::SubAssign;
 
-type PositiveInteger = u128;
-
 /// Field modulus
-const N: u128 = 2;
+const N: u64 = 2;
 
 /// Represents a base field element for the prime field with modulus `2`
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -38,12 +37,6 @@ impl BaseFelt {
 }
 
 impl Felt for BaseFelt {
-    type PositiveInteger = PositiveInteger;
-
-    const ELEMENT_BYTES: usize = core::mem::size_of::<bool>();
-
-    const FIELD_ORDER_BITS: u32 = 1;
-
     fn inverse(&self) -> Option<Self> {
         match self.0 {
             true => Some(*self),
@@ -70,25 +63,13 @@ impl Felt for BaseFelt {
         self
     }
 
-    fn as_integer(&self) -> Self::PositiveInteger {
-        self.0.into()
-    }
-
-    fn pow(self, power: Self::PositiveInteger) -> Self {
-        if power.is_zero() {
-            Self::one()
-        } else {
-            self
-        }
-    }
-
     // Computes the identity in a prime field
     fn frobenius(&mut self) {}
 }
 
 impl Display for BaseFelt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_integer())
+        write!(f, "{}", self.into_bigint())
     }
 }
 
@@ -128,6 +109,12 @@ impl From<usize> for BaseFelt {
     }
 }
 
+impl From<BigUint> for BaseFelt {
+    fn from(item: BigUint) -> Self {
+        BaseFelt::new(usize::try_from(item & BigUint::one()).unwrap())
+    }
+}
+
 impl Sum for BaseFelt {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.reduce(|a, b| a + b).unwrap_or_else(Self::zero)
@@ -155,7 +142,24 @@ impl<'a> Product<&'a Self> for BaseFelt {
 }
 
 impl PrimeFelt for BaseFelt {
-    const MODULUS: PositiveInteger = N;
+    type BigInt = u64;
+    const MODULUS: Self::BigInt = N;
+
+    fn into_bigint(self) -> Self::BigInt {
+        self.0.into()
+    }
+}
+
+impl Into<BigUint> for BaseFelt {
+    fn into(self) -> BigUint {
+        self.into_bigint().into()
+    }
+}
+
+impl Into<u64> for BaseFelt {
+    fn into(self) -> u64 {
+        self.into_bigint()
+    }
 }
 
 impl One for BaseFelt {
@@ -334,20 +338,20 @@ mod tests {
     fn add() {
         let a = BaseFelt::new(1);
 
-        assert_eq!((a + a).as_integer(), 0);
-        assert_eq!((BaseFelt::zero() + a).as_integer(), 1);
+        assert_eq!((a + a).into_bigint(), 0);
+        assert_eq!((BaseFelt::zero() + a).into_bigint(), 1);
     }
 
     #[test]
     fn subtraction() {
         let a = BaseFelt::new(1);
 
-        assert_eq!((a - a).as_integer(), 0);
-        assert_eq!((BaseFelt::zero() - a).as_integer(), 1);
+        assert_eq!((a - a).into_bigint(), 0);
+        assert_eq!((BaseFelt::zero() - a).into_bigint(), 1);
     }
 
     #[test]
     fn division_divides() {
-        assert_eq!((BaseFelt::one() / BaseFelt::one()).as_integer(), 1);
+        assert_eq!((BaseFelt::one() / BaseFelt::one()).into_bigint(), 1);
     }
 }
