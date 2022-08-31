@@ -13,7 +13,11 @@ pub fn fill_twiddles<E: StarkFelt>(dst: &mut [E], n: usize, direction: NttDirect
         NttDirection::Forward => E::one(),
         NttDirection::Inverse => E::from(n).inverse().unwrap(),
     };
+    let mut accumulator = E::one();
     for (i, v) in dst.iter_mut().enumerate() {
-        *v = norm_factor * twiddle.pow(i.try_into().ok().expect("can't calculate power"));
+        // Using this method creates a data dependency over each iteration
+        // preventing parallelization so is actually slower.
+        *v = norm_factor * accumulator;
+        accumulator *= twiddle;
     }
 }
