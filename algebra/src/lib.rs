@@ -21,10 +21,10 @@ use std::ops::Sub;
 use std::ops::SubAssign;
 
 mod multivariate;
-pub(crate) use multivariate::Multivariate;
+pub use multivariate::Multivariate;
 
 mod univariate;
-pub(crate) use univariate::Univariate;
+pub use univariate::Univariate;
 
 mod bigint;
 

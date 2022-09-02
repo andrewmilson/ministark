@@ -1,3 +1,4 @@
+use crate::memory_table::MemoryTable;
 use crate::OpCode;
 use algebra::fp_u64::BaseFelt;
 use algebra::Felt;
@@ -102,7 +103,7 @@ struct SimulationMatrices<E> {
     instruction: Vec<[E; 3]>,
     input: Vec<[E; 1]>,
     output: Vec<[E; 1]>,
-    memory: Vec<[E; 10]>,
+    memory: Vec<[E; 4]>,
 }
 
 fn simulate<E: PrimeFelt>(
@@ -219,7 +220,9 @@ fn simulate<E: PrimeFelt>(
     // sort instructions by address
     matrices.instruction.sort_by_key(|row| row[0].into_bigint());
 
-    matrices.mem
+    matrices.memory = MemoryTable::<E>::derive_matrix(&matrices.processor);
+
+    matrices
 }
 
 #[cfg(test)]

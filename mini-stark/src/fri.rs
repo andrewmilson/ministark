@@ -115,7 +115,7 @@ impl<E: Felt> Fri<E> {
 
     fn commit<T: ProofStream<E>>(&self, codeword: Vec<E>, proof_stream: &mut T) -> Vec<Vec<E>> {
         let one = E::one();
-        // TODO: fix for galois fields
+        // TODO: fix for extension fields
         let two = one.double();
         let mut omega = self.omega;
         let mut offset = self.offset;

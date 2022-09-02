@@ -145,6 +145,12 @@ impl<E: Felt> Multivariate<E> {
     }
 }
 
+impl<E: Felt> From<E> for Multivariate<E> {
+    fn from(v: E) -> Self {
+        Multivariate::constant(v)
+    }
+}
+
 impl<E: Felt> Add for Multivariate<E> {
     type Output = Self;
 
@@ -195,11 +201,27 @@ impl<E: Felt> Add for Multivariate<E> {
     }
 }
 
+impl<E: Felt> Add<E> for Multivariate<E> {
+    type Output = Self;
+
+    fn add(self, rhs: E) -> Self::Output {
+        self + Self::constant(rhs)
+    }
+}
+
 impl<E: Felt> Sub for Multivariate<E> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
         self + (-rhs)
+    }
+}
+
+impl<E: Felt> Sub<E> for Multivariate<E> {
+    type Output = Self;
+
+    fn sub(self, rhs: E) -> Self::Output {
+        self + Self::constant(-rhs)
     }
 }
 
@@ -260,6 +282,14 @@ impl<E: Felt> Mul for Multivariate<E> {
             powers,
             coefficients,
         }
+    }
+}
+
+impl<E: Felt> Mul<E> for Multivariate<E> {
+    type Output = Self;
+
+    fn mul(self, rhs: E) -> Self::Output {
+        self * Multivariate::constant(rhs)
     }
 }
 

@@ -1,11 +1,15 @@
 //! Implementation inspired by https://github.com/Overv/bf
 
+use std::slice::Iter;
+
+mod instruction_table;
 mod memory_table;
+mod processor_table;
 pub mod stark;
 mod table;
 
 /// Opcodes determined by the lexer
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum OpCode {
     IncrementPointer,
     DecrementPointer,
@@ -17,20 +21,34 @@ enum OpCode {
     LoopEnd,
 }
 
-// impl OpCode {
-//     fn into_felt<E: Felt>(self) -> E {
-//         match self {
-//             OpCode::IncrementPointer => E::from(b'>'),
-//             OpCode::DecrementPointer => E::from(b'<'),
-//             OpCode::Increment => E::from(b'+'),
-//             OpCode::Decrement => E::from(b'-'),
-//             OpCode::Write => E::from(b'.'),
-//             OpCode::Read => E::from(b','),
-//             OpCode::LoopBegin => E::from(b'['),
-//             OpCode::LoopEnd => E::from(b']'),
-//         }
-//     }
-// }
+impl OpCode {
+    fn iterator() -> Iter<'static, OpCode> {
+        static VALUES: [OpCode; 8] = [
+            OpCode::IncrementPointer,
+            OpCode::DecrementPointer,
+            OpCode::Increment,
+            OpCode::Decrement,
+            OpCode::Write,
+            OpCode::Read,
+            OpCode::LoopBegin,
+            OpCode::LoopEnd,
+        ];
+        VALUES.iter()
+    }
+
+    //     fn into_felt<E: Felt>(self) -> E {
+    //         match self {
+    //             OpCode::IncrementPointer => E::from(b'>'),
+    //             OpCode::DecrementPointer => E::from(b'<'),
+    //             OpCode::Increment => E::from(b'+'),
+    //             OpCode::Decrement => E::from(b'-'),
+    //             OpCode::Write => E::from(b'.'),
+    //             OpCode::Read => E::from(b','),
+    //             OpCode::LoopBegin => E::from(b'['),
+    //             OpCode::LoopEnd => E::from(b']'),
+    //         }
+    //     }
+}
 
 impl std::convert::Into<usize> for OpCode {
     fn into(self) -> usize {
