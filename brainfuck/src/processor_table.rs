@@ -1,4 +1,5 @@
 use super::table::Table;
+use crate::table::instr_zerofier;
 use crate::OpCode;
 use algebra::Felt;
 use algebra::Multivariate;
@@ -20,8 +21,8 @@ impl<E: Felt> ProcessorTable<E> {
     pub const MEM_VAL: usize = 5;
     pub const MEM_VAL_INV: usize = 6;
     // Extension columns
-    pub const IP_PERMUTATION: usize = 7;
-    pub const MP_PERMUTATION: usize = 8;
+    pub const INSTRUCTION_PERMUTATION: usize = 7;
+    pub const MEMORY_PERMUTATION: usize = 8;
     pub const INPUT_EVALUATION: usize = 9;
     pub const OUTPUT_EVALUATION: usize = 10;
 
@@ -71,15 +72,6 @@ impl<E: Felt> ProcessorTable<E> {
             variables[Self::INPUT_EVALUATION].clone(),
             variables[Self::OUTPUT_EVALUATION].clone(),
         ]
-    }
-
-    fn instr_zerofier(curr_instr: &Multivariate<E>) -> Multivariate<E> {
-        let mut accumulator = Multivariate::one();
-        for opcode in OpCode::iterator() {
-            let factor = curr_instr.clone() - E::from(Into::<usize>::into(opcode.clone()));
-            accumulator = accumulator * factor;
-        }
-        accumulator
     }
 
     fn if_instr(instr: &OpCode, indeterminate: &Multivariate<E>) -> Multivariate<E> {
@@ -231,7 +223,7 @@ impl<E: Felt> ProcessorTable<E> {
         )
     }
 
-    fn extension_transition_constraints(&self, challenges: Vec<E>) -> Vec<Multivariate<E>> {
+    fn extension_transition_constraints(&self, challenges: &[E]) -> Vec<Multivariate<E>> {
         let mut challenges_iter = challenges.iter().copied();
         let a = challenges_iter.next().unwrap();
         let b = challenges_iter.next().unwrap();
@@ -254,8 +246,8 @@ impl<E: Felt> ProcessorTable<E> {
         let mp = variables[Self::MP].clone();
         let mem_val = variables[Self::MEM_VAL].clone();
         let mem_val_inv = variables[Self::MEM_VAL_INV].clone();
-        let ip_permutation = variables[Self::IP_PERMUTATION].clone();
-        let mp_permutation = variables[Self::MP_PERMUTATION].clone();
+        let instruction_permutation = variables[Self::INSTRUCTION_PERMUTATION].clone();
+        let memory_permutation = variables[Self::MEMORY_PERMUTATION].clone();
         let input_evaluation = variables[Self::INPUT_EVALUATION].clone();
         let output_evaluation = variables[Self::OUTPUT_EVALUATION].clone();
         // next cycle
@@ -266,8 +258,8 @@ impl<E: Felt> ProcessorTable<E> {
         let mp_next = variables[11 + Self::MP].clone();
         let mem_val_next = variables[11 + Self::MEM_VAL].clone();
         let mem_val_inv_next = variables[11 + Self::MEM_VAL_INV].clone();
-        let ip_permutation_next = variables[11 + Self::IP_PERMUTATION].clone();
-        let mp_permutation_next = variables[11 + Self::MP_PERMUTATION].clone();
+        let instruction_permutation_next = variables[11 + Self::INSTRUCTION_PERMUTATION].clone();
+        let memory_permutation_next = variables[11 + Self::MEMORY_PERMUTATION].clone();
         let input_evaluation_next = variables[11 + Self::INPUT_EVALUATION].clone();
         let output_evaluation_next = variables[11 + Self::OUTPUT_EVALUATION].clone();
 
@@ -292,19 +284,21 @@ impl<E: Felt> ProcessorTable<E> {
 
         // running product for instruction table permutation
         let instruction_permutation_constraint = curr_instr.clone()
-            * (ip_permutation.clone()
+            * (instruction_permutation.clone()
                 * (Multivariate::constant(alpha) - ip.clone() * a
                     + curr_instr.clone() * b
                     + next_instr.clone() * c)
-                - ip_permutation_next.clone())
-            + Self::instr_zerofier(&curr_instr)
-                * (ip_permutation_next.clone() - ip_permutation.clone());
+                - instruction_permutation_next.clone())
+            + instr_zerofier(&curr_instr)
+                * (instruction_permutation_next.clone() - instruction_permutation.clone());
         polynomials.push(instruction_permutation_constraint);
 
         // running product for memory table permutation
-        let memory_permutation_constraint = mp_permutation.clone()
-            * (cycle.clone() * d + mp.clone() * e + mem_val.clone() * f)
-            - mp_permutation_next.clone();
+        let memory_permutation_constraint = memory_permutation.clone()
+            * (Multivariate::constant(beta) - cycle.clone() * d
+                + mp.clone() * e
+                + mem_val.clone() * f)
+            - memory_permutation_next.clone();
         polynomials.push(memory_permutation_constraint);
 
         // running evaluation for input tape
@@ -330,5 +324,63 @@ impl<E: Felt> ProcessorTable<E> {
 
         assert_eq!(polynomials.len(), 10);
         polynomials
+    }
+
+    fn extension_terminal_constraints(
+        &self,
+        challenges: &[E],
+        terminals: &[E],
+    ) -> Vec<Multivariate<E>> {
+        let mut challenges_iter = challenges.iter().copied();
+        let _a = challenges_iter.next().unwrap();
+        let _b = challenges_iter.next().unwrap();
+        let _c = challenges_iter.next().unwrap();
+        let d = challenges_iter.next().unwrap();
+        let e = challenges_iter.next().unwrap();
+        let f = challenges_iter.next().unwrap();
+        let _alpha = challenges_iter.next().unwrap();
+        let beta = challenges_iter.next().unwrap();
+        let _gamma = challenges_iter.next().unwrap();
+        let _delta = challenges_iter.next().unwrap();
+        let _eta = challenges_iter.next().unwrap();
+
+        let mut terminal_iter = terminals.iter().copied();
+        let processor_instruction_permutation_terminal = terminal_iter.next().unwrap();
+        let processor_memory_permutation_terminal = terminal_iter.next().unwrap();
+        let processor_input_evaluation_terminal = terminal_iter.next().unwrap();
+        let processor_output_evaluation_terminal = terminal_iter.next().unwrap();
+        let instruction_evaluation_terminal = terminal_iter.next().unwrap();
+
+        let variables = Multivariate::<E>::variables(22);
+        let cycle = variables[Self::CYCLE].clone();
+        let mp = variables[Self::MP].clone();
+        let mem_val = variables[Self::MEM_VAL].clone();
+        let curr_instr = variables[Self::CURR_INSTR].clone();
+        let instruction_permutation = variables[Self::INSTRUCTION_PERMUTATION].clone();
+        let memory_permutation = variables[Self::MEMORY_PERMUTATION].clone();
+        let input_evaluation = variables[Self::INPUT_EVALUATION].clone();
+        let output_evaluation = variables[Self::OUTPUT_EVALUATION].clone();
+        vec![
+            // running product for instruction table permutation
+            instruction_permutation.clone() - processor_instruction_permutation_terminal,
+            // running product for memory table permutation
+            // TODO: this is so strange. Can't explain this terminal constraint
+            // ...think it's to do with the padding and that the terminal constraints are checked
+            // at the end
+            (memory_permutation.clone()
+                * (Multivariate::constant(beta)
+                    - cycle.clone() * d
+                    - mp.clone() * e
+                    - mem_val.clone() * f)
+                - processor_memory_permutation_terminal)
+                * curr_instr.clone()
+                + (memory_permutation.clone() - processor_memory_permutation_terminal)
+                    * instr_zerofier(&curr_instr),
+            // running evaluation for input table
+            // TODO: why is this one so simple
+            input_evaluation.clone() - processor_input_evaluation_terminal,
+            // running evaluation for output table
+            output_evaluation.clone() - processor_output_evaluation_terminal,
+        ]
     }
 }
