@@ -125,10 +125,10 @@ impl<E: Felt> InstructionTable<E> {
             * (ip.clone() - ip_next.clone() - one)
             * (processor_permutation_next.clone()
                 - processor_permutation.clone()
-                    * (ip_next.clone() * a
-                        + curr_instr_next.clone() * b
-                        + next_instr_next.clone() * c
-                        - alpha))
+                    * (Multivariate::constant(alpha)
+                        - ip_next.clone() * a
+                        - curr_instr_next.clone() * b
+                        - next_instr_next.clone() * c))
             + instr_zerofier(&curr_instr)
                 * (processor_permutation_next.clone() - processor_permutation.clone())
             + (ip.clone() - ip_next.clone())

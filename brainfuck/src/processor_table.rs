@@ -326,11 +326,7 @@ impl<E: Felt> ProcessorTable<E> {
         polynomials
     }
 
-    fn extension_terminal_constraints(
-        &self,
-        challenges: &[E],
-        terminals: &[E],
-    ) -> Vec<Multivariate<E>> {
+    fn extension_terminal_constraints(challenges: &[E], terminals: &[E]) -> Vec<Multivariate<E>> {
         let mut challenges_iter = challenges.iter().copied();
         let _a = challenges_iter.next().unwrap();
         let _b = challenges_iter.next().unwrap();
