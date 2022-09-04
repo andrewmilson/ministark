@@ -3,6 +3,7 @@
 use std::slice::Iter;
 
 mod instruction_table;
+mod io_table;
 mod memory_table;
 mod processor_table;
 pub mod stark;

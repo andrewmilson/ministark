@@ -2,7 +2,6 @@ use super::table::Table;
 use crate::processor_table::ProcessorTable;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
-use std::mem;
 
 pub struct MemoryTable<E> {
     table: Table<E>,
