@@ -1,7 +1,6 @@
 #![feature(test, allocator_api, const_try, int_log)]
 
 pub mod allocator;
-pub mod ec;
 pub mod plan;
 pub mod stage;
 pub mod twiddles;
