@@ -3,11 +3,17 @@ use crate::processor_table::ProcessorTable;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
 
+const BASE_WIDTH: usize = 4;
+const EXTENSION_WIDTH: usize = 5;
+
 pub struct MemoryTable<E> {
-    table: Table<E>,
+    num_padded_rows: usize,
+    num_randomizers: usize,
+    matrix: Vec<[E; BASE_WIDTH]>,
 }
 
 impl<E: PrimeFelt> MemoryTable<E> {
+    // base columns
     const CYCLE: usize = 0;
     const MP: usize = 1;
     const MEM_VAL: usize = 2;
@@ -15,8 +21,50 @@ impl<E: PrimeFelt> MemoryTable<E> {
     // extension columns
     const PERMUTATION: usize = 4;
 
+    pub fn new(num_randomizers: usize) -> Self {
+        MemoryTable {
+            num_padded_rows: 0,
+            num_randomizers,
+            matrix: Vec::new(),
+        }
+    }
+
+    fn transition_constraints(
+        cycle: &Multivariate<E>,
+        mp: &Multivariate<E>,
+        mem_val: &Multivariate<E>,
+        dummy: &Multivariate<E>,
+        cycle_next: &Multivariate<E>,
+        mp_next: &Multivariate<E>,
+        mem_val_next: &Multivariate<E>,
+        dummy_next: &Multivariate<E>,
+    ) -> Vec<Multivariate<E>> {
+        let one = E::one();
+        vec![
+            // 1. memory pointer increases by one or zero
+            // note: remember table is sorted by memory address
+            (mp_next.clone() - mp.clone() - one) * (mp_next.clone() - mp.clone()),
+            //
+            // 2. the memory value changes only if (a.) the memory pointer does not increase or
+            // (b.) the cycle count increases by one.These constraints are implied by 3.
+            //
+            // 3. if the memory pointer increases by one, then the memory value must be set to zero
+            (mp_next.clone() - mp.clone()) * mem_val_next.clone(),
+            // 4. dummy has to be zero or one
+            (dummy_next.clone() - one) * dummy_next.clone(),
+            // 5. if dummy is set the memory pointer can not change
+            (mp_next.clone() - mp.clone()) * dummy.clone(),
+            // 6. if dummy is set the memory value can not change
+            (mem_val_next.clone() - mem_val.clone()) * dummy.clone(),
+            // 7. if the memory pointer remains the same, then the cycle has to increase by one
+            (mp_next.clone() - mp.clone() - one) * (cycle_next.clone() - cycle.clone() - one),
+        ]
+    }
+
     /// Outputs an unpadded but interweaved matrix
-    pub fn derive_matrix(processor_matrix: &[[E; 7]]) -> Vec<[E; 4]> {
+    pub fn derive_matrix(
+        processor_matrix: &[[E; ProcessorTable::<E>::BASE_WIDTH]],
+    ) -> Vec<[E; BASE_WIDTH]> {
         // copy unpadded rows and sort
         // TODO: sorted by IP and then CYCLE. Check to see if processor table sorts by
         // cycle.
@@ -56,51 +104,29 @@ impl<E: PrimeFelt> MemoryTable<E> {
             }
         }
 
-        todo!()
+        matrix
+    }
+}
+
+impl<E: PrimeFelt> Table<E> for MemoryTable<E> {
+    const BASE_WIDTH: usize = BASE_WIDTH;
+    const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
+
+    fn len(&self) -> usize {
+        self.matrix.len() - self.num_padded_rows
     }
 
-    pub fn pad(&mut self) {
-        while !self.table.matrix.len().is_power_of_two() {
-            let last_row = self.table.matrix.last().unwrap();
-            self.table.matrix.push(vec![
+    fn pad(&mut self, n: usize) {
+        while self.matrix.len() < n {
+            let last_row = self.matrix.last().unwrap();
+            self.matrix.push([
                 last_row[Self::CYCLE] + E::one(),
                 last_row[Self::MP],
                 last_row[Self::MEM_VAL],
                 E::one(), // dummy=yes
             ]);
+            self.num_padded_rows += 1;
         }
-    }
-
-    fn transition_constraints(
-        cycle: &Multivariate<E>,
-        mp: &Multivariate<E>,
-        mem_val: &Multivariate<E>,
-        dummy: &Multivariate<E>,
-        cycle_next: &Multivariate<E>,
-        mp_next: &Multivariate<E>,
-        mem_val_next: &Multivariate<E>,
-        dummy_next: &Multivariate<E>,
-    ) -> Vec<Multivariate<E>> {
-        let one = E::one();
-        vec![
-            // 1. memory pointer increases by one or zero
-            // note: remember table is sorted by memory address
-            (mp_next.clone() - mp.clone() - one) * (mp_next.clone() - mp.clone()),
-            //
-            // 2. the memory value changes only if (a.) the memory pointer does not increase or
-            // (b.) the cycle count increases by one. These constraints are implied by 3.
-            //
-            // 3. if the memory pointer increases by one, then the memory value must be set to zero
-            (mp_next.clone() - mp.clone()) * mem_val_next.clone(),
-            // 4. dummy has to be zero or one
-            (dummy_next.clone() - one) * dummy_next.clone(),
-            // 5. if dummy is set the memory pointer can not change
-            (mp_next.clone() - mp.clone()) * dummy.clone(),
-            // 6. if dummy is set the memory value can not change
-            (mem_val_next.clone() - mem_val.clone()) * dummy.clone(),
-            // 7. if the memory pointer remains the same, then the cycle has to increase by one
-            (mp_next.clone() - mp.clone() - one) * (cycle_next.clone() - cycle.clone() - one),
-        ]
     }
 
     fn base_boundary_constraints() -> Vec<Multivariate<E>> {
@@ -112,27 +138,16 @@ impl<E: PrimeFelt> MemoryTable<E> {
         ]
     }
 
-    fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(5);
-        vec![
-            variables[Self::CYCLE].clone(),
-            variables[Self::MP].clone(),
-            variables[Self::MEM_VAL].clone(),
-            // TODO: why is this not included?
-            // variables[Self::PERMUTATION].clone() - E::one(),
-        ]
-    }
-
-    pub fn base_transition_constraints() -> Vec<Multivariate<E>> {
+    fn base_transition_constraints() -> Vec<Multivariate<E>> {
         let variables = Multivariate::<E>::variables(8);
         let cycle = variables[Self::CYCLE].clone();
         let mp = variables[Self::MP].clone();
         let mem_val = variables[Self::MEM_VAL].clone();
         let dummy = variables[Self::DUMMY].clone();
-        let cycle_next = variables[4 + Self::CYCLE].clone();
-        let mp_next = variables[4 + Self::MP].clone();
-        let mem_val_next = variables[4 + Self::MEM_VAL].clone();
-        let dummy_next = variables[4 + Self::DUMMY].clone();
+        let cycle_next = variables[BASE_WIDTH + Self::CYCLE].clone();
+        let mp_next = variables[BASE_WIDTH + Self::MP].clone();
+        let mem_val_next = variables[BASE_WIDTH + Self::MEM_VAL].clone();
+        let dummy_next = variables[BASE_WIDTH + Self::DUMMY].clone();
         Self::transition_constraints(
             &cycle,
             &mp,
@@ -143,6 +158,17 @@ impl<E: PrimeFelt> MemoryTable<E> {
             &mem_val_next,
             &dummy_next,
         )
+    }
+
+    fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
+        let variables = Multivariate::<E>::variables(5);
+        vec![
+            variables[Self::CYCLE].clone(),
+            variables[Self::MP].clone(),
+            variables[Self::MEM_VAL].clone(),
+            // TODO: why is this not included?
+            // variables[Self::PERMUTATION].clone() - E::one(),
+        ]
     }
 
     fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
@@ -165,11 +191,11 @@ impl<E: PrimeFelt> MemoryTable<E> {
         let mem_val = variables[Self::MEM_VAL].clone();
         let dummy = variables[Self::DUMMY].clone();
         let permutation = variables[Self::PERMUTATION].clone();
-        let cycle_next = variables[5 + Self::CYCLE].clone();
-        let mp_next = variables[5 + Self::MP].clone();
-        let mem_val_next = variables[5 + Self::MEM_VAL].clone();
-        let dummy_next = variables[5 + Self::DUMMY].clone();
-        let permutation_next = variables[5 + Self::PERMUTATION].clone();
+        let cycle_next = variables[EXTENSION_WIDTH + Self::CYCLE].clone();
+        let mp_next = variables[EXTENSION_WIDTH + Self::MP].clone();
+        let mem_val_next = variables[EXTENSION_WIDTH + Self::MEM_VAL].clone();
+        let dummy_next = variables[EXTENSION_WIDTH + Self::DUMMY].clone();
+        let permutation_next = variables[EXTENSION_WIDTH + Self::PERMUTATION].clone();
 
         let mut polynomials = Self::transition_constraints(
             &cycle,
@@ -233,5 +259,14 @@ impl<E: PrimeFelt> MemoryTable<E> {
                 * (dummy.clone() - E::one())
                 + (permutation.clone() - processor_memory_permutation_terminal) * dummy.clone(),
         ]
+    }
+
+    fn max_degree(&self) -> usize {
+        todo!()
+    }
+
+    fn set_matrix(&mut self, matrix: Vec<[E; BASE_WIDTH]>) {
+        self.num_padded_rows = 0;
+        self.matrix = matrix;
     }
 }

@@ -1,37 +1,31 @@
 use super::table::Table;
-use crate::table::instr_zerofier;
-use crate::OpCode;
+use crate::util::instr_zerofier;
 use algebra::Felt;
 use algebra::Multivariate;
-use std::mem;
-use std::ops::Mul;
+
+const BASE_WIDTH: usize = 3;
+const EXTENSION_WIDTH: usize = 5;
 
 pub struct InstructionTable<E> {
-    table: Table<E>,
+    num_padded_rows: usize,
+    num_randomizers: usize,
+    matrix: Vec<[E; BASE_WIDTH]>,
 }
 
 impl<E: Felt> InstructionTable<E> {
-    // Column indices
+    // base columns
     const IP: usize = 0;
     const CURR_INSTR: usize = 1;
     const NEXT_INSTR: usize = 2;
-    // Extension columns
+    // extension columns
     const PROCESSOR_PERMUTATION: usize = 3;
     const PROGRAM_EVALUATION: usize = 4;
 
-    fn new(length: usize, num_randomizers: usize) -> Self {
+    pub fn new(num_randomizers: usize) -> Self {
         InstructionTable {
-            table: Table::new(3, 5, length, num_randomizers),
-        }
-    }
-
-    fn pad(&mut self) {
-        while !self.table.matrix.len().is_power_of_two() {
-            let mut new_row = vec![E::zero(); self.table.base_width];
-            new_row[Self::IP] = self.table.matrix.last().unwrap()[Self::IP];
-            new_row[Self::CURR_INSTR] = E::zero();
-            new_row[Self::NEXT_INSTR] = E::zero();
-            self.table.matrix.push(new_row);
+            num_padded_rows: 0,
+            num_randomizers,
+            matrix: Vec::new(),
         }
     }
 
@@ -56,6 +50,32 @@ impl<E: Felt> InstructionTable<E> {
             (ip_next.clone() - ip.clone() - one) * (next_instr_next.clone() - next_instr.clone()),
         ]
     }
+}
+
+impl<E: Felt> Table<E> for InstructionTable<E> {
+    const BASE_WIDTH: usize = BASE_WIDTH;
+    const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
+
+    fn len(&self) -> usize {
+        todo!()
+    }
+
+    fn pad(&mut self, n: usize) {
+        while self.matrix.len() < n {
+            let mut new_row = [E::zero(); BASE_WIDTH];
+            new_row[Self::IP] = self.matrix.last().unwrap()[Self::IP];
+            new_row[Self::CURR_INSTR] = E::zero();
+            new_row[Self::NEXT_INSTR] = E::zero();
+            self.matrix.push(new_row);
+            self.num_padded_rows += 1;
+        }
+    }
+
+    fn base_boundary_constraints() -> Vec<Multivariate<E>> {
+        let variables = Multivariate::variables(3);
+        // address starts at zero
+        vec![variables[Self::IP].clone()]
+    }
 
     fn base_transition_constraints() -> Vec<Multivariate<E>> {
         let variables = Multivariate::<E>::variables(14);
@@ -75,10 +95,8 @@ impl<E: Felt> InstructionTable<E> {
         )
     }
 
-    fn base_boundary_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::variables(3);
-        // address starts at zero
-        vec![variables[Self::IP].clone()]
+    fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
+        todo!()
     }
 
     fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
@@ -178,5 +196,14 @@ impl<E: Felt> InstructionTable<E> {
                 - processor_instruction_permutation_terminal,
             variables[Self::PROGRAM_EVALUATION].clone() - instruction_evaluation_terminal,
         ]
+    }
+
+    fn max_degree(&self) -> usize {
+        todo!()
+    }
+
+    fn set_matrix(&mut self, matrix: Vec<[E; Self::BASE_WIDTH]>) {
+        self.num_padded_rows = 0;
+        self.matrix = matrix;
     }
 }

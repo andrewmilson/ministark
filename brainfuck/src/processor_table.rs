@@ -1,18 +1,20 @@
 use super::table::Table;
-use crate::table::instr_zerofier;
+use crate::util::instr_zerofier;
 use crate::OpCode;
 use algebra::Felt;
 use algebra::Multivariate;
-use std::fs::OpenOptions;
-use std::mem;
-use std::ops::Mul;
+
+const BASE_WIDTH: usize = 7;
+const EXTENSION_WIDTH: usize = 11;
 
 pub struct ProcessorTable<E> {
-    table: Table<E>,
+    num_padded_rows: usize,
+    num_randomizers: usize,
+    matrix: Vec<[E; BASE_WIDTH]>,
 }
 
 impl<E: Felt> ProcessorTable<E> {
-    // Column indices
+    // base columns
     pub const CYCLE: usize = 0;
     pub const IP: usize = 1;
     pub const CURR_INSTR: usize = 2;
@@ -20,58 +22,18 @@ impl<E: Felt> ProcessorTable<E> {
     pub const MP: usize = 4;
     pub const MEM_VAL: usize = 5;
     pub const MEM_VAL_INV: usize = 6;
-    // Extension columns
+    // extension columns
     pub const INSTRUCTION_PERMUTATION: usize = 7;
     pub const MEMORY_PERMUTATION: usize = 8;
     pub const INPUT_EVALUATION: usize = 9;
     pub const OUTPUT_EVALUATION: usize = 10;
 
-    pub fn new(length: usize, num_randomizers: usize) -> ProcessorTable<E> {
+    fn new(num_randomizers: usize) -> Self {
         ProcessorTable {
-            table: Table::new(7, 11, length, num_randomizers),
+            num_padded_rows: 0,
+            num_randomizers,
+            matrix: Vec::new(),
         }
-    }
-
-    pub fn pad(&mut self) {
-        while !self.table.matrix.len().is_power_of_two() {
-            let last_row = self.table.matrix.last().unwrap();
-            let mut new_row = vec![E::zero(); self.table.base_width];
-            new_row[Self::CYCLE] = last_row[Self::CYCLE] + E::one();
-            new_row[Self::IP] = last_row[Self::IP];
-            new_row[Self::CURR_INSTR] = E::zero();
-            new_row[Self::NEXT_INSTR] = E::zero();
-            new_row[Self::MP] = last_row[Self::MP];
-            new_row[Self::MEM_VAL] = last_row[Self::MEM_VAL];
-            new_row[Self::MEM_VAL_INV] = last_row[Self::MEM_VAL_INV];
-            self.table.matrix.push(new_row);
-        }
-    }
-
-    fn derive_matrix(processor_matrix: Vec<[E; 7]>) {}
-
-    fn base_boundary_constraints(&self) -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(self.table.base_width);
-        // All registers except CURR_INSTR and NEXT_INSTR should be zero
-        vec![
-            variables[Self::CYCLE].clone(),
-            variables[Self::IP].clone(),
-            variables[Self::MP].clone(),
-            variables[Self::MEM_VAL].clone(),
-            variables[Self::MEM_VAL_INV].clone(),
-        ]
-    }
-
-    fn extension_boundary_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(11);
-        vec![
-            variables[Self::CYCLE].clone(),
-            variables[Self::IP].clone(),
-            variables[Self::MP].clone(),
-            variables[Self::MEM_VAL].clone(),
-            variables[Self::MEM_VAL_INV].clone(),
-            variables[Self::INPUT_EVALUATION].clone(),
-            variables[Self::OUTPUT_EVALUATION].clone(),
-        ]
     }
 
     fn if_instr(instr: &OpCode, indeterminate: &Multivariate<E>) -> Multivariate<E> {
@@ -185,6 +147,45 @@ impl<E: Felt> ProcessorTable<E> {
 
         polynomials // max degree: 11
     }
+}
+
+impl<E: Felt> Table<E> for ProcessorTable<E> {
+    const BASE_WIDTH: usize = BASE_WIDTH;
+    const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
+
+    fn len(&self) -> usize {
+        self.matrix.len() - self.num_padded_rows
+    }
+
+    fn pad(&mut self, n: usize) {
+        while self.matrix.len() < n {
+            let last_row = self.matrix.last().unwrap();
+            let mut new_row = [E::zero(); BASE_WIDTH];
+            new_row[Self::CYCLE] = last_row[Self::CYCLE] + E::one();
+            new_row[Self::IP] = last_row[Self::IP];
+            // TODO: nit. may be too verbose. remove
+            new_row[Self::CURR_INSTR] = E::zero();
+            // TODO: nit. may be too verbose. remove
+            new_row[Self::NEXT_INSTR] = E::zero();
+            new_row[Self::MP] = last_row[Self::MP];
+            new_row[Self::MEM_VAL] = last_row[Self::MEM_VAL];
+            new_row[Self::MEM_VAL_INV] = last_row[Self::MEM_VAL_INV];
+            self.matrix.push(new_row);
+            self.num_padded_rows += 1;
+        }
+    }
+
+    fn base_boundary_constraints() -> Vec<Multivariate<E>> {
+        let variables = Multivariate::<E>::variables(BASE_WIDTH);
+        // All registers except CURR_INSTR and NEXT_INSTR should be zero
+        vec![
+            variables[Self::CYCLE].clone(),
+            variables[Self::IP].clone(),
+            variables[Self::MP].clone(),
+            variables[Self::MEM_VAL].clone(),
+            variables[Self::MEM_VAL_INV].clone(),
+        ]
+    }
 
     fn base_transition_constraints() -> Vec<Multivariate<E>> {
         let variables = Multivariate::<E>::variables(14);
@@ -223,7 +224,20 @@ impl<E: Felt> ProcessorTable<E> {
         )
     }
 
-    fn extension_transition_constraints(&self, challenges: &[E]) -> Vec<Multivariate<E>> {
+    fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
+        let variables = Multivariate::<E>::variables(11);
+        vec![
+            variables[Self::CYCLE].clone(),
+            variables[Self::IP].clone(),
+            variables[Self::MP].clone(),
+            variables[Self::MEM_VAL].clone(),
+            variables[Self::MEM_VAL_INV].clone(),
+            variables[Self::INPUT_EVALUATION].clone(),
+            variables[Self::OUTPUT_EVALUATION].clone(),
+        ]
+    }
+
+    fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
         let mut challenges_iter = challenges.iter().copied();
         let a = challenges_iter.next().unwrap();
         let b = challenges_iter.next().unwrap();
@@ -280,7 +294,7 @@ impl<E: Felt> ProcessorTable<E> {
             &mem_val_next,
             &mem_val_inv_next,
         );
-        assert_eq!(polynomials.len(), 6, "expected 6 transition constraints");
+        assert_eq!(polynomials.len(), 6, "unexpected transition constraints");
 
         // running product for instruction table permutation
         let instruction_permutation_constraint = curr_instr.clone()
@@ -378,5 +392,14 @@ impl<E: Felt> ProcessorTable<E> {
             // running evaluation for output table
             output_evaluation.clone() - processor_output_evaluation_terminal,
         ]
+    }
+
+    fn max_degree(&self) -> usize {
+        todo!()
+    }
+
+    fn set_matrix(&mut self, matrix: Vec<[E; Self::BASE_WIDTH]>) {
+        self.num_padded_rows = 0;
+        self.matrix = matrix;
     }
 }

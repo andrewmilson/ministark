@@ -40,12 +40,12 @@ impl<'a, E: StarkFelt + PrimeFelt> Ntt<'a, E> {
     }
 }
 
-pub struct NttPlanner {
+pub struct Planner {
     library: metal::Library,
     command_queue: metal::CommandQueue,
 }
 
-impl NttPlanner {
+impl Planner {
     pub fn new(device: &metal::DeviceRef) -> Self {
         let library_data = include_bytes!("metal/ntt.metallib");
         let library = device.new_library_with_data(library_data).unwrap();
@@ -178,8 +178,8 @@ impl NttPlanner {
     }
 }
 
-impl Default for NttPlanner {
+impl Default for Planner {
     fn default() -> Self {
-        NttPlanner::new(&metal::Device::system_default().expect("no device found"))
+        Planner::new(&metal::Device::system_default().expect("no device found"))
     }
 }

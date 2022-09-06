@@ -611,4 +611,33 @@ mod tests {
 
         println!("{}", items.iter().product::<BaseFelt>().into_bigint());
     }
+
+    #[test]
+    fn pow() {
+        let twiddle = BaseFelt::TWO_ADIC_ROOT_OF_UNITY;
+        let square = twiddle.pow(&[2]);
+
+        assert_eq!(square.into_bigint(), (twiddle * twiddle).into_bigint());
+        // println!("{}", 1u64 << BaseFelt::TWO_ADICITY);
+
+        // //(1u64 << BaseFelt::TWO_ADICITY) - 1
+        // let one = twiddle.pow(&[1u64 << BaseFelt::TWO_ADICITY]);
+
+        // assert_eq!(one.into_bigint(), 1);
+    }
+
+    #[test]
+    fn coset_things() {
+        let twiddle = BaseFelt::TWO_ADIC_ROOT_OF_UNITY;
+        let coset = BaseFelt::GENERATOR * BaseFelt::TWO_ADIC_ROOT_OF_UNITY;
+
+        println!("{}", 1u64 << BaseFelt::TWO_ADICITY);
+
+        //(1u64 << BaseFelt::TWO_ADICITY) - 1
+        let one_twiddle = twiddle.pow(&[1u64 << BaseFelt::TWO_ADICITY]);
+        let one_coset = coset.pow(&[1u64 << BaseFelt::TWO_ADICITY]);
+
+        assert_eq!(one_twiddle.into_bigint(), 1);
+        assert_eq!(one_coset.into_bigint(), 1);
+    }
 }

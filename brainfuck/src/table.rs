@@ -3,45 +3,37 @@ use algebra::Felt;
 use algebra::Multivariate;
 use std::marker::PhantomData;
 
-pub struct Table<E> {
-    /// width of the matrix before extension
-    pub base_width: usize,
-    /// width of the matrix after extension
-    pub full_width: usize,
-    /// denotes the (non power of two) length of the execution trace
-    pub length: usize,
-    /// number of randomizers used when interpolating
-    pub num_randomizers: usize,
-    /// the height of the matrix (must be power of two)
-    pub height: usize,
-    /// two-dimensional array of field elements that represents the part of the
-    /// algebraic execution trace that this table captures
-    pub matrix: Vec<Vec<E>>,
-}
+pub trait Table<E: Felt> {
+    /// The width of the table before extension
+    const BASE_WIDTH: usize;
 
-impl<E: Felt> Table<E> {
-    pub fn new(
-        base_width: usize,
-        full_width: usize,
-        length: usize,
-        num_randomizers: usize,
-    ) -> Table<E> {
-        Table {
-            base_width,
-            full_width,
-            length,
-            num_randomizers,
-            height: length.next_power_of_two(),
-            matrix: Vec::new(),
-        }
-    }
-}
+    /// The width of the table after extension
+    const EXTENSION_WIDTH: usize;
 
-pub fn instr_zerofier<E: Felt>(curr_instr: &Multivariate<E>) -> Multivariate<E> {
-    let mut accumulator = Multivariate::one();
-    for opcode in OpCode::iterator() {
-        let factor = curr_instr.clone() - E::from(Into::<usize>::into(opcode.clone()));
-        accumulator = accumulator * factor;
-    }
-    accumulator
+    /// Returns the (non power of two) length of the execution trace
+    fn len(&self) -> usize;
+
+    /// Pads the execution trace to n rows in length
+    fn pad(&mut self, n: usize);
+
+    /// TODO
+    fn base_boundary_constraints() -> Vec<Multivariate<E>>;
+
+    /// TODO
+    fn base_transition_constraints() -> Vec<Multivariate<E>>;
+
+    /// TODO
+    fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>>;
+
+    /// TODO
+    fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>>;
+
+    /// TODO
+    fn extension_terminal_constraints(challenges: &[E], terminals: &[E]) -> Vec<Multivariate<E>>;
+
+    // TODO
+    fn max_degree(&self) -> usize;
+
+    // TODO
+    fn set_matrix(&mut self, matrix: Vec<[E; Self::BASE_WIDTH]>);
 }

@@ -258,14 +258,14 @@ impl<S: AsRef<[u64]>> BitIterator<S> {
         }
     }
 
-    // Iterator in little-endian order
-    fn new_le(slice: S) -> BitIterator<S> {
-        BitIterator {
-            end: slice.as_ref().len() * 64,
-            s: slice,
-            pos: 0,
-        }
-    }
+    // // Iterator in little-endian order
+    // fn new_le(slice: S) -> BitIterator<S> {
+    //     BitIterator {
+    //         end: slice.as_ref().len() * 64,
+    //         s: slice,
+    //         pos: 0,
+    //     }
+    // }
 }
 
 impl<S: AsRef<[u64]>> Iterator for BitIterator<S> {
@@ -275,13 +275,13 @@ impl<S: AsRef<[u64]>> Iterator for BitIterator<S> {
         if self.pos == self.end {
             None
         } else {
-            let part = self.pos / 64;
-            let bit = self.pos - part * 64;
             if self.pos < self.end {
                 self.pos += 1;
             } else {
                 self.pos -= 1;
             }
+            let part = self.pos / 64;
+            let bit = self.pos - part * 64;
             Some(self.s.as_ref()[part] & (1 << bit) > 0)
         }
     }

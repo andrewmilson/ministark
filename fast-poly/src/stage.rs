@@ -10,6 +10,8 @@ pub enum Variant {
 }
 
 /// GPU kernel name
+///
+/// Kernel names declared at the bottom of `ntt.metal`
 fn ntt_kernel_name<E: PrimeFelt>(direction: NttDirection, variant: Variant) -> String {
     format!(
         "{}_{}_fp{}",
