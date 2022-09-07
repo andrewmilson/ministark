@@ -2,8 +2,8 @@ extern crate test;
 
 use crate::polynomial::MultivariatePolynomial;
 use crate::polynomial::Polynomial;
-use fast_poly::fields::batch_inverse;
-use fast_poly::fields::StarkFelt;
+use algebra::batch_inverse;
+use algebra::StarkFelt;
 
 pub fn number_theory_transform<E: StarkFelt>(primitive_root: E, values: &[E]) -> Vec<E> {
     assert_eq!(
@@ -18,12 +18,12 @@ pub fn number_theory_transform<E: StarkFelt>(primitive_root: E, values: &[E]) ->
     let half = values.len() / 2;
 
     assert_eq!(
-        primitive_root.pow((values.len() as u32).into()),
+        primitive_root.pow(&[values.len() as u64]),
         E::one(),
         "supplied root needs to have order values.len()"
     );
     assert_ne!(
-        primitive_root.pow((half as u32).into()),
+        primitive_root.pow(&[half as u64]),
         E::one(),
         "supplied root needs to have order values.len()"
     );
@@ -40,7 +40,7 @@ pub fn number_theory_transform<E: StarkFelt>(primitive_root: E, values: &[E]) ->
     let evens = number_theory_transform(primitive_root.square(), &even_values);
 
     (0..values.len())
-        .map(|i| evens[i % half] + primitive_root.pow((i as u32).into()) * odds[i % half])
+        .map(|i| evens[i % half] + primitive_root.pow(&[i as u64]) * odds[i % half])
         .collect()
 }
 
@@ -61,12 +61,12 @@ pub fn fast_multiply<E: StarkFelt>(
     root_order: usize,
 ) -> Polynomial<E> {
     assert_eq!(
-        primitive_root.pow((root_order as u128).into()),
+        primitive_root.pow(&[root_order as u64]),
         E::one(),
         "supplied root does not have supplied order"
     );
     assert_ne!(
-        primitive_root.pow(((root_order / 2) as u128).into()),
+        primitive_root.pow(&[(root_order / 2) as u64]),
         E::one(),
         "supplied root is not primitive root of supplied order"
     );
@@ -118,12 +118,12 @@ pub fn fast_zerofier<E: StarkFelt>(
     root_order: usize,
 ) -> Polynomial<E> {
     assert_eq!(
-        primitive_root.pow((root_order as u128).into()),
+        primitive_root.pow(&[root_order as u64]),
         E::one(),
         "supplied root does not have supplied order"
     );
     assert_ne!(
-        primitive_root.pow(((root_order / 2) as u128).into()),
+        primitive_root.pow(&[(root_order / 2) as u64]),
         E::one(),
         "supplied root is not primitive root of supplied order"
     );
@@ -172,12 +172,12 @@ fn fast_evaluate_domain<E: StarkFelt>(
     root_order: usize,
 ) -> Vec<E> {
     assert_eq!(
-        primitive_root.pow((root_order as u128).into()),
+        primitive_root.pow(&[root_order as u64]),
         E::one(),
         "supplied root does not have supplied order"
     );
     assert_ne!(
-        primitive_root.pow(((root_order / 2) as u128).into()),
+        primitive_root.pow(&[(root_order / 2) as u64]),
         E::one(),
         "supplied root is not primitive root of supplied order"
     );
@@ -218,12 +218,12 @@ pub fn fast_interpolate<E: StarkFelt>(
     root_order: usize,
 ) -> Polynomial<E> {
     assert_eq!(
-        primitive_root.pow((root_order as u128).into()),
+        primitive_root.pow(&[root_order as u64]),
         E::one(),
         "supplied root does not have supplied order"
     );
     assert_ne!(
-        primitive_root.pow(((root_order / 2) as u128).into()),
+        primitive_root.pow(&[(root_order / 2) as u64]),
         E::one(),
         "supplied root is not primitive root of supplied order"
     );
@@ -326,12 +326,12 @@ pub fn fast_coset_divide<E: StarkFelt>(
     root_order: usize,
 ) -> Polynomial<E> {
     assert_eq!(
-        primitive_root.pow((root_order as u128).into()),
+        primitive_root.pow(&[root_order as u64]),
         E::one(),
         "supplied root does not have supplied order"
     );
     assert_ne!(
-        primitive_root.pow(((root_order / 2) as u128).into()),
+        primitive_root.pow(&[(root_order / 2) as u64]),
         E::one(),
         "supplied root is not primitive root of supplied order"
     );
@@ -390,8 +390,8 @@ pub fn fast_coset_divide<E: StarkFelt>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fast_poly::fields::fp_u128::BaseFelt;
-    use fast_poly::fields::Felt;
+    use algebra::fp_u128::BaseFelt;
+    use algebra::Felt;
     use num_traits::One;
     use num_traits::Zero;
     use test::Bencher;
@@ -403,9 +403,9 @@ mod tests {
         println!(
             "{}, {}, {}, {}",
             primitive_root,
-            primitive_root.pow(2),
-            primitive_root.pow(3),
-            primitive_root.pow(4)
+            primitive_root.pow(&[2]),
+            primitive_root.pow(&[3]),
+            primitive_root.pow(&[4])
         );
 
         println!(
@@ -418,12 +418,12 @@ mod tests {
     #[bench]
     fn bench_interpolate_100_points(b: &mut Bencher) {
         let points = 100;
-        let domain = (0u128..points)
-            .map(|i| BaseFelt::GENERATOR.pow(i))
+        let domain = (0u64..points)
+            .map(|i| BaseFelt::GENERATOR.pow(&[i]))
             .collect::<Vec<_>>();
-        let values = (0u128..points).map(BaseFelt::new).collect::<Vec<_>>();
+        let values = (0u64..points).map(BaseFelt::from).collect::<Vec<_>>();
         let root_order = (domain.len() + 1).next_power_of_two();
-        let primitive_root = BaseFelt::get_root_of_unity(root_order.log2());
+        let primitive_root = BaseFelt::get_root_of_unity(root_order.ilog2());
 
         b.iter(|| fast_interpolate(&domain, &values, primitive_root, root_order))
     }

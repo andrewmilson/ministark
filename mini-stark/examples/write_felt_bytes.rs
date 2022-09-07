@@ -1,11 +1,13 @@
 #![feature(int_log)]
 
+use algebra::fp_u128::BaseFelt;
+use algebra::StarkFelt;
 use num_traits::One;
 use num_traits::Zero;
 use std::fs;
 use std::io::Write;
-use zk_wasm::felt::prime_u128::BaseFelt;
-use zk_wasm::felt::StarkFelt;
+// use zk_wasm::felt::prime_u128::BaseFelt;
+// use zk_wasm::felt::StarkFelt;
 
 fn main() -> std::io::Result<()> {
     for variant in [2048, 16384] {
@@ -19,7 +21,7 @@ fn main() -> std::io::Result<()> {
             .flat_map(|e| e.0.to_ne_bytes())
             .collect::<Vec<u8>>();
 
-        let root_of_unity = BaseFelt::get_root_of_unity(usize::log2(variant));
+        let root_of_unity = BaseFelt::get_root_of_unity(variant.ilog2());
         let mut acc = BaseFelt::one();
         let mut twiddles = vec![BaseFelt::zero(); variant];
         for i in 0..variant {

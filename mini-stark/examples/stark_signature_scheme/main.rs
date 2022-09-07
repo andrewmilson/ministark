@@ -1,21 +1,22 @@
+#![feature(allocator_api)]
 use std::time::Instant;
 
 mod rescue_prime;
 
 mod signature_scheme;
+use algebra::fp_u128::BaseFelt;
 use signature_scheme::*;
-
-use mini_stark::prime_field_u128;
 
 fn main() {
     let document = String::from("This is a test");
 
-    // TODO: add some love and care to this example: comments, new secret key and public key
+    // TODO: add some love and care to this example: comments, new secret key and
+    // public key
     let signature_scheme = StarkSignatureScheme::new();
 
     let (secret_key, public_key) = (
-        prime_field_u128::BaseElement::new(12765326281186373138),
-        prime_field_u128::BaseElement::new(6214705293158922468180514843788232123),
+        BaseFelt::new(12765326281186373138),
+        BaseFelt::new(6214705293158922468180514843788232123),
     );
 
     println!("Generating signature...");

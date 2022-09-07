@@ -1,6 +1,5 @@
 use crate::polynomial::*;
-use fast_poly::fields::Felt;
-use fast_poly::fields::StarkFelt;
+use algebra::Felt;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;

@@ -1,22 +1,21 @@
-use mini_stark::{
-    polynomial::{MultivariatePolynomial, Polynomial},
-    prime_field_u128::BaseElement as PrimeFieldElement,
-    StandardProofStream, Stark,
-};
+use algebra::fp_u128::BaseFelt;
+use algebra::PrimeFelt;
+use mini_stark::polynomial::MultivariatePolynomial;
+use mini_stark::polynomial::Polynomial;
+use mini_stark::StandardProofStream;
+use mini_stark::Stark;
 use rand::Rng;
 
-fn boundary_constraint(
+fn boundary_constraint<E: PrimeFelt>(
     cycle: usize,
     register: usize,
     value: u32,
-) -> (usize, usize, PrimeFieldElement) {
-    (cycle, register, PrimeFieldElement::from(value))
+) -> (usize, usize, E) {
+    (cycle, register, E::from(value))
 }
 
 /// Alpha provided by the verifier.
-fn transition_constraints(
-    alpha: PrimeFieldElement,
-) -> Vec<MultivariatePolynomial<PrimeFieldElement>> {
+fn transition_constraints<E: PrimeFelt>(alpha: E) -> Vec<MultivariatePolynomial<E>> {
     let mut column_counter = 1;
     let v = MultivariatePolynomial::lift(Polynomial::x(), increment(&mut column_counter));
     let p0 = MultivariatePolynomial::lift(Polynomial::x(), increment(&mut column_counter));
@@ -40,12 +39,12 @@ fn increment(counter: &mut usize) -> usize {
 fn main() {
     let starting_value = 0;
     let ending_value = 255;
-    let starting_value_constraint = boundary_constraint(0, 0, starting_value);
-    let ending_value_constraint = boundary_constraint(256, 0, ending_value);
+    let starting_value_constraint = boundary_constraint::<BaseFelt>(0, 0, starting_value);
+    let ending_value_constraint = boundary_constraint::<BaseFelt>(256, 0, ending_value);
     let boundary_constraints = vec![starting_value_constraint, ending_value_constraint];
 
     let mut rng = rand::thread_rng();
-    let alpha = PrimeFieldElement::new(rng.gen());
+    let alpha = BaseFelt::new(rng.gen());
 
     let transition_constraints = transition_constraints(alpha);
     let transition_constraints_degree = transition_constraints
@@ -61,8 +60,9 @@ fn main() {
     // let trace = (starting_value..=ending_value).collect::<Vec<u32>>();
 
     // // Verifier wants the:
-    // // - first register of the first cycle to correspond to the program's starting value.
-    // // - first register of the last cycle to correspond to the program's output value.
+    // // - first register of the first cycle to correspond to the program's
+    // starting value. // - first register of the last cycle to correspond
+    // to the program's output value.
 
     // // ====================================
 
@@ -76,13 +76,13 @@ fn main() {
     //     program_cycles,
     //     transition_constraint_degree,
     // );
-    // let (transition_zerofier, transition_zerofier_codeword, transition_zerofier_root) =
-    //     stark.preprocess();
+    // let (transition_zerofier, transition_zerofier_codeword,
+    // transition_zerofier_root) =     stark.preprocess();
 
     // // Prover generates the STARK proof.
     // let mut prover_proof_stream = StandardProofStream::new();
-    // println!("Generating proof to prove program output '{program_output}'...");
-    // let now = Instant::now();
+    // println!("Generating proof to prove program output
+    // '{program_output}'..."); let now = Instant::now();
     // let serialized_proof = stark.prove(
     //     program_trace,
     //     vec![transition_constraint.clone()],
@@ -96,8 +96,8 @@ fn main() {
 
     // // Verifier receives and verifies the STARK proof.
     // let mut verifier_proof_stream = StandardProofStream::new();
-    // println!("Verifying validity of proof for program output {program_output}...");
-    // let now = Instant::now();
+    // println!("Verifying validity of proof for program output
+    // {program_output}..."); let now = Instant::now();
     // let verification_result = stark.verify(
     //     &serialized_proof,
     //     vec![transition_constraint],
@@ -106,8 +106,8 @@ fn main() {
     //     &mut verifier_proof_stream,
     // );
     // println!(
-    //     "Verified validity of proof for program output '{program_output}' in {:.2?}",
-    //     now.elapsed()
+    //     "Verified validity of proof for program output '{program_output}' in
+    // {:.2?}",     now.elapsed()
     // );
 
     // println!(

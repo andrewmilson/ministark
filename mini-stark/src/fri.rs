@@ -2,7 +2,7 @@ use crate::polynomial::*;
 use crate::MerkleTree;
 use crate::ProofObject;
 use crate::ProofStream;
-use fast_poly::fields::Felt;
+use algebra::Felt;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -46,7 +46,7 @@ impl<E: Felt> Fri<E> {
 
     pub fn eval_domain(&self) -> Vec<E> {
         (0..self.domain_length)
-            .map(|i| self.offset * self.omega.pow((i as u128).into()))
+            .map(|i| self.offset * self.omega.pow(&[i as u64]))
             .collect()
     }
 
@@ -125,7 +125,7 @@ impl<E: Felt> Fri<E> {
         for r in 0..self.num_rounds() {
             // make sure omega has the right order
             assert!(
-                omega.pow((codeword.len() as u128 - 1).into()) == omega.inverse().unwrap(),
+                omega.pow(&[codeword.len() as u64 - 1]) == omega.inverse().unwrap(),
                 "error in commit: omega does not have the right order!",
             );
 
@@ -144,9 +144,8 @@ impl<E: Felt> Fri<E> {
             for i in 0..(codeword.len() / 2) {
                 new_codeword.push(
                     two.inverse().unwrap()
-                        * ((one + alpha / (offset * (omega.pow((i as u128).into()))))
-                            * codeword[i]
-                            + (one - alpha / (offset * (omega.pow((i as u128).into()))))
+                        * ((one + alpha / (offset * (omega.pow(&[i as u64])))) * codeword[i]
+                            + (one - alpha / (offset * (omega.pow(&[i as u64]))))
                                 * codeword[codeword.len() / 2 + i]),
                 );
             }
@@ -248,8 +247,7 @@ impl<E: Felt> Fri<E> {
 
         // assert that last_omega has the right order
         assert!(
-            last_omega.inverse().unwrap()
-                == last_omega.pow((last_codeword.len() as u32 - 1).into()),
+            last_omega.inverse().unwrap() == last_omega.pow(&[last_codeword.len() as u64 - 1]),
             "Omega does not have right order"
         );
 
@@ -257,7 +255,7 @@ impl<E: Felt> Fri<E> {
         // ============
         // compute interpolant
         let last_domain = (0..last_codeword.len())
-            .map(|i| last_offset * (last_omega.pow((i as u32).into())))
+            .map(|i| last_offset * (last_omega.pow(&[i as u64])))
             .collect::<Vec<E>>();
         let poly = Polynomial::interpolate(&last_domain, &last_codeword);
 
@@ -324,8 +322,8 @@ impl<E: Felt> Fri<E> {
                         }
 
                         // colinearity check
-                        let ax = offset * omega.pow((a_indices[s] as u32).into());
-                        let bx = offset * omega.pow((b_indices[s] as u32).into());
+                        let ax = offset * omega.pow(&[a_indices[s] as u64]);
+                        let bx = offset * omega.pow(&[b_indices[s] as u64]);
                         let cx = alphas[r];
 
                         if !Polynomial::test_colinearity(vec![(ax, ay), (bx, by), (cx, cy)]) {

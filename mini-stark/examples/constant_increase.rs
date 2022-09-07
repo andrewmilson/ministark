@@ -2,8 +2,8 @@
 //! `+1` each cycle.
 #![feature(allocator_api)]
 
+use algebra::fp_u128::BaseFelt;
 use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::fields::fp_u128::BaseFelt;
 use mini_stark::polynomial::MultivariatePolynomial;
 use mini_stark::polynomial::Polynomial;
 use mini_stark::StandardProofStream;

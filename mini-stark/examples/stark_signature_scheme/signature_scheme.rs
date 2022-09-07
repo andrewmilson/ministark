@@ -1,24 +1,23 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-};
-
-use rand::Rng;
-
 use crate::rescue_prime::RescuePrime;
+use algebra::fp_u128::BaseFelt;
+use algebra::StarkFelt;
+use mini_stark::polynomial::Polynomial;
+use mini_stark::ProofObject;
+use mini_stark::ProofStream;
+use mini_stark::StandardProofStream;
+use mini_stark::Stark;
+use rand::Rng;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
 
-use mini_stark::{
-    polynomial::Polynomial, prime_field_u128, ProofObject, ProofStream, StandardProofStream, Stark,
-    StarkElement,
-};
-
-pub struct SignatureProofStream<E: StarkElement> {
+pub struct SignatureProofStream<E: StarkFelt> {
     standard_proof_stream: StandardProofStream<E>,
     document: String,
     prefix: u64,
 }
 
-impl<E: StarkElement> SignatureProofStream<E> {
+impl<E: StarkFelt> SignatureProofStream<E> {
     pub fn new(document: String) -> SignatureProofStream<E> {
         let mut hash = DefaultHasher::new();
         document.hash(&mut hash);
@@ -32,7 +31,7 @@ impl<E: StarkElement> SignatureProofStream<E> {
     }
 }
 
-impl<E: StarkElement> ProofStream<E> for SignatureProofStream<E> {
+impl<E: StarkFelt> ProofStream<E> for SignatureProofStream<E> {
     fn prover_fiat_shamir(&self) -> u64 {
         let mut hash = DefaultHasher::new();
         let prefix_bytes = self.prefix.to_be_bytes();
@@ -83,9 +82,9 @@ impl<E: StarkElement> ProofStream<E> for SignatureProofStream<E> {
 
 pub struct StarkSignatureScheme {
     rescue_prime: RescuePrime,
-    stark: Stark<prime_field_u128::BaseElement>,
-    transition_zerofier: Polynomial<prime_field_u128::BaseElement>,
-    transition_zerofier_codeword: Vec<prime_field_u128::BaseElement>,
+    stark: Stark<BaseFelt>,
+    transition_zerofier: Polynomial<BaseFelt>,
+    transition_zerofier_codeword: Vec<BaseFelt>,
     transition_zerofier_root: u64,
 }
 
@@ -121,9 +120,9 @@ impl StarkSignatureScheme {
         }
     }
 
-    pub fn stark_prove<T: ProofStream<prime_field_u128::BaseElement>>(
+    pub fn stark_prove<T: ProofStream<BaseFelt>>(
         &self,
-        input_element: prime_field_u128::BaseElement,
+        input_element: BaseFelt,
         proof_stream: &mut T,
     ) -> Vec<u8> {
         let output_element = self.rescue_prime.hash(input_element);
@@ -144,9 +143,9 @@ impl StarkSignatureScheme {
 
     pub fn stark_verify(
         &self,
-        output_element: prime_field_u128::BaseElement,
+        output_element: BaseFelt,
         stark_proof: &[u8],
-        proof_stream: &mut SignatureProofStream<prime_field_u128::BaseElement>,
+        proof_stream: &mut SignatureProofStream<BaseFelt>,
     ) -> Result<(), &str> {
         let boundary_constraints = self.rescue_prime.boundary_constraints(output_element);
         let transition_constraints = self.rescue_prime.transition_constraints(self.stark.omicron);
@@ -159,14 +158,14 @@ impl StarkSignatureScheme {
         )
     }
 
-    pub fn keygen(&self) -> (prime_field_u128::BaseElement, prime_field_u128::BaseElement) {
+    pub fn keygen(&self) -> (BaseFelt, BaseFelt) {
         let mut rng = rand::thread_rng();
-        let secret_key = prime_field_u128::BaseElement::from(rng.gen::<u64>());
+        let secret_key = BaseFelt::from(rng.gen::<u64>());
         let public_key = self.rescue_prime.hash(secret_key);
         (secret_key, public_key)
     }
 
-    pub fn sign(&self, secret_key: prime_field_u128::BaseElement, document: String) -> Vec<u8> {
+    pub fn sign(&self, secret_key: BaseFelt, document: String) -> Vec<u8> {
         let mut signature_proof_stream = SignatureProofStream::new(document);
 
         self.stark_prove(secret_key, &mut signature_proof_stream)
@@ -174,7 +173,7 @@ impl StarkSignatureScheme {
 
     pub fn verify(
         &self,
-        public_key: prime_field_u128::BaseElement,
+        public_key: BaseFelt,
         document: String,
         signature: &[u8],
     ) -> Result<(), &str> {

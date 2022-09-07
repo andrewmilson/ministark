@@ -1,11 +1,10 @@
-use std::iter::once;
-
+use algebra::fp_u128::BaseFelt;
+use algebra::Felt;
+use fast_poly::allocator::PageAlignedAllocator;
+use mini_stark::polynomial::MultivariatePolynomial;
+use mini_stark::polynomial::Polynomial;
 use num_traits::Zero;
-
-use mini_stark::{
-    polynomial::{MultivariatePolynomial, Polynomial},
-    prime_field_u128, FieldElement,
-};
+use std::iter::once;
 
 pub struct RescuePrime {
     // Determines the state width of the hash function
@@ -18,9 +17,9 @@ pub struct RescuePrime {
     pub N: usize,
     alpha: u128,
     alpha_inverse: u128,
-    mds: Vec<Vec<prime_field_u128::BaseElement>>,
-    mds_inverse: Vec<Vec<prime_field_u128::BaseElement>>,
-    round_constants: Vec<prime_field_u128::BaseElement>,
+    mds: Vec<Vec<BaseFelt>>,
+    mds_inverse: Vec<Vec<BaseFelt>>,
+    round_constants: Vec<BaseFelt>,
 }
 
 impl RescuePrime {
@@ -33,22 +32,22 @@ impl RescuePrime {
             alpha_inverse: 180331931428153586757283157844700080811,
             mds: vec![
                 vec![
-                    prime_field_u128::BaseElement::new(270497897142230380135924736767050121214),
-                    prime_field_u128::BaseElement::new(4),
+                    BaseFelt::new(270497897142230380135924736767050121214),
+                    BaseFelt::new(4),
                 ],
                 vec![
-                    prime_field_u128::BaseElement::new(270497897142230380135924736767050121205),
-                    prime_field_u128::BaseElement::new(13),
+                    BaseFelt::new(270497897142230380135924736767050121205),
+                    BaseFelt::new(13),
                 ],
             ],
             mds_inverse: vec![
                 vec![
-                    prime_field_u128::BaseElement::new(210387253332845851216830350818816760948),
-                    prime_field_u128::BaseElement::new(60110643809384528919094385948233360270),
+                    BaseFelt::new(210387253332845851216830350818816760948),
+                    BaseFelt::new(60110643809384528919094385948233360270),
                 ],
                 vec![
-                    prime_field_u128::BaseElement::new(90165965714076793378641578922350040407),
-                    prime_field_u128::BaseElement::new(180331931428153586757283157844700080811),
+                    BaseFelt::new(90165965714076793378641578922350040407),
+                    BaseFelt::new(180331931428153586757283157844700080811),
                 ],
             ],
             round_constants: vec![
@@ -162,7 +161,7 @@ impl RescuePrime {
                 18450316039330448878816627264054416127,
             ]
             .into_iter()
-            .map(prime_field_u128::BaseElement::new)
+            .map(BaseFelt::new)
             .collect(),
         }
     }
@@ -171,24 +170,27 @@ impl RescuePrime {
         self.m - self.capacity
     }
 
-    pub fn hash(
-        &self,
-        input_element: prime_field_u128::BaseElement,
-    ) -> prime_field_u128::BaseElement {
+    pub fn hash(&self, input_element: BaseFelt) -> BaseFelt {
         // absorb
         let mut state = once(input_element)
-            .chain(once(prime_field_u128::BaseElement::zero()).take(self.m - 1))
-            .collect::<Vec<prime_field_u128::BaseElement>>();
+            .chain(once(BaseFelt::zero()).take(self.m - 1))
+            .collect::<Vec<BaseFelt>>();
+
+        let alpha_high = (self.alpha >> 64) as u64;
+        let alpha_low = self.alpha as u64;
+
+        let alpha_inv_high = (self.alpha_inverse >> 64) as u64;
+        let alpha_inv_low = self.alpha_inverse as u64;
 
         // permutation
         for r in 0..self.N {
             // forward half round
             // S-box
             for element in state.iter_mut() {
-                *element = (*element).pow(self.alpha);
+                *element = (*element).pow(&[alpha_low, alpha_high]);
             }
             // matrix
-            let mut temp = vec![prime_field_u128::BaseElement::zero(); self.m];
+            let mut temp = vec![BaseFelt::zero(); self.m];
             for i in 0..self.m {
                 for j in 0..self.m {
                     temp[i] += self.mds[i][j] * state[j];
@@ -197,15 +199,15 @@ impl RescuePrime {
             // constants
             state = (0..self.m)
                 .map(|i| temp[i] + self.round_constants[2 * r * self.m + i])
-                .collect::<Vec<prime_field_u128::BaseElement>>();
+                .collect::<Vec<BaseFelt>>();
 
             // backwards half round
             // S-box
             for element in state.iter_mut() {
-                *element = (*element).pow(self.alpha_inverse);
+                *element = (*element).pow(&[alpha_inv_low, alpha_inv_high]);
             }
             // matrix
-            let mut temp = vec![prime_field_u128::BaseElement::zero(); self.m];
+            let mut temp = vec![BaseFelt::zero(); self.m];
             for i in 0..self.m {
                 for j in 0..self.m {
                     temp[i] += self.mds[i][j] * state[j];
@@ -214,7 +216,7 @@ impl RescuePrime {
             // constants
             state = (0..self.m)
                 .map(|i| temp[i] + self.round_constants[2 * r * self.m + self.m + i])
-                .collect::<Vec<prime_field_u128::BaseElement>>();
+                .collect::<Vec<BaseFelt>>();
         }
 
         state[0]
@@ -222,20 +224,20 @@ impl RescuePrime {
 
     fn round_constants_polynomials(
         &self,
-        omicron: prime_field_u128::BaseElement,
+        omicron: BaseFelt,
     ) -> (
-        Vec<MultivariatePolynomial<prime_field_u128::BaseElement>>,
-        Vec<MultivariatePolynomial<prime_field_u128::BaseElement>>,
+        Vec<MultivariatePolynomial<BaseFelt>>,
+        Vec<MultivariatePolynomial<BaseFelt>>,
     ) {
         let domain = (0..self.N)
-            .map(|round| omicron.pow(round as u128))
-            .collect::<Vec<prime_field_u128::BaseElement>>();
+            .map(|round| omicron.pow(&[round as u64]))
+            .collect::<Vec<BaseFelt>>();
 
         let mut first_step_constants = vec![];
         for i in 0..self.m {
             let values = (0..self.N)
                 .map(|round| self.round_constants[2 * round * self.m + i])
-                .collect::<Vec<prime_field_u128::BaseElement>>();
+                .collect::<Vec<BaseFelt>>();
             let univariate = Polynomial::interpolate(&domain, &values);
             let multivariate = MultivariatePolynomial::lift(univariate, 0);
             first_step_constants.push(multivariate);
@@ -245,7 +247,7 @@ impl RescuePrime {
         for i in 0..self.m {
             let values = (0..self.N)
                 .map(|round| self.round_constants[2 * round * self.m + self.m + i])
-                .collect::<Vec<prime_field_u128::BaseElement>>();
+                .collect::<Vec<BaseFelt>>();
             let univariate = Polynomial::interpolate(&domain, &values);
             let multivariate = MultivariatePolynomial::lift(univariate, 0);
             second_step_constants.push(multivariate);
@@ -256,8 +258,8 @@ impl RescuePrime {
 
     pub fn transition_constraints(
         &self,
-        omicron: prime_field_u128::BaseElement,
-    ) -> Vec<MultivariatePolynomial<prime_field_u128::BaseElement>> {
+        omicron: BaseFelt,
+    ) -> Vec<MultivariatePolynomial<BaseFelt>> {
         // get polynomials that interpolate through the round constants
         let (first_step_constants, second_step_constants) =
             self.round_constants_polynomials(omicron);
@@ -270,8 +272,9 @@ impl RescuePrime {
 
         for i in 0..self.m {
             // compute the left hand side symbolically
-            // LHS = sum(MultivariatePolynomial::constant(self.MDS[i][k]) * (previous_state[k] ^ self.alpha) for k in 0..self.m)
-            let mut lhs = MultivariatePolynomial::constant(prime_field_u128::BaseElement::zero());
+            // LHS = sum(MultivariatePolynomial::constant(self.MDS[i][k]) *
+            // (previous_state[k] ^ self.alpha) for k in 0..self.m)
+            let mut lhs = MultivariatePolynomial::constant(BaseFelt::zero());
             for k in 0..self.m {
                 lhs = lhs
                     + MultivariatePolynomial::constant(self.mds[i][k])
@@ -280,7 +283,7 @@ impl RescuePrime {
             lhs = lhs + first_step_constants[i].clone();
 
             // compute the right hand side symbolically
-            let mut rhs = MultivariatePolynomial::constant(prime_field_u128::BaseElement::zero());
+            let mut rhs = MultivariatePolynomial::constant(BaseFelt::zero());
             for k in 0..self.m {
                 rhs = rhs
                     + MultivariatePolynomial::constant(self.mds_inverse[i][k])
@@ -296,39 +299,45 @@ impl RescuePrime {
     }
 
     // boundary constraints (cycle, register, value)
-    pub fn boundary_constraints(
-        &self,
-        output_element: prime_field_u128::BaseElement,
-    ) -> Vec<(usize, usize, prime_field_u128::BaseElement)> {
+    pub fn boundary_constraints(&self, output_element: BaseFelt) -> Vec<(usize, usize, BaseFelt)> {
         vec![
             // at the start, capacity is zero
-            (0, 1, prime_field_u128::BaseElement::zero()),
+            (0, 1, BaseFelt::zero()),
             // at the end, rate part is the given output element
             (self.N, 0, output_element),
         ]
     }
 
-    pub fn trace(
-        &self,
-        input_element: prime_field_u128::BaseElement,
-    ) -> Vec<Vec<prime_field_u128::BaseElement>> {
+    pub fn trace(&self, input_element: BaseFelt) -> Vec<Vec<BaseFelt, PageAlignedAllocator>> {
         // absorb
         let mut state = once(input_element)
-            .chain(once(prime_field_u128::BaseElement::zero()).take(self.m - 1))
-            .collect::<Vec<prime_field_u128::BaseElement>>();
+            .chain(once(BaseFelt::zero()).take(self.m - 1))
+            .collect::<Vec<BaseFelt>>();
 
         // explicit copy and record state into trace
-        let mut trace = vec![state.clone()];
+
+        let mut trace = vec![];
+        let mut page_aligned_state = Vec::with_capacity_in(state.len(), PageAlignedAllocator);
+        for &value in state.iter() {
+            page_aligned_state.push(value)
+        }
+        trace.push(page_aligned_state);
+
+        let alpha_high = (self.alpha >> 64) as u64;
+        let alpha_low = self.alpha as u64;
+
+        let alpha_inv_high = (self.alpha_inverse >> 64) as u64;
+        let alpha_inv_low = self.alpha_inverse as u64;
 
         // permutation
         for round in 0..self.N {
             // forward half round
             // S-box
             for element in state.iter_mut() {
-                *element = (*element).pow(self.alpha);
+                *element = (*element).pow(&[alpha_low, alpha_high]);
             }
             // matrix
-            let mut temp = vec![prime_field_u128::BaseElement::zero(); self.m];
+            let mut temp = vec![BaseFelt::zero(); self.m];
             for i in 0..self.m {
                 for j in 0..self.m {
                     temp[i] += self.mds[i][j] * state[j];
@@ -337,15 +346,15 @@ impl RescuePrime {
             // constants
             state = (0..self.m)
                 .map(|i| temp[i] + self.round_constants[2 * round * self.m + i])
-                .collect::<Vec<prime_field_u128::BaseElement>>();
+                .collect::<Vec<BaseFelt>>();
 
             // backwards half round
             // S-box
             for element in state.iter_mut() {
-                *element = (*element).pow(self.alpha_inverse);
+                *element = (*element).pow(&[alpha_inv_low, alpha_inv_high]);
             }
             // matrix
-            let mut temp = vec![prime_field_u128::BaseElement::zero(); self.m];
+            let mut temp = vec![BaseFelt::zero(); self.m];
             for i in 0..self.m {
                 for j in 0..self.m {
                     temp[i] += self.mds[i][j] * state[j];
@@ -354,9 +363,14 @@ impl RescuePrime {
             // constants
             state = (0..self.m)
                 .map(|i| temp[i] + self.round_constants[2 * round * self.m + self.m + i])
-                .collect::<Vec<prime_field_u128::BaseElement>>();
+                .collect::<Vec<BaseFelt>>();
 
-            trace.push(state.clone());
+            let mut page_aligned_state = Vec::with_capacity_in(state.len(), PageAlignedAllocator);
+            // page_aligned_state.clone_from_slice(&state[..]);
+            for &value in state.iter() {
+                page_aligned_state.push(value)
+            }
+            trace.push(page_aligned_state);
         }
 
         trace
@@ -365,9 +379,8 @@ impl RescuePrime {
 
 #[cfg(test)]
 mod test {
-    use crate::field::StarkElement;
-
     use super::*;
+    use crate::field::StarkElement;
     use num_traits::One;
     use rand::Rng;
 
@@ -377,21 +390,19 @@ mod test {
 
         // test vectors
         assert_eq!(
-            rp.hash(prime_field_u128::BaseElement::one()),
-            prime_field_u128::BaseElement::new(244180265933090377212304188905974087294),
+            rp.hash(BaseFelt::one()),
+            BaseFelt::new(244180265933090377212304188905974087294),
             "rescue prime test vector 1 failed"
         );
         assert_eq!(
-            rp.hash(prime_field_u128::BaseElement::new(
-                57322816861100832358702415967512842988
-            )),
-            prime_field_u128::BaseElement::new(89633745865384635541695204788332415101),
+            rp.hash(BaseFelt::new(57322816861100832358702415967512842988)),
+            BaseFelt::new(89633745865384635541695204788332415101),
             "rescue prime test vector 2 failed"
         );
 
         // test trace boundaries
-        let a = prime_field_u128::BaseElement::new(57322816861100832358702415967512842988);
-        let b = prime_field_u128::BaseElement::new(89633745865384635541695204788332415101);
+        let a = BaseFelt::new(57322816861100832358702415967512842988);
+        let b = BaseFelt::new(89633745865384635541695204788332415101);
         let trace = rp.trace(a);
         assert_eq!(
             trace[0][0], a,
@@ -408,9 +419,8 @@ mod test {
     fn test_trace() {
         let rp = RescuePrime::new();
 
-        let input_element =
-            prime_field_u128::BaseElement::new(57322816861100832358702415967512842988);
-        let b = prime_field_u128::BaseElement::new(89633745865384635541695204788332415101);
+        let input_element = BaseFelt::new(57322816861100832358702415967512842988);
+        let b = BaseFelt::new(89633745865384635541695204788332415101);
         let output_element = rp.hash(input_element);
         assert_eq!(b, output_element, "output elements do not match");
 
@@ -423,9 +433,7 @@ mod test {
         }
 
         // test transition constraints
-        let omicron = prime_field_u128::BaseElement::get_root_of_unity(
-            prime_field_u128::BaseElement::TWO_ADICITY,
-        );
+        let omicron = BaseFelt::get_root_of_unity(BaseFelt::TWO_ADICITY);
         let transition_constraints = rp.transition_constraints(omicron);
         for o in 0..(trace.len() - 1) {
             for air_poly in transition_constraints.iter() {
@@ -434,10 +442,10 @@ mod test {
                 let point = once(omicron.pow(o as u128))
                     .chain(previous_state)
                     .chain(next_state)
-                    .collect::<Vec<prime_field_u128::BaseElement>>();
+                    .collect::<Vec<BaseFelt>>();
                 assert_eq!(
                     air_poly.evaluate(&point),
-                    prime_field_u128::BaseElement::zero(),
+                    BaseFelt::zero(),
                     "air polynomial does not evaluate to zero"
                 );
             }
@@ -453,9 +461,9 @@ mod test {
             // sample error location and value randomly
             let mut register_index = rng.gen::<usize>() % rp.m;
             let mut cycle_index = rng.gen::<usize>() % (rp.N + 1);
-            let mut value_ = prime_field_u128::BaseElement::from(rng.gen::<u64>());
+            let mut value_ = BaseFelt::from(rng.gen::<u64>());
 
-            if value_ == prime_field_u128::BaseElement::zero() {
+            if value_ == BaseFelt::zero() {
                 continue;
             }
 
@@ -463,7 +471,7 @@ mod test {
             if k == 0 {
                 register_index = 1;
                 cycle_index = 22;
-                value_ = prime_field_u128::BaseElement::new(17274817952119230544216945715808633996);
+                value_ = BaseFelt::new(17274817952119230544216945715808633996);
             }
 
             // perturb
@@ -487,7 +495,7 @@ mod test {
                     let point = once(omicron.pow(o as u128))
                         .chain(previous_state)
                         .chain(next_state)
-                        .collect::<Vec<prime_field_u128::BaseElement>>();
+                        .collect::<Vec<BaseFelt>>();
                     if !air_poly.evaluate(&point).is_zero() {
                         error_got_noticed = true;
                         break;

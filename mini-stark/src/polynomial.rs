@@ -1,5 +1,5 @@
-use fast_poly::fields::batch_inverse;
-use fast_poly::fields::Felt;
+use algebra::batch_inverse;
+use algebra::Felt;
 use serde::Deserialize;
 use serde::Serialize;
 use std::char;
@@ -240,7 +240,7 @@ impl<E: Felt> Polynomial<E> {
                 .iter()
                 .copied()
                 .enumerate()
-                .map(|(idx, coefficient)| coefficient * factor.pow((idx as u128).into()))
+                .map(|(idx, coefficient)| coefficient * factor.pow(&[idx as u64]))
                 .collect(),
         )
     }
@@ -538,7 +538,9 @@ impl<E: Felt> MultivariatePolynomial<E> {
         for (pad, coefficient) in self.powers.iter().zip(self.coefficients.iter()) {
             let mut product = *coefficient;
             for (i, power) in pad.iter().enumerate() {
-                product *= point[i].pow((*power).into());
+                let power_high = (*power >> 64) as u64;
+                let power_low = *power as u64;
+                product *= point[i].pow(&[power_low, power_high]);
             }
             accumulator += product;
         }
