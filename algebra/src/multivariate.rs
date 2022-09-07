@@ -143,6 +143,24 @@ impl<E: Felt> Multivariate<E> {
         }
         accumulator
     }
+
+    pub fn symbolic_degree_bound(self, max_degrees: &[usize]) -> usize {
+        if self.degree() == 0 {
+            return 0;
+        }
+        let mut total_degree_bound = 0;
+        for (pad, coefficient) in self.powers.iter().zip(self.coefficients.iter()) {
+            if coefficient.is_zero() {
+                continue;
+            }
+            let mut term_degree_bound = 0;
+            for (&exponent, &max_degree) in pad.iter().zip(max_degrees) {
+                term_degree_bound += exponent as usize * max_degree;
+            }
+            total_degree_bound = usize::max(total_degree_bound, term_degree_bound);
+        }
+        total_degree_bound as usize
+    }
 }
 
 impl<E: Felt> From<E> for Multivariate<E> {
