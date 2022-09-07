@@ -1,4 +1,6 @@
+use algebra::fp_u64::BaseFelt;
 use brainfuck::stark::compile;
+use brainfuck::stark::SimulationMatrices;
 use stark::BrainFuckStark;
 
 const HELLO_WORLD_SOURCE: &str = "
@@ -35,12 +37,12 @@ fn hello_world() {
         input: input_matrix,
         output: output_matrix,
         memory: memory_matrix,
-    } = stark::simulate::<BaseFelt>(&program, &mut std::io::empty(), &mut output);
+    } = brainfuck::stark::simulate::<BaseFelt>(&program, &mut std::io::empty(), &mut output);
 
     // let running_time = processor_matrix.len();
     // let memory_length = memory_matrix.len();
 
-    let bfs = BrainFuckStark::new(params);
+    // let bfs = BrainFuckStark::new(params);
 
-    assert_eq!(running_time, 10);
+    // assert_eq!(running_time, 10);
 }

@@ -1,3 +1,5 @@
+#![feature(generic_const_exprs)]
+
 use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
@@ -7,6 +9,7 @@ use brainfuck::InstructionTable;
 use brainfuck::MemoryTable;
 use brainfuck::OutputTable;
 use brainfuck::ProcessorTable;
+use brainfuck::Table;
 use protocol::ProofStream;
 use std::cmp::max;
 use std::marker::PhantomData;
@@ -62,12 +65,15 @@ impl<E: PrimeFelt + StarkFelt> BrainFuckStark<E> {
             processor_table: ProcessorTable::new(num_randomizers),
             memory_table: MemoryTable::new(num_randomizers),
             instruction_table: InstructionTable::new(num_randomizers),
-            input_table: InputTable::new(num_randomizers),
-            output_table: OutputTable::new(num_randomizers),
+            input_table: InputTable::new(),
+            output_table: OutputTable::new(),
         }
     }
 
-    fn max_degree(&self) {
+    fn fri_codeword_length(&self) -> usize {
+        assert!(!self.processor_table.is_empty(), "tables not populated");
+        // TODO: could be a bug here... Instead of rounding up to the power of two it
+        // should be the next power of two.
         let max_degree = self
             .processor_table
             .max_degree()
@@ -75,20 +81,16 @@ impl<E: PrimeFelt + StarkFelt> BrainFuckStark<E> {
             .max(self.instruction_table.max_degree())
             .max(self.input_table.max_degree())
             .max(self.output_table.max_degree());
-        if max_length.is_power_of_two() {
-            max_length
-        } else {
-            max_length.next_power_of_two()
-        }
+        ceil_power_of_two(max_degree) * self.params.expansion_factor
     }
 
     pub fn prove<T: ProofStream<E>>(
         &mut self,
-        processor_matrix: Vec<[E; 7]>,
-        memory_matrix: Vec<[E; 4]>,
-        instruction_matrix: Vec<[E; 3]>,
-        input_matrix: Vec<[E; 1]>,
-        output_matrix: Vec<[E; 1]>,
+        processor_matrix: Vec<[E; ProcessorTable::<E>::BASE_WIDTH]>,
+        memory_matrix: Vec<[E; MemoryTable::<E>::BASE_WIDTH]>,
+        instruction_matrix: Vec<[E; InstructionTable::<E>::BASE_WIDTH]>,
+        input_matrix: Vec<[E; InputTable::<E>::BASE_WIDTH]>,
+        output_matrix: Vec<[E; OutputTable::<E>::BASE_WIDTH]>,
         proof_stream: &mut T,
     ) -> Vec<u8> {
         let padding_length = {
@@ -98,11 +100,7 @@ impl<E: PrimeFelt + StarkFelt> BrainFuckStark<E> {
                 .max(instruction_matrix.len())
                 .max(input_matrix.len())
                 .max(output_matrix.len());
-            if max_length.is_power_of_two() {
-                max_length
-            } else {
-                max_length.next_power_of_two()
-            }
+            ceil_power_of_two(max_length)
         };
 
         let Self {
@@ -139,5 +137,14 @@ impl<E: PrimeFelt + StarkFelt> BrainFuckStark<E> {
         // table.max_degree()).max().unwrap(); let fri_domain_length =
 
         Vec::new()
+    }
+}
+
+/// Rounds the input value up the the nearest power of two
+fn ceil_power_of_two(value: usize) -> usize {
+    if value.is_power_of_two() {
+        value
+    } else {
+        value.next_power_of_two()
     }
 }
