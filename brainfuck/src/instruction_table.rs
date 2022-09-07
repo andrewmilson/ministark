@@ -1,7 +1,7 @@
 use super::table::Table;
 use crate::util::instr_zerofier;
-use algebra::Felt;
 use algebra::Multivariate;
+use algebra::PrimeFelt;
 
 const BASE_WIDTH: usize = 3;
 const EXTENSION_WIDTH: usize = 5;
@@ -12,7 +12,7 @@ pub struct InstructionTable<E> {
     matrix: Vec<[E; BASE_WIDTH]>,
 }
 
-impl<E: Felt> InstructionTable<E> {
+impl<E: PrimeFelt> InstructionTable<E> {
     // base columns
     const IP: usize = 0;
     const CURR_INSTR: usize = 1;
@@ -52,12 +52,16 @@ impl<E: Felt> InstructionTable<E> {
     }
 }
 
-impl<E: Felt> Table<E> for InstructionTable<E> {
+impl<E: PrimeFelt> Table<E> for InstructionTable<E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
     fn len(&self) -> usize {
         todo!()
+    }
+
+    fn height(&self) -> usize {
+        self.matrix.len()
     }
 
     fn pad(&mut self, n: usize) {
@@ -168,7 +172,11 @@ impl<E: Felt> Table<E> for InstructionTable<E> {
         polynomials
     }
 
-    fn extension_terminal_constraints(challenges: &[E], terminals: &[E]) -> Vec<Multivariate<E>> {
+    fn extension_terminal_constraints(
+        &self,
+        challenges: &[E],
+        terminals: &[E],
+    ) -> Vec<Multivariate<E>> {
         let mut challenges_iter = challenges.iter().copied();
         let a = challenges_iter.next().unwrap();
         let b = challenges_iter.next().unwrap();
@@ -198,8 +206,8 @@ impl<E: Felt> Table<E> for InstructionTable<E> {
         ]
     }
 
-    fn max_degree(&self) -> usize {
-        todo!()
+    fn interpolant_degree(&self) -> usize {
+        self.matrix.len() - self.num_padded_rows
     }
 
     fn set_matrix(&mut self, matrix: Vec<[E; Self::BASE_WIDTH]>) {

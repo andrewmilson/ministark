@@ -3,6 +3,7 @@ use crate::util::instr_zerofier;
 use crate::OpCode;
 use algebra::Felt;
 use algebra::Multivariate;
+use algebra::PrimeFelt;
 
 const BASE_WIDTH: usize = 7;
 const EXTENSION_WIDTH: usize = 11;
@@ -13,7 +14,7 @@ pub struct ProcessorTable<E> {
     matrix: Vec<[E; BASE_WIDTH]>,
 }
 
-impl<E: Felt> ProcessorTable<E> {
+impl<E: PrimeFelt> ProcessorTable<E> {
     // base columns
     pub const CYCLE: usize = 0;
     pub const IP: usize = 1;
@@ -28,7 +29,7 @@ impl<E: Felt> ProcessorTable<E> {
     pub const INPUT_EVALUATION: usize = 9;
     pub const OUTPUT_EVALUATION: usize = 10;
 
-    fn new(num_randomizers: usize) -> Self {
+    pub fn new(num_randomizers: usize) -> Self {
         ProcessorTable {
             num_padded_rows: 0,
             num_randomizers,
@@ -149,12 +150,16 @@ impl<E: Felt> ProcessorTable<E> {
     }
 }
 
-impl<E: Felt> Table<E> for ProcessorTable<E> {
+impl<E: PrimeFelt> Table<E> for ProcessorTable<E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
     fn len(&self) -> usize {
         self.matrix.len() - self.num_padded_rows
+    }
+
+    fn height(&self) -> usize {
+        self.matrix.len()
     }
 
     fn pad(&mut self, n: usize) {
@@ -340,7 +345,11 @@ impl<E: Felt> Table<E> for ProcessorTable<E> {
         polynomials
     }
 
-    fn extension_terminal_constraints(challenges: &[E], terminals: &[E]) -> Vec<Multivariate<E>> {
+    fn extension_terminal_constraints(
+        &self,
+        challenges: &[E],
+        terminals: &[E],
+    ) -> Vec<Multivariate<E>> {
         let mut challenges_iter = challenges.iter().copied();
         let _a = challenges_iter.next().unwrap();
         let _b = challenges_iter.next().unwrap();
@@ -394,12 +403,37 @@ impl<E: Felt> Table<E> for ProcessorTable<E> {
         ]
     }
 
-    fn max_degree(&self) -> usize {
-        todo!()
+    fn interpolant_degree(&self) -> usize {
+        self.matrix.len() + self.num_randomizers
     }
 
     fn set_matrix(&mut self, matrix: Vec<[E; Self::BASE_WIDTH]>) {
         self.num_padded_rows = 0;
         self.matrix = matrix;
     }
+
+    // fn get_base_columns(&self) -> [Vec<E>; BASE_WIDTH] {
+    //     let mut columns: [Vec<E>; BASE_WIDTH] = Default::default();
+    //     for row in self.matrix {
+    //         columns[Self::CYCLE].push(row[Self::CYCLE]);
+    //         columns[Self::IP].push(row[Self::IP]);
+    //         columns[Self::CURR_INSTR].push(row[Self::CURR_INSTR]);
+    //         columns[Self::NEXT_INSTR].push(row[Self::NEXT_INSTR]);
+    //         columns[Self::MP].push(row[Self::MP]);
+    //         columns[Self::MEM_VAL].push(row[Self::MEM_VAL]);
+    //         columns[Self::MEM_VAL_INV].push(row[Self::MEM_VAL_INV]);
+    //     }
+    //     columns
+    // }
+
+    // //
+    // fn get_extension_columns(&self) -> [Vec<E>; EXTENSION_WIDTH] {
+    //     let mut columns: [Vec<E>; EXTENSION_WIDTH] = Default::default();
+    //     for row in self.matrix {
+    //         for (column, value) in columns.iter_mut().zip(row) {
+    //             column.push(value);
+    //         }
+    //     }
+    //     columns
+    // }
 }

@@ -62,9 +62,7 @@ impl<E: PrimeFelt> MemoryTable<E> {
     }
 
     /// Outputs an unpadded but interweaved matrix
-    pub fn derive_matrix(
-        processor_matrix: &[[E; ProcessorTable::<E>::BASE_WIDTH]],
-    ) -> Vec<[E; BASE_WIDTH]> {
+    pub fn derive_matrix(processor_matrix: &[[E; 7]]) -> Vec<[E; BASE_WIDTH]> {
         // copy unpadded rows and sort
         // TODO: sorted by IP and then CYCLE. Check to see if processor table sorts by
         // cycle.
@@ -114,6 +112,10 @@ impl<E: PrimeFelt> Table<E> for MemoryTable<E> {
 
     fn len(&self) -> usize {
         self.matrix.len() - self.num_padded_rows
+    }
+
+    fn height(&self) -> usize {
+        self.matrix.len()
     }
 
     fn pad(&mut self, n: usize) {
@@ -221,7 +223,11 @@ impl<E: PrimeFelt> Table<E> for MemoryTable<E> {
         polynomials
     }
 
-    fn extension_terminal_constraints(challenges: &[E], terminals: &[E]) -> Vec<Multivariate<E>> {
+    fn extension_terminal_constraints(
+        &self,
+        challenges: &[E],
+        terminals: &[E],
+    ) -> Vec<Multivariate<E>> {
         let mut challenges_iter = challenges.iter().copied();
         let a = challenges_iter.next().unwrap();
         let b = challenges_iter.next().unwrap();
@@ -261,8 +267,8 @@ impl<E: PrimeFelt> Table<E> for MemoryTable<E> {
         ]
     }
 
-    fn max_degree(&self) -> usize {
-        todo!()
+    fn interpolant_degree(&self) -> usize {
+        self.matrix.len() + self.num_randomizers
     }
 
     fn set_matrix(&mut self, matrix: Vec<[E; BASE_WIDTH]>) {

@@ -16,6 +16,7 @@ pub use io_table::InputTable;
 pub use io_table::OutputTable;
 pub use memory_table::MemoryTable;
 pub use processor_table::ProcessorTable;
+pub use table::Table;
 
 /// Opcodes determined by the lexer
 #[derive(Debug, Clone, PartialEq, Eq)]
