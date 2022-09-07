@@ -4,7 +4,7 @@ extern crate test;
 use algebra::fp_u128::BaseFelt;
 use algebra::Felt;
 use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::NttPlanner;
+use fast_poly::plan::Planner;
 use fast_poly::NttOrdering;
 use objc::rc::autoreleasepool;
 use rand::Rng;
@@ -25,7 +25,7 @@ fn ntt_2048_vals(b: &mut Bencher) {
     autoreleasepool(|| {
         let n = 2048;
         let mut buf = gen_pcg_input::<BaseFelt>(n);
-        let planner = NttPlanner::default();
+        let planner = Planner::default();
         let mut ntt = planner.plan_ntt_forward(n, NttOrdering::Natural);
 
         b.iter(|| ntt.process(&mut buf));

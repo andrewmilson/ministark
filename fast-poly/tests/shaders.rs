@@ -4,7 +4,7 @@ use algebra::fp_u128::BaseFelt;
 use algebra::Felt;
 use algebra::StarkFelt;
 use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::NttPlanner;
+use fast_poly::plan::Planner;
 use fast_poly::utils::bit_reverse;
 use fast_poly::NttOrdering;
 use objc::rc::autoreleasepool;
@@ -49,7 +49,7 @@ fn ntt_2048_vals() {
         let mut input = gen_pcg_input::<BaseFelt>(n);
         let mut expected = ntt_control(&input);
         bit_reverse(&mut expected);
-        let planner = NttPlanner::default();
+        let planner = Planner::default();
 
         let mut ntt = planner.plan_ntt_forward(n, NttOrdering::Natural);
         ntt.process(&mut input);
@@ -67,7 +67,7 @@ fn ntt_524288_vals() {
         let mut input = gen_pcg_input::<BaseFelt>(n);
         let mut expected = ntt_control(&input);
         bit_reverse(&mut expected);
-        let planner = NttPlanner::default();
+        let planner = Planner::default();
 
         let mut ntt = planner.plan_ntt_forward(n, NttOrdering::Natural);
         ntt.process(&mut input);
