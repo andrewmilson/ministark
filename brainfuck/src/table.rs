@@ -1,10 +1,15 @@
 use crate::OpCode;
+use algebra::ExtensionOf;
 use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
 use std::marker::PhantomData;
 
-pub trait Table<E: PrimeFelt> {
+pub trait Table<F, E = F>
+where
+    F: Felt,
+    E: ExtensionOf<F>,
+{
     /// The width of the table before extension
     const BASE_WIDTH: usize;
 
@@ -50,7 +55,7 @@ pub trait Table<E: PrimeFelt> {
     // TODO
     fn max_degree(&self) -> usize {
         // TODO: This NEEDS to be improved...
-        let transition_constraints = Self::extension_transition_constraints(&[E::one(); 50]);
+        let transition_constraints = Self::extension_transition_constraints(&[E::one(); 30]);
         let mut max_degree = 1;
         for air in transition_constraints {
             let degree_bounds = vec![self.interpolant_degree(); Self::EXTENSION_WIDTH * 2];
@@ -62,10 +67,11 @@ pub trait Table<E: PrimeFelt> {
 
     // //
     // fn get_base_columns(&self) -> [Vec<E>; Self::BASE_WIDTH];
-
     // //
     // fn get_extension_columns(&self) -> [Vec<E>; Self::EXTENSION_WIDTH];
 
     // TODO
-    fn set_matrix(&mut self, matrix: Vec<[E; Self::BASE_WIDTH]>);
+    fn set_matrix(&mut self, matrix: Vec<[F; Self::BASE_WIDTH]>);
+
+    fn extend(&mut self, challenges: &[E], initials: &[E]);
 }

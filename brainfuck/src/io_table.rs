@@ -169,6 +169,10 @@ impl<E: PrimeFelt> Table<E> for OutputTable<E> {
     fn set_matrix(&mut self, matrix: Vec<[E; BASE_WIDTH]>) {
         self.0.set_matrix(matrix)
     }
+
+    fn extend(&mut self, challenges: &[E], initials: &[E]) {
+        todo!()
+    }
 }
 
 pub struct InputTable<E>(IoTable<E>);
@@ -258,5 +262,9 @@ impl<E: PrimeFelt> Table<E> for InputTable<E> {
 
     fn set_matrix(&mut self, matrix: Vec<[E; BASE_WIDTH]>) {
         self.0.set_matrix(matrix)
+    }
+
+    fn extend(&mut self, challenges: &[E], initials: &[E]) {
+        todo!()
     }
 }

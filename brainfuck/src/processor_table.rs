@@ -1,20 +1,26 @@
 use super::table::Table;
+use crate::util::if_instr;
+use crate::util::if_not_instr;
 use crate::util::instr_zerofier;
 use crate::OpCode;
+use algebra::ExtensionOf;
 use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
+use num_bigint::BigUint;
+use std::convert::From;
 
 const BASE_WIDTH: usize = 7;
 const EXTENSION_WIDTH: usize = 11;
 
-pub struct ProcessorTable<E> {
+pub struct ProcessorTable<F, E = F> {
     num_padded_rows: usize,
     num_randomizers: usize,
-    matrix: Vec<[E; BASE_WIDTH]>,
+    matrix: Vec<[F; BASE_WIDTH]>,
+    extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
 }
 
-impl<E: PrimeFelt> ProcessorTable<E> {
+impl<F: PrimeFelt, E: ExtensionOf<F>> ProcessorTable<F, E> {
     // base columns
     pub const CYCLE: usize = 0;
     pub const IP: usize = 1;
@@ -34,24 +40,8 @@ impl<E: PrimeFelt> ProcessorTable<E> {
             num_padded_rows: 0,
             num_randomizers,
             matrix: Vec::new(),
+            extended_matrix: None,
         }
-    }
-
-    fn if_instr(instr: &OpCode, indeterminate: &Multivariate<E>) -> Multivariate<E> {
-        Multivariate::constant(Into::<usize>::into(instr.clone()).into()) - indeterminate.clone()
-    }
-
-    /// returns a polynomial in X that evaluates to 0 in all instructions except
-    /// for one provided
-    fn if_not_instr(instr: &OpCode, indeterminate: &Multivariate<E>) -> Multivariate<E> {
-        let mut accumulator = Multivariate::one();
-        for opcode in OpCode::iterator() {
-            if opcode != instr {
-                let factor = indeterminate.clone() - E::from(Into::<usize>::into(opcode.clone()));
-                accumulator = accumulator * factor;
-            }
-        }
-        accumulator
     }
 
     fn transition_constraints(
@@ -133,7 +123,7 @@ impl<E: PrimeFelt> ProcessorTable<E> {
             }
 
             // max degree: 7
-            let deselector = Self::if_not_instr(instr, &curr_instr);
+            let deselector = if_not_instr(instr, &curr_instr);
 
             for (polynomial, instr_polynomial) in polynomials.iter_mut().zip(instr_polynomials) {
                 // max degree: 7 + 4 = 11
@@ -150,7 +140,7 @@ impl<E: PrimeFelt> ProcessorTable<E> {
     }
 }
 
-impl<E: PrimeFelt> Table<E> for ProcessorTable<E> {
+impl<F: PrimeFelt, E: ExtensionOf<F>> Table<F, E> for ProcessorTable<F, E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -165,13 +155,13 @@ impl<E: PrimeFelt> Table<E> for ProcessorTable<E> {
     fn pad(&mut self, n: usize) {
         while self.matrix.len() < n {
             let last_row = self.matrix.last().unwrap();
-            let mut new_row = [E::zero(); BASE_WIDTH];
-            new_row[Self::CYCLE] = last_row[Self::CYCLE] + E::one();
+            let mut new_row = [F::zero(); BASE_WIDTH];
+            new_row[Self::CYCLE] = last_row[Self::CYCLE] + F::one();
             new_row[Self::IP] = last_row[Self::IP];
             // TODO: nit. may be too verbose. remove
-            new_row[Self::CURR_INSTR] = E::zero();
+            new_row[Self::CURR_INSTR] = F::zero();
             // TODO: nit. may be too verbose. remove
-            new_row[Self::NEXT_INSTR] = E::zero();
+            new_row[Self::NEXT_INSTR] = F::zero();
             new_row[Self::MP] = last_row[Self::MP];
             new_row[Self::MEM_VAL] = last_row[Self::MEM_VAL];
             new_row[Self::MEM_VAL_INV] = last_row[Self::MEM_VAL_INV];
@@ -323,22 +313,22 @@ impl<E: PrimeFelt> Table<E> for ProcessorTable<E> {
         // running evaluation for input tape
         // TODO: think can remove curr_instr.clone() from the start here.
         let input_evaluation_constraint = curr_instr.clone()
-            * Self::if_not_instr(&OpCode::Read, &curr_instr)
+            * if_not_instr(&OpCode::Read, &curr_instr)
             * (input_evaluation_next.clone()
                 - input_evaluation.clone() * gamma
                 - mem_val_next.clone())
             + (input_evaluation_next.clone() - input_evaluation.clone())
-                * Self::if_instr(&OpCode::Read, &curr_instr);
+                * if_instr(&OpCode::Read, &curr_instr);
         polynomials.push(input_evaluation_constraint);
 
         // running evaluation for output tape
         let output_evaluation_constraint = curr_instr.clone()
-            * Self::if_not_instr(&OpCode::Write, &curr_instr)
+            * if_not_instr(&OpCode::Write, &curr_instr)
             * (output_evaluation_next.clone()
                 - output_evaluation.clone() * delta
                 - mem_val.clone())
             + (output_evaluation_next.clone() - output_evaluation.clone())
-                * Self::if_instr(&OpCode::Write, &curr_instr);
+                * if_instr(&OpCode::Write, &curr_instr);
         polynomials.push(output_evaluation_constraint);
 
         assert_eq!(polynomials.len(), 10);
@@ -407,33 +397,74 @@ impl<E: PrimeFelt> Table<E> for ProcessorTable<E> {
         self.matrix.len() + self.num_randomizers
     }
 
-    fn set_matrix(&mut self, matrix: Vec<[E; Self::BASE_WIDTH]>) {
+    fn set_matrix(&mut self, matrix: Vec<[F; BASE_WIDTH]>) {
         self.num_padded_rows = 0;
         self.matrix = matrix;
     }
 
-    // fn get_base_columns(&self) -> [Vec<E>; BASE_WIDTH] {
-    //     let mut columns: [Vec<E>; BASE_WIDTH] = Default::default();
-    //     for row in self.matrix {
-    //         columns[Self::CYCLE].push(row[Self::CYCLE]);
-    //         columns[Self::IP].push(row[Self::IP]);
-    //         columns[Self::CURR_INSTR].push(row[Self::CURR_INSTR]);
-    //         columns[Self::NEXT_INSTR].push(row[Self::NEXT_INSTR]);
-    //         columns[Self::MP].push(row[Self::MP]);
-    //         columns[Self::MEM_VAL].push(row[Self::MEM_VAL]);
-    //         columns[Self::MEM_VAL_INV].push(row[Self::MEM_VAL_INV]);
-    //     }
-    //     columns
-    // }
+    fn extend(&mut self, challenges: &[E], initials: &[E]) {
+        let mut challenges_iter = challenges.iter().copied();
+        let a = challenges_iter.next().unwrap();
+        let b = challenges_iter.next().unwrap();
+        let c = challenges_iter.next().unwrap();
+        let d = challenges_iter.next().unwrap();
+        let e = challenges_iter.next().unwrap();
+        let f = challenges_iter.next().unwrap();
+        let alpha = challenges_iter.next().unwrap();
+        let beta = challenges_iter.next().unwrap();
+        let gamma = challenges_iter.next().unwrap();
+        let delta = challenges_iter.next().unwrap();
+        let _eta = challenges_iter.next().unwrap();
 
-    // //
-    // fn get_extension_columns(&self) -> [Vec<E>; EXTENSION_WIDTH] {
-    //     let mut columns: [Vec<E>; EXTENSION_WIDTH] = Default::default();
-    //     for row in self.matrix {
-    //         for (column, value) in columns.iter_mut().zip(row) {
-    //             column.push(value);
-    //         }
-    //     }
-    //     columns
-    // }
+        let instr_permutation_initial = initials[0];
+        let mem_permutation_initial = initials[1];
+
+        // prepare
+        let mut instr_permutation_running_product = instr_permutation_initial;
+        let mut mem_permutation_running_product = mem_permutation_initial;
+        let mut input_running_evaluation = E::zero();
+        let mut output_running_evaluation = E::zero();
+
+        // loop over all rows
+        let mut extended_matrix = Vec::new();
+        for i in 0..self.matrix.len() {
+            let base_row = self.matrix[i];
+            let mut extension_row = [E::zero(); EXTENSION_WIDTH];
+            extension_row.copy_from_slice(&base_row.map(|v| v.into()));
+
+            // Permutations columns
+            extension_row[Self::INSTRUCTION_PERMUTATION] = instr_permutation_running_product;
+            extension_row[Self::MEMORY_PERMUTATION] = mem_permutation_running_product;
+            // if not padding
+            if !extension_row[Self::CURR_INSTR].is_zero() {
+                instr_permutation_running_product *= alpha
+                    - a * extension_row[Self::IP]
+                    - b * extension_row[Self::CURR_INSTR]
+                    - c * extension_row[Self::NEXT_INSTR];
+                mem_permutation_running_product *= beta
+                    - d * extension_row[Self::CYCLE]
+                    - e * extension_row[Self::MP]
+                    - f * extension_row[Self::MEM_VAL];
+            }
+
+            // Evaluation columns
+            extension_row[Self::INPUT_EVALUATION] = input_running_evaluation;
+            extension_row[Self::OUTPUT_EVALUATION] = output_running_evaluation;
+            let curr_instr = Into::<BigUint>::into(base_row[Self::CURR_INSTR]);
+            let read_instr = BigUint::from(Into::<usize>::into(OpCode::Read));
+            let write_instr = BigUint::from(Into::<usize>::into(OpCode::Write));
+            let next_row = self.matrix[i + 1];
+            if curr_instr == read_instr {
+                let input_val: E = next_row[Self::MEM_VAL].into();
+                input_running_evaluation = input_running_evaluation * gamma + input_val;
+            } else if curr_instr == write_instr {
+                let output_val: E = next_row[Self::MEM_VAL].into();
+                output_running_evaluation = output_running_evaluation * delta + output_val;
+            }
+
+            extended_matrix.push(extension_row);
+        }
+
+        self.extended_matrix = Some(extended_matrix);
+    }
 }

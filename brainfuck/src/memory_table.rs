@@ -275,4 +275,6 @@ impl<E: PrimeFelt> Table<E> for MemoryTable<E> {
         self.num_padded_rows = 0;
         self.matrix = matrix;
     }
+
+    fn extend(&mut self, challenges: &[E], initials: &[E]) {}
 }

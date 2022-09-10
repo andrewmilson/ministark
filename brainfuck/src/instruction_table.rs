@@ -214,4 +214,8 @@ impl<E: PrimeFelt> Table<E> for InstructionTable<E> {
         self.num_padded_rows = 0;
         self.matrix = matrix;
     }
+
+    fn extend(&mut self, challenges: &[E], initials: &[E]) {
+        todo!()
+    }
 }

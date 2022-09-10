@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 algebra = { path = "../algebra" }
+num-bigint = { version = "0.4", default-features = false }
