@@ -97,15 +97,11 @@ impl<E: StarkFelt> Stark<E> {
     pub fn preprocess(&self) -> (Polynomial<E>, Vec<E>, u64) {
         let transition_zerofier = fast_zerofier(
             &self.omicron_domain[..(self.original_trace_length - 1)].to_vec(),
-            self.omicron,
-            self.omicron_domain.len(),
+            // self.omicron,
+            // self.omicron_domain.len(),
         );
-        let transition_zerofier_codeword = fast_coset_evaluate(
-            &transition_zerofier,
-            E::GENERATOR,
-            self.omega,
-            self.fri.domain_length,
-        );
+        let transition_zerofier_codeword =
+            fast_coset_evaluate(&transition_zerofier, E::GENERATOR, self.fri.domain_length);
         let transition_zerofier_root = MerkleTree::commit(&transition_zerofier_codeword);
         (
             transition_zerofier,
@@ -279,8 +275,8 @@ impl<E: StarkFelt> Stark<E> {
                 fast_interpolate(
                     &trace_domain,
                     &single_trace,
-                    self.omicron,
-                    self.omicron_domain.len(),
+                    // self.omicron,
+                    // self.omicron_domain.len(),
                 )
             })
             .collect::<Vec<Polynomial<E>>>();
@@ -305,7 +301,6 @@ impl<E: StarkFelt> Stark<E> {
                 fast_coset_evaluate(
                     &boundary_quotients[register],
                     E::GENERATOR,
-                    self.omega,
                     self.fri.domain_length,
                 )
             })
@@ -371,12 +366,8 @@ impl<E: StarkFelt> Stark<E> {
                 .map(|_| E::from(rng.gen::<u64>()))
                 .collect(),
         );
-        let randomizer_codeword = fast_coset_evaluate(
-            &randomizer_polynomial,
-            E::GENERATOR,
-            self.omega,
-            self.fri.domain_length,
-        );
+        let randomizer_codeword =
+            fast_coset_evaluate(&randomizer_polynomial, E::GENERATOR, self.fri.domain_length);
         let randomizer_root = MerkleTree::commit(&randomizer_codeword);
         proof_stream.push(ProofObject::MerkleRoot(randomizer_root));
 
@@ -445,12 +436,8 @@ impl<E: StarkFelt> Stark<E> {
 
         // compute matching codeword
         let now = Instant::now();
-        let combined_codeword = fast_coset_evaluate(
-            &combination,
-            E::GENERATOR,
-            self.omega,
-            self.fri.domain_length,
-        );
+        let combined_codeword =
+            fast_coset_evaluate(&combination, E::GENERATOR, self.fri.domain_length);
         profile.push(("Combination codeword evaluation", now.elapsed()));
 
         // prove low degree of combination polynomial
