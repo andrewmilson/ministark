@@ -74,4 +74,10 @@ where
     fn set_matrix(&mut self, matrix: Vec<[F; Self::BASE_WIDTH]>);
 
     fn extend(&mut self, challenges: &[E], initials: &[E]);
+
+    /// Computes the low degree extension of the base columns
+    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<F>>;
+
+    /// Computes the low degree extension of all columns
+    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>>;
 }

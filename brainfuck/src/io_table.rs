@@ -173,6 +173,14 @@ impl<E: PrimeFelt> Table<E> for OutputTable<E> {
     fn extend(&mut self, challenges: &[E], initials: &[E]) {
         todo!()
     }
+
+    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+        todo!()
+    }
+
+    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+        todo!()
+    }
 }
 
 pub struct InputTable<E>(IoTable<E>);
@@ -265,6 +273,14 @@ impl<E: PrimeFelt> Table<E> for InputTable<E> {
     }
 
     fn extend(&mut self, challenges: &[E], initials: &[E]) {
+        todo!()
+    }
+
+    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+        todo!()
+    }
+
+    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }

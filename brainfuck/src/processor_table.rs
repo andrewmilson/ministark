@@ -467,4 +467,12 @@ impl<F: PrimeFelt, E: ExtensionOf<F>> Table<F, E> for ProcessorTable<F, E> {
 
         self.extended_matrix = Some(extended_matrix);
     }
+
+    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<F>> {
+        todo!()
+    }
+
+    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+        todo!()
+    }
 }

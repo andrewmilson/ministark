@@ -218,4 +218,12 @@ impl<E: PrimeFelt> Table<E> for InstructionTable<E> {
     fn extend(&mut self, challenges: &[E], initials: &[E]) {
         todo!()
     }
+
+    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+        todo!()
+    }
+
+    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+        todo!()
+    }
 }
