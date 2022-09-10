@@ -2,7 +2,7 @@
 //! - 2^32 + 1` Code taken and adapted from the winterfell STARK library.
 extern crate test;
 
-use super::ExtensibleField;
+use super::ExtensibleFelt;
 use super::Felt;
 use super::PrimeFelt;
 use super::StarkFelt;
@@ -81,6 +81,8 @@ impl BaseFelt {
 }
 
 impl Felt for BaseFelt {
+    type BaseFelt = Self;
+
     fn inverse(&self) -> Option<Self> {
         Some(BaseFelt(modular_inverse(self.0)))
     }
@@ -477,7 +479,7 @@ fn irreducible_poly() -> Univariate<BaseFelt> {
     ])
 }
 
-impl ExtensibleField<4> for BaseFelt {
+impl ExtensibleFelt<4> for BaseFelt {
     fn is_zero(a: [Self; 4]) -> bool {
         a[0].is_zero() && a[1].is_zero() && a[2].is_zero() && a[3].is_zero()
     }

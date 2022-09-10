@@ -71,6 +71,8 @@ pub trait Felt:
     + From<u16>
     + From<u8>
 {
+    type BaseFelt: Felt;
+
     /// Returns `self * self`.
     #[must_use]
     fn square(&self) -> Self {
@@ -213,7 +215,7 @@ pub fn batch_inverse<E: Felt>(values: &[E]) -> Vec<Option<E>> {
 /// Degree `N` extension of a prime field
 ///
 /// The irreducible polynomial over the extension field is implicitly defined.
-pub trait ExtensibleField<const N: usize>: PrimeFelt {
+pub trait ExtensibleFelt<const N: usize>: PrimeFelt {
     fn is_zero(a: [Self; N]) -> bool;
 
     fn is_one(a: [Self; N]) -> bool;
@@ -226,7 +228,7 @@ pub trait ExtensibleField<const N: usize>: PrimeFelt {
 
     /// Returns the subtraction of `a` and `b`
     fn sub(a: [Self; N], b: [Self; N]) -> [Self; N] {
-        ExtensibleField::add(a, ExtensibleField::negate(b))
+        ExtensibleFelt::add(a, ExtensibleFelt::negate(b))
     }
 
     /// Returns the negation of `a`
@@ -237,8 +239,8 @@ pub trait ExtensibleField<const N: usize>: PrimeFelt {
 
     // Return the division result of `a / b`
     fn divide(a: [Self; N], b: [Self; N]) -> [Self; N] {
-        assert!(!ExtensibleField::is_zero(b), "divide by zero");
-        ExtensibleField::mul(a, ExtensibleField::inverse(b))
+        assert!(!ExtensibleFelt::is_zero(b), "divide by zero");
+        ExtensibleFelt::mul(a, ExtensibleFelt::inverse(b))
     }
 }
 
@@ -284,5 +286,18 @@ impl<S: AsRef<[u64]>> Iterator for BitIterator<S> {
             let bit = self.pos - part * 64;
             Some(self.s.as_ref()[part] & (1 << bit) > 0)
         }
+    }
+}
+
+/// Trait specifying a field is an extension of another
+pub trait ExtensionOf<E: Felt>: Felt + From<E> {
+    fn mul_base(self, other: E) -> Self;
+}
+
+/// A field is always an extension of itself.
+impl<E: Felt> ExtensionOf<E> for E {
+    #[inline(always)]
+    fn mul_base(self, other: E) -> Self {
+        self * other
     }
 }

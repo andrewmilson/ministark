@@ -96,6 +96,8 @@ impl BaseFelt {
 }
 
 impl Felt for BaseFelt {
+    type BaseFelt = Self;
+
     fn inverse(&self) -> Option<Self> {
         Some(BaseFelt(modular_inverse(self.0)?))
     }

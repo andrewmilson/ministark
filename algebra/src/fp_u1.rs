@@ -37,6 +37,8 @@ impl BaseFelt {
 }
 
 impl Felt for BaseFelt {
+    type BaseFelt = Self;
+
     fn inverse(&self) -> Option<Self> {
         match self.0 {
             true => Some(*self),
