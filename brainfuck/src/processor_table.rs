@@ -2,11 +2,14 @@ use super::table::Table;
 use crate::util::if_instr;
 use crate::util::if_not_instr;
 use crate::util::instr_zerofier;
+use crate::util::interpolate_columns;
 use crate::OpCode;
 use algebra::ExtensionOf;
 use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
+use algebra::StarkFelt;
+use mini_stark::number_theory_transform::number_theory_transform;
 use num_bigint::BigUint;
 use std::convert::From;
 
@@ -20,7 +23,7 @@ pub struct ProcessorTable<F, E = F> {
     extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
 }
 
-impl<F: PrimeFelt, E: ExtensionOf<F>> ProcessorTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: ExtensionOf<F>> ProcessorTable<F, E> {
     // base columns
     pub const CYCLE: usize = 0;
     pub const IP: usize = 1;
@@ -140,7 +143,7 @@ impl<F: PrimeFelt, E: ExtensionOf<F>> ProcessorTable<F, E> {
     }
 }
 
-impl<F: PrimeFelt, E: ExtensionOf<F>> Table<F, E> for ProcessorTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: ExtensionOf<F>> Table<F, E> for ProcessorTable<F, E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -468,11 +471,23 @@ impl<F: PrimeFelt, E: ExtensionOf<F>> Table<F, E> for ProcessorTable<F, E> {
         self.extended_matrix = Some(extended_matrix);
     }
 
-    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<F>> {
-        todo!()
+    fn base_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<F>> {
+        let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
+        let codeword_len = self.matrix.len() * expansion_factor;
+        assert!(codeword_len.is_power_of_two());
+        let root = F::get_root_of_unity(codeword_len.ilog2());
+        let codewords = polynomials
+            .into_iter()
+            .map(|poly| {
+                let mut coefficients = poly.scale(offset).coefficients;
+                coefficients.resize(codeword_len, F::zero());
+                number_theory_transform(&coefficients)
+            })
+            .collect();
+        codewords
     }
 
-    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }

@@ -174,11 +174,11 @@ impl<E: PrimeFelt> Table<E> for OutputTable<E> {
         todo!()
     }
 
-    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn base_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 
-    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }
@@ -276,11 +276,11 @@ impl<E: PrimeFelt> Table<E> for InputTable<E> {
         todo!()
     }
 
-    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn base_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 
-    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }

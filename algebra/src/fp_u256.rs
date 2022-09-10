@@ -5,6 +5,7 @@ use super::Felt;
 use super::PrimeFelt;
 use super::StarkFelt;
 use crate::bigint::BigInteger;
+use crate::UniformRand;
 use num_bigint::BigUint;
 use num_traits::Num;
 use num_traits::One;
@@ -820,6 +821,12 @@ impl Felt for BaseFelt {
 
     // Computes the identity in a prime field
     fn frobenius(&mut self) {}
+}
+
+impl UniformRand for BaseFelt {
+    fn rand<R: rand::Rng + ?Sized>(rng: &mut R) -> Self {
+        todo!()
+    }
 }
 
 impl Display for BaseFelt {

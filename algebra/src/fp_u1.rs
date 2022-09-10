@@ -3,9 +3,12 @@ extern crate test;
 
 use super::Felt;
 use super::PrimeFelt;
+use crate::UniformRand;
 use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::Zero;
+use rand::distributions::Distribution;
+use rand::distributions::Uniform;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fmt::Display;
@@ -67,6 +70,13 @@ impl Felt for BaseFelt {
 
     // Computes the identity in a prime field
     fn frobenius(&mut self) {}
+}
+
+impl UniformRand for BaseFelt {
+    fn rand<R: rand::Rng + ?Sized>(rng: &mut R) -> Self {
+        let between = Uniform::from(0u32..=1);
+        between.sample(rng).into()
+    }
 }
 
 impl Display for BaseFelt {

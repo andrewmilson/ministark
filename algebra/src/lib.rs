@@ -5,6 +5,9 @@ use core::iter::Sum;
 use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::Zero;
+use rand::distributions::Standard;
+use rand::prelude::Distribution;
+use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fmt::Debug;
@@ -35,6 +38,7 @@ pub mod fp_u64;
 
 pub trait Felt:
     Copy
+    + UniformRand
     + Clone
     + Debug
     + Display
@@ -299,5 +303,19 @@ impl<E: Felt> ExtensionOf<E> for E {
     #[inline(always)]
     fn mul_base(self, other: E) -> Self {
         self * other
+    }
+}
+
+pub trait UniformRand: Sized {
+    fn rand<R: Rng + ?Sized>(rng: &mut R) -> Self;
+}
+
+impl<T> UniformRand for T
+where
+    Standard: Distribution<T>,
+{
+    #[inline]
+    fn rand<R: Rng + ?Sized>(rng: &mut R) -> Self {
+        rng.sample(Standard)
     }
 }

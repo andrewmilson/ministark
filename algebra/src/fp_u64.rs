@@ -7,9 +7,12 @@ use super::Felt;
 use super::PrimeFelt;
 use super::StarkFelt;
 use super::Univariate;
+use crate::UniformRand;
 use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::Zero;
+use rand::distributions::Distribution;
+use rand::distributions::Uniform;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fmt::Display;
@@ -204,6 +207,13 @@ impl Product for BaseFelt {
 impl<'a> Product<&'a Self> for BaseFelt {
     fn product<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
         iter.copied().reduce(|a, b| a * b).unwrap_or_else(Self::one)
+    }
+}
+
+impl UniformRand for BaseFelt {
+    fn rand<R: rand::Rng + ?Sized>(rng: &mut R) -> Self {
+        let between = Uniform::from(0..N);
+        between.sample(rng).into()
     }
 }
 

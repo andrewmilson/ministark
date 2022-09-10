@@ -5,4 +5,6 @@ edition = "2021"
 
 [dependencies]
 algebra = { path = "../algebra" }
+mini-stark = { path = "../mini-stark" }
 num-bigint = { version = "0.4", default-features = false }
+rand = "0.8.5"

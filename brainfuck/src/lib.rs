@@ -1,5 +1,5 @@
 //! Implementation inspired by https://github.com/Overv/bf
-#![feature(generic_const_exprs)]
+#![feature(generic_const_exprs, int_log)]
 
 use std::slice::Iter;
 

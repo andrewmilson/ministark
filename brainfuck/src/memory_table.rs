@@ -2,6 +2,7 @@ use super::table::Table;
 use crate::processor_table::ProcessorTable;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
+use algebra::StarkFelt;
 
 const BASE_WIDTH: usize = 4;
 const EXTENSION_WIDTH: usize = 5;
@@ -12,7 +13,7 @@ pub struct MemoryTable<E> {
     matrix: Vec<[E; BASE_WIDTH]>,
 }
 
-impl<E: PrimeFelt> MemoryTable<E> {
+impl<E: StarkFelt + PrimeFelt> MemoryTable<E> {
     // base columns
     const CYCLE: usize = 0;
     const MP: usize = 1;
@@ -69,13 +70,13 @@ impl<E: PrimeFelt> MemoryTable<E> {
         let mut matrix = processor_matrix
             .iter()
             .filter_map(|row| {
-                if row[ProcessorTable::<E>::CURR_INSTR].is_zero() {
+                if row[ProcessorTable::<E, E>::CURR_INSTR].is_zero() {
                     None
                 } else {
                     Some([
-                        row[ProcessorTable::<E>::CYCLE],
-                        row[ProcessorTable::<E>::MP],
-                        row[ProcessorTable::<E>::MEM_VAL],
+                        row[ProcessorTable::<E, E>::CYCLE],
+                        row[ProcessorTable::<E, E>::MP],
+                        row[ProcessorTable::<E, E>::MEM_VAL],
                         E::zero(), // dummy=no
                     ])
                 }
@@ -106,7 +107,7 @@ impl<E: PrimeFelt> MemoryTable<E> {
     }
 }
 
-impl<E: PrimeFelt> Table<E> for MemoryTable<E> {
+impl<E: StarkFelt + PrimeFelt> Table<E> for MemoryTable<E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -280,11 +281,11 @@ impl<E: PrimeFelt> Table<E> for MemoryTable<E> {
         todo!()
     }
 
-    fn base_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn base_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 
-    fn extension_lde(&mut self, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }

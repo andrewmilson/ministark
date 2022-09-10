@@ -1,6 +1,10 @@
 use crate::OpCode;
 use algebra::Felt;
 use algebra::Multivariate;
+use algebra::StarkFelt;
+use mini_stark::number_theory_transform::fast_interpolate;
+use mini_stark::polynomial::Polynomial;
+use rand::Rng;
 
 pub fn instr_zerofier<E: Felt>(curr_instr: &Multivariate<E>) -> Multivariate<E> {
     let mut accumulator = Multivariate::one();
@@ -32,4 +36,34 @@ pub(crate) fn if_instr<E: Felt>(
     indeterminate: &Multivariate<E>,
 ) -> Multivariate<E> {
     Multivariate::constant(Into::<usize>::into(instr.clone()).into()) - indeterminate.clone()
+}
+
+pub(crate) fn interpolate_columns<F: StarkFelt, const WIDTH: usize>(
+    matrix: &[[F; WIDTH]],
+    num_randomizers: usize,
+) -> Vec<Polynomial<F>> {
+    let mut rng = rand::thread_rng();
+    let n = matrix.len();
+    let omicron = F::get_root_of_unity(n.ilog2());
+    let omega = F::get_root_of_unity(n.ilog2() + 1);
+
+    let matrix_domain = (0..n).map(|i| omicron.pow(&[i as u64])).collect::<Vec<F>>();
+    // Odd indices to avoid collision with `matrix_domain`
+    let randomizer_domain = (0..num_randomizers)
+        .map(|i| omega.pow(&[1 + 2 * i as u64]))
+        .collect::<Vec<F>>();
+    let domain = vec![matrix_domain, randomizer_domain].concat();
+
+    let mut polynomials = Vec::new();
+    for col_idx in 0..WIDTH {
+        let trace_column = matrix.iter().map(|row| row[col_idx]).collect::<Vec<F>>();
+        let randomizers = (0..num_randomizers)
+            .map(|_| F::rand(&mut rng))
+            .collect::<Vec<F>>();
+        let values = vec![trace_column, randomizers].concat();
+        assert_eq!(values.len(), domain.len());
+        polynomials.push(fast_interpolate(&domain, &values))
+    }
+
+    polynomials
 }

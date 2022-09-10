@@ -1,8 +1,7 @@
 use crate::memory_table::MemoryTable;
 use crate::OpCode;
-use algebra::fp_u64::BaseFelt;
-use algebra::Felt;
 use algebra::PrimeFelt;
+use algebra::StarkFelt;
 
 // trait TableCollection<E: Felt> {
 //     fn pad(&mut self);
@@ -48,36 +47,36 @@ pub fn run(
 
     while ip < program.len() {
         let instruction = program[ip];
-        if instruction == OpCode::LoopBegin.into() {
+        if instruction == Into::<usize>::into(OpCode::LoopBegin) {
             if tape[mp] == 0 {
                 ip = program[ip + 1];
             } else {
                 ip += 2;
             }
-        } else if instruction == OpCode::LoopEnd.into() {
+        } else if instruction == Into::<usize>::into(OpCode::LoopEnd) {
             if tape[mp] == 0 {
                 ip += 2;
             } else {
                 ip = program[ip + 1];
             }
-        } else if instruction == OpCode::IncrementPointer.into() {
+        } else if instruction == Into::<usize>::into(OpCode::IncrementPointer) {
             ip += 1;
             mp += 1;
-        } else if instruction == OpCode::DecrementPointer.into() {
+        } else if instruction == Into::<usize>::into(OpCode::DecrementPointer) {
             ip += 1;
             mp -= 1;
-        } else if instruction == OpCode::Increment.into() {
+        } else if instruction == Into::<usize>::into(OpCode::Increment) {
             ip += 1;
             tape[mp] += 1;
-        } else if instruction == OpCode::Decrement.into() {
+        } else if instruction == Into::<usize>::into(OpCode::Decrement) {
             ip += 1;
             tape[mp] -= 1;
-        } else if instruction == OpCode::Read.into() {
+        } else if instruction == Into::<usize>::into(OpCode::Read) {
             ip += 1;
             let mut x = [0u8; 1];
             input.read_exact(&mut x).expect("failed to read input");
             tape[mp] = x[0];
-        } else if instruction == OpCode::Write.into() {
+        } else if instruction == Into::<usize>::into(OpCode::Write) {
             ip += 1;
             output
                 .write_all(&tape[mp..mp + 1])
@@ -121,7 +120,7 @@ pub struct SimulationMatrices<E> {
     pub memory: Vec<[E; 4]>,
 }
 
-pub fn simulate<E: PrimeFelt>(
+pub fn simulate<E: StarkFelt + PrimeFelt>(
     program: &[usize],
     input: &mut impl std::io::Read,
     output: &mut impl std::io::Write,
@@ -169,36 +168,36 @@ pub fn simulate<E: PrimeFelt>(
         ]);
 
         // Update pointer registers according to instruction
-        if register.curr_instr == OpCode::LoopBegin.into() {
+        if register.curr_instr == Into::<usize>::into(OpCode::LoopBegin) {
             register.ip = if register.mem_val == 0 {
                 program[register.ip + 1]
             } else {
                 register.ip + 2
             };
-        } else if register.curr_instr == OpCode::LoopEnd.into() {
+        } else if register.curr_instr == Into::<usize>::into(OpCode::LoopEnd) {
             register.ip = if register.mem_val != 0 {
                 program[register.ip + 1]
             } else {
                 register.ip + 2
             }
-        } else if register.curr_instr == OpCode::DecrementPointer.into() {
+        } else if register.curr_instr == Into::<usize>::into(OpCode::DecrementPointer) {
             register.ip += 1;
             register.mp -= 1;
-        } else if register.curr_instr == OpCode::IncrementPointer.into() {
+        } else if register.curr_instr == Into::<usize>::into(OpCode::IncrementPointer) {
             register.ip += 1;
             register.mp += 1;
-        } else if register.curr_instr == OpCode::Increment.into() {
+        } else if register.curr_instr == Into::<usize>::into(OpCode::Increment) {
             register.ip += 1;
             tape[register.mp] += 1;
-        } else if register.curr_instr == OpCode::Decrement.into() {
+        } else if register.curr_instr == Into::<usize>::into(OpCode::Decrement) {
             register.ip += 1;
             tape[register.mp] -= 1;
-        } else if register.curr_instr == OpCode::Write.into() {
+        } else if register.curr_instr == Into::<usize>::into(OpCode::Write) {
             register.ip += 1;
             let x = &tape[register.mp..register.mp + 1];
             output.write_all(x).expect("failed to write output");
             matrices.output.push([x[0].into()]);
-        } else if register.curr_instr == OpCode::Read.into() {
+        } else if register.curr_instr == Into::<usize>::into(OpCode::Read) {
             register.ip += 1;
             let mut x = [0u8; 1];
             input.read_exact(&mut x).expect("failed to read input");
