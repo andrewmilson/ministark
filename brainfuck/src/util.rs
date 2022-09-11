@@ -64,6 +64,7 @@ pub(crate) fn interpolate_columns<F: StarkFelt, const WIDTH: usize>(
 
     let mut polynomials = Vec::new();
     for col_idx in 0..WIDTH {
+        println!("col");
         let trace_column = matrix.iter().map(|row| row[col_idx]).collect::<Vec<F>>();
         let randomizers = (0..num_randomizers)
             .map(|_| F::rand(&mut rng))

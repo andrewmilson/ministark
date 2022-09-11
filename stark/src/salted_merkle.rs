@@ -5,13 +5,13 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 // TODO: Using default hasher to make prototyping easier. Fix later
-struct SaltedMerkle<T> {
+pub struct SaltedMerkle<T> {
     leafs: Vec<(T, u64)>,
     nodes: Vec<u64>,
 }
 
 impl<T: Hash + Clone> SaltedMerkle<T> {
-    fn new(values: &[T]) -> Self {
+    pub fn new(values: &[T]) -> Self {
         let n = values.len();
         assert!(n.is_power_of_two());
         let depth = n.ilog2();

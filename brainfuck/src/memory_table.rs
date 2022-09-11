@@ -285,10 +285,47 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for MemoryT
     }
 
     fn extend(&mut self, challenges: &[E], initials: &[E]) {
-        todo!()
+        let mut challenges_iter = challenges.iter().copied();
+        let a = challenges_iter.next().unwrap();
+        let b = challenges_iter.next().unwrap();
+        let c = challenges_iter.next().unwrap();
+        let d = challenges_iter.next().unwrap();
+        let e = challenges_iter.next().unwrap();
+        let f = challenges_iter.next().unwrap();
+        let alpha = challenges_iter.next().unwrap();
+        let beta = challenges_iter.next().unwrap();
+        let gamma = challenges_iter.next().unwrap();
+        let delta = challenges_iter.next().unwrap();
+        let _eta = challenges_iter.next().unwrap();
+
+        let instr_permutation_initial = initials[0];
+        let mem_permutation_initial = initials[1];
+
+        // prepare
+        let mut mem_permutation_running_product = mem_permutation_initial;
+
+        // loop over all rows
+        let mut extended_matrix = Vec::new();
+        for base_row in &self.matrix {
+            let mut extension_row = [E::zero(); EXTENSION_WIDTH];
+            extension_row.copy_from_slice(&base_row.map(|v| v.into()));
+            extension_row[Self::PERMUTATION] = mem_permutation_running_product;
+            if extension_row[Self::DUMMY].is_zero() {
+                mem_permutation_running_product *= beta
+                    - extension_row[Self::CYCLE] * d
+                    - extension_row[Self::MP] * e
+                    - extension_row[Self::MEM_VAL] * f;
+            }
+            extended_matrix.push(extension_row);
+        }
+
+        self.extended_matrix = Some(extended_matrix);
+        // TODO: terminal
+        // self.permutation_terminal = mem_permutation_running_product;
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        println!("mem_lde");
         let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
         // return the codewords
         polynomials

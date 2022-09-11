@@ -65,7 +65,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Instruc
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
     fn len(&self) -> usize {
-        todo!()
+        self.matrix.len() - self.num_padded_rows
     }
 
     fn height(&self) -> usize {
@@ -228,6 +228,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Instruc
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        println!("instr_lde");
         let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
         // return the codewords
         polynomials

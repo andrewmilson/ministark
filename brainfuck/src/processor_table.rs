@@ -473,6 +473,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Process
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        println!("proc_lde");
         let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
         // return the codewords
         polynomials
@@ -480,7 +481,8 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Process
             .map(|poly| {
                 let mut coefficients = poly.scale(offset).coefficients;
                 coefficients.resize(codeword_len, F::zero());
-                lift(number_theory_transform(&coefficients))
+                let coef = number_theory_transform(&coefficients);
+                lift(coef)
             })
             .collect()
     }

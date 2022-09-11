@@ -89,6 +89,30 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> IoTable<F, E> {
         self.matrix.len()
     }
 
+    fn extend(&mut self, iota: E) {
+        // prepare
+        let mut extended_matrix = Vec::new();
+        let mut io_running_evaluation = E::zero();
+        let mut evaluation_terminal = E::zero();
+
+        // loop over all rows
+        for i in 0..self.matrix.len() {
+            let base_row = self.matrix[i];
+            let mut extension_row = [E::zero(); EXTENSION_WIDTH];
+            extension_row.copy_from_slice(&base_row.map(|v| v.into()));
+            io_running_evaluation = io_running_evaluation * iota + extension_row[Self::VALUE];
+            extension_row[Self::EVALUATION] = io_running_evaluation;
+            if i == self.len() - 1 {
+                evaluation_terminal = io_running_evaluation;
+            }
+            extended_matrix.push(extension_row);
+        }
+
+        self.extended_matrix = Some(extended_matrix);
+        // TODO: terminal
+        // evaluation_terminal
+    }
+
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
         let polynomials = interpolate_columns(&self.matrix, 0);
         // return the codewords
@@ -197,6 +221,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for OutputT
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        println!("output_lde");
         self.0.base_lde(offset, codeword_len)
     }
 
@@ -299,6 +324,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for InputTa
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        println!("input_lde");
         self.0.base_lde(offset, codeword_len)
     }
 

@@ -16,7 +16,11 @@ use mini_stark::number_theory_transform::number_theory_transform;
 use mini_stark::polynomial::Polynomial;
 use protocol::ProofStream;
 use rand::Rng;
+use salted_merkle::SaltedMerkle;
 use std::cmp::max;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::vec;
 
@@ -98,6 +102,16 @@ where
         (self.max_degree() + 1) * self.params.expansion_factor
     }
 
+    fn sample_weights(&self, n: usize, randomness: u64) -> Vec<E> {
+        (0..n)
+            .map(|i| {
+                let mut hash = DefaultHasher::new();
+                (randomness + i as u64).hash(&mut hash);
+                E::from(hash.finish())
+            })
+            .collect()
+    }
+
     pub fn prove<T: ProofStream<F>>(
         &mut self,
         processor_matrix: Vec<[F; ProcessorTable::<F, E>::BASE_WIDTH]>,
@@ -155,6 +169,13 @@ where
         let zipped_codeword = (0..codeword_len)
             .map(|i| base_codewords.iter().map(|codeword| codeword[i]).collect())
             .collect::<Vec<Vec<E>>>();
+        let base_tree = SaltedMerkle::new(&zipped_codeword);
+        proof_stream.push(protocol::ProofObject::MerkleRoot(base_tree.root()));
+
+        // get coefficients for table extensions
+        let challenges = self.sample_weights(11, proof_stream.prover_fiat_shamir());
+
+        // println!("{}", base_tree.root());
 
         Vec::new()
     }
