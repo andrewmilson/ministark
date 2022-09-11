@@ -3,6 +3,7 @@ use crate::util::if_instr;
 use crate::util::if_not_instr;
 use crate::util::instr_zerofier;
 use crate::util::interpolate_columns;
+use crate::util::lift;
 use crate::OpCode;
 use algebra::ExtensionOf;
 use algebra::Felt;
@@ -23,7 +24,7 @@ pub struct ProcessorTable<F, E = F> {
     extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
 }
 
-impl<F: StarkFelt + PrimeFelt, E: ExtensionOf<F>> ProcessorTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> ProcessorTable<F, E> {
     // base columns
     pub const CYCLE: usize = 0;
     pub const IP: usize = 1;
@@ -143,7 +144,7 @@ impl<F: StarkFelt + PrimeFelt, E: ExtensionOf<F>> ProcessorTable<F, E> {
     }
 }
 
-impl<F: StarkFelt + PrimeFelt, E: ExtensionOf<F>> Table<F, E> for ProcessorTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for ProcessorTable<F, E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -397,7 +398,7 @@ impl<F: StarkFelt + PrimeFelt, E: ExtensionOf<F>> Table<F, E> for ProcessorTable
     }
 
     fn interpolant_degree(&self) -> usize {
-        self.matrix.len() + self.num_randomizers
+        self.height() + self.num_randomizers
     }
 
     fn set_matrix(&mut self, matrix: Vec<[F; BASE_WIDTH]>) {
@@ -471,23 +472,33 @@ impl<F: StarkFelt + PrimeFelt, E: ExtensionOf<F>> Table<F, E> for ProcessorTable
         self.extended_matrix = Some(extended_matrix);
     }
 
-    fn base_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<F>> {
+    fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
         let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
-        let codeword_len = self.matrix.len() * expansion_factor;
-        assert!(codeword_len.is_power_of_two());
-        let root = F::get_root_of_unity(codeword_len.ilog2());
-        let codewords = polynomials
+        // return the codewords
+        polynomials
             .into_iter()
             .map(|poly| {
                 let mut coefficients = poly.scale(offset).coefficients;
                 coefficients.resize(codeword_len, F::zero());
-                number_theory_transform(&coefficients)
+                lift(number_theory_transform(&coefficients))
             })
-            .collect();
-        codewords
+            .collect()
     }
 
-    fn extension_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        // let polynomials = interpolate_columns(
+        //     &self.extended_matrix.expect("table has not been extended"),
+        //     self.num_randomizers,
+        // );
+        // // return the codewords
+        // polynomials
+        //     .into_iter()
+        //     .map(|poly| {
+        //         let mut coefficients = poly.scale(offset).coefficients;
+        //         coefficients.resize(codeword_len, F::zero());
+        //         number_theory_transform(&coefficients)
+        //     })
+        //     .collect()
         todo!()
     }
 }

@@ -1,21 +1,27 @@
-#![feature(generic_const_exprs)]
+#![feature(generic_const_exprs, int_log)]
 
+use algebra::ExtensionOf;
 use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
 use algebra::StarkFelt;
+use algebra::Univariate;
 use brainfuck::InputTable;
 use brainfuck::InstructionTable;
 use brainfuck::MemoryTable;
 use brainfuck::OutputTable;
 use brainfuck::ProcessorTable;
 use brainfuck::Table;
+use mini_stark::number_theory_transform::number_theory_transform;
+use mini_stark::polynomial::Polynomial;
 use protocol::ProofStream;
+use rand::Rng;
 use std::cmp::max;
 use std::marker::PhantomData;
 use std::vec;
 
-mod protocol;
+pub mod protocol;
+mod salted_merkle;
 
 pub struct StarkParams {
     /// power of 2 expansion factor
@@ -48,17 +54,21 @@ impl StarkParams {
     }
 }
 
-pub struct BrainFuckStark<E> {
+pub struct BrainFuckStark<F, E> {
     params: StarkParams,
-    processor_table: ProcessorTable<E>,
-    memory_table: MemoryTable<E>,
-    instruction_table: InstructionTable<E>,
-    input_table: InputTable<E>,
-    output_table: OutputTable<E>,
+    processor_table: ProcessorTable<F, E>,
+    memory_table: MemoryTable<F, E>,
+    instruction_table: InstructionTable<F, E>,
+    input_table: InputTable<F, E>,
+    output_table: OutputTable<F, E>,
 }
 
-impl<E: PrimeFelt + StarkFelt> BrainFuckStark<E> {
-    pub fn new(params: StarkParams) -> BrainFuckStark<E> {
+impl<F: PrimeFelt + StarkFelt, E: Felt + ExtensionOf<F>> BrainFuckStark<F, E>
+where
+    F: PrimeFelt + StarkFelt,
+    E: Felt<BaseFelt = F> + ExtensionOf<F>,
+{
+    pub fn new(params: StarkParams) -> Self {
         let num_randomizers = params.num_randomizers();
         BrainFuckStark {
             params,
@@ -70,7 +80,7 @@ impl<E: PrimeFelt + StarkFelt> BrainFuckStark<E> {
         }
     }
 
-    fn fri_codeword_length(&self) -> usize {
+    fn max_degree(&self) -> usize {
         assert!(!self.processor_table.is_empty(), "tables not populated");
         // TODO: could be a bug here... Instead of rounding up to the power of two it
         // should be the next power of two.
@@ -81,16 +91,20 @@ impl<E: PrimeFelt + StarkFelt> BrainFuckStark<E> {
             .max(self.instruction_table.max_degree())
             .max(self.input_table.max_degree())
             .max(self.output_table.max_degree());
-        ceil_power_of_two(max_degree) * self.params.expansion_factor
+        ceil_power_of_two(max_degree) - 1
     }
 
-    pub fn prove<T: ProofStream<E>>(
+    fn fri_codeword_length(&self) -> usize {
+        (self.max_degree() + 1) * self.params.expansion_factor
+    }
+
+    pub fn prove<T: ProofStream<F>>(
         &mut self,
-        processor_matrix: Vec<[E; ProcessorTable::<E>::BASE_WIDTH]>,
-        memory_matrix: Vec<[E; MemoryTable::<E>::BASE_WIDTH]>,
-        instruction_matrix: Vec<[E; InstructionTable::<E>::BASE_WIDTH]>,
-        input_matrix: Vec<[E; InputTable::<E>::BASE_WIDTH]>,
-        output_matrix: Vec<[E; OutputTable::<E>::BASE_WIDTH]>,
+        processor_matrix: Vec<[F; ProcessorTable::<F, E>::BASE_WIDTH]>,
+        memory_matrix: Vec<[F; MemoryTable::<F, E>::BASE_WIDTH]>,
+        instruction_matrix: Vec<[F; InstructionTable::<F, E>::BASE_WIDTH]>,
+        input_matrix: Vec<[F; InputTable::<F, E>::BASE_WIDTH]>,
+        output_matrix: Vec<[F; OutputTable::<F, E>::BASE_WIDTH]>,
         proof_stream: &mut T,
     ) -> Vec<u8> {
         let padding_length = {
@@ -103,38 +117,44 @@ impl<E: PrimeFelt + StarkFelt> BrainFuckStark<E> {
             ceil_power_of_two(max_length)
         };
 
-        let Self {
-            processor_table,
-            memory_table,
-            instruction_table,
-            input_table,
-            output_table,
-            ..
-        } = self;
-
-        processor_table.set_matrix(processor_matrix);
-        memory_table.set_matrix(memory_matrix);
-        instruction_table.set_matrix(instruction_matrix);
-        input_table.set_matrix(input_matrix);
-        output_table.set_matrix(output_matrix);
+        self.processor_table.set_matrix(processor_matrix);
+        self.memory_table.set_matrix(memory_matrix);
+        self.instruction_table.set_matrix(instruction_matrix);
+        self.input_table.set_matrix(input_matrix);
+        self.output_table.set_matrix(output_matrix);
 
         // pad tables to height 2^k
-        processor_table.pad(padding_length);
-        memory_table.pad(padding_length);
-        instruction_table.pad(padding_length);
-        input_table.pad(padding_length);
-        output_table.pad(padding_length);
+        self.processor_table.pad(padding_length);
+        self.memory_table.pad(padding_length);
+        self.instruction_table.pad(padding_length);
+        self.input_table.pad(padding_length);
+        self.output_table.pad(padding_length);
 
-        // let tables = vec![
-        //     &processor_table as &dyn Table<E>,
-        //     &memory_table as &dyn Table<E>,
-        //     &instruction_table as &dyn Table<E>,
-        //     &input_table as &dyn Table<E>,
-        //     &output_table as &dyn Table<E>,
-        // ];
+        let codeword_len = self.fri_codeword_length();
 
-        // let max_degree = tables.iter().map(|table|
-        // table.max_degree()).max().unwrap(); let fri_domain_length =
+        let randomizer_codewords = {
+            let mut rng = rand::thread_rng();
+            let n = ceil_power_of_two(self.max_degree());
+            let coefficients = (0..n).map(|_| E::rand(&mut rng)).collect();
+            let polynomial = Univariate::new(coefficients);
+            polynomial.scale(F::GENERATOR.into());
+            let mut coefficients = polynomial.coefficients;
+            coefficients.resize(codeword_len, E::zero());
+            vec![number_theory_transform(&coefficients)]
+        };
+
+        let base_codewords = vec![
+            self.processor_table.base_lde(F::GENERATOR, codeword_len),
+            self.memory_table.base_lde(F::GENERATOR, codeword_len),
+            self.instruction_table.base_lde(F::GENERATOR, codeword_len),
+            self.input_table.base_lde(F::GENERATOR, codeword_len),
+            self.output_table.base_lde(F::GENERATOR, codeword_len),
+            randomizer_codewords,
+        ]
+        .concat();
+        let zipped_codeword = (0..codeword_len)
+            .map(|i| base_codewords.iter().map(|codeword| codeword[i]).collect())
+            .collect::<Vec<Vec<E>>>();
 
         Vec::new()
     }

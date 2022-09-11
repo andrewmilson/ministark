@@ -1,18 +1,25 @@
 use super::table::Table;
 use crate::util::instr_zerofier;
+use crate::util::interpolate_columns;
+use crate::util::lift;
+use algebra::ExtensionOf;
+use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
+use algebra::StarkFelt;
+use mini_stark::number_theory_transform::number_theory_transform;
 
 const BASE_WIDTH: usize = 3;
 const EXTENSION_WIDTH: usize = 5;
 
-pub struct InstructionTable<E> {
+pub struct InstructionTable<F, E> {
     num_padded_rows: usize,
     num_randomizers: usize,
-    matrix: Vec<[E; BASE_WIDTH]>,
+    matrix: Vec<[F; BASE_WIDTH]>,
+    extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
 }
 
-impl<E: PrimeFelt> InstructionTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> InstructionTable<F, E> {
     // base columns
     const IP: usize = 0;
     const CURR_INSTR: usize = 1;
@@ -26,6 +33,7 @@ impl<E: PrimeFelt> InstructionTable<E> {
             num_padded_rows: 0,
             num_randomizers,
             matrix: Vec::new(),
+            extended_matrix: None,
         }
     }
 
@@ -52,7 +60,7 @@ impl<E: PrimeFelt> InstructionTable<E> {
     }
 }
 
-impl<E: PrimeFelt> Table<E> for InstructionTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for InstructionTable<F, E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -66,10 +74,10 @@ impl<E: PrimeFelt> Table<E> for InstructionTable<E> {
 
     fn pad(&mut self, n: usize) {
         while self.matrix.len() < n {
-            let mut new_row = [E::zero(); BASE_WIDTH];
+            let mut new_row = [F::zero(); BASE_WIDTH];
             new_row[Self::IP] = self.matrix.last().unwrap()[Self::IP];
-            new_row[Self::CURR_INSTR] = E::zero();
-            new_row[Self::NEXT_INSTR] = E::zero();
+            new_row[Self::CURR_INSTR] = F::zero();
+            new_row[Self::NEXT_INSTR] = F::zero();
             self.matrix.push(new_row);
             self.num_padded_rows += 1;
         }
@@ -210,7 +218,7 @@ impl<E: PrimeFelt> Table<E> for InstructionTable<E> {
         self.matrix.len() - self.num_padded_rows
     }
 
-    fn set_matrix(&mut self, matrix: Vec<[E; Self::BASE_WIDTH]>) {
+    fn set_matrix(&mut self, matrix: Vec<[F; Self::BASE_WIDTH]>) {
         self.num_padded_rows = 0;
         self.matrix = matrix;
     }
@@ -219,11 +227,20 @@ impl<E: PrimeFelt> Table<E> for InstructionTable<E> {
         todo!()
     }
 
-    fn base_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
-        todo!()
+    fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
+        // return the codewords
+        polynomials
+            .into_iter()
+            .map(|poly| {
+                let mut coefficients = poly.scale(offset).coefficients;
+                coefficients.resize(codeword_len, F::zero());
+                lift(number_theory_transform(&coefficients))
+            })
+            .collect()
     }
 
-    fn extension_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }

@@ -74,6 +74,7 @@ pub trait Felt:
     + From<u32>
     + From<u16>
     + From<u8>
+    + ExtensionOf<<Self as Felt>::BaseFelt>
 {
     type BaseFelt: Felt;
 
@@ -138,7 +139,7 @@ pub trait Felt:
 ///
 /// Given `n` number of points to interpolate, fast fourier based interpolation
 /// runtime is `O(n log n)` as opposed to naive implementations of `O(n^2)`.
-pub trait StarkFelt: Felt {
+pub trait StarkFelt: Felt<BaseFelt = Self> {
     /// A multiplicative generator of the entire field except 0.
     const GENERATOR: Self;
 
@@ -294,7 +295,7 @@ impl<S: AsRef<[u64]>> Iterator for BitIterator<S> {
 }
 
 /// Trait specifying a field is an extension of another
-pub trait ExtensionOf<E: Felt>: Felt + From<E> {
+pub trait ExtensionOf<E: Felt>: From<E> {
     fn mul_base(self, other: E) -> Self;
 }
 

@@ -1,7 +1,9 @@
 use algebra::fp_u64::BaseFelt;
 use brainfuck::stark::compile;
 use brainfuck::stark::SimulationMatrices;
+use stark::protocol::StandardProofStream;
 use stark::BrainFuckStark;
+use stark::StarkParams;
 
 const HELLO_WORLD_SOURCE: &str = "
     +++++ +++++             initialize counter (cell #0) to 10
@@ -42,7 +44,17 @@ fn hello_world() {
     // let running_time = processor_matrix.len();
     // let memory_length = memory_matrix.len();
 
-    // let bfs = BrainFuckStark::new(params);
+    let mut proof_stream = StandardProofStream::<BaseFelt>::new();
+    let params = StarkParams::new(8, 128);
+    let mut bfs = BrainFuckStark::<BaseFelt, BaseFelt>::new(params);
+    let res = bfs.prove(
+        processor_matrix,
+        memory_matrix,
+        instruction_matrix,
+        input_matrix,
+        output_matrix,
+        &mut proof_stream,
+    );
 
     // assert_eq!(running_time, 10);
 }

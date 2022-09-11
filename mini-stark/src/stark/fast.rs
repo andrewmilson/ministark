@@ -29,7 +29,7 @@ pub struct Stark<E> {
     pub fri: Fri<E>,
 }
 
-impl<E: StarkFelt> Stark<E> {
+impl<E: StarkFelt<BaseFelt = E>> Stark<E> {
     pub fn new(
         expansion_factor: usize,
         num_colinearity_checks: usize,
@@ -96,7 +96,7 @@ impl<E: StarkFelt> Stark<E> {
     // Returns: zerofier
     pub fn preprocess(&self) -> (Polynomial<E>, Vec<E>, u64) {
         let transition_zerofier = fast_zerofier(
-            &self.omicron_domain[..(self.original_trace_length - 1)].to_vec(),
+            &self.omicron_domain[..(self.original_trace_length - 1)],
             // self.omicron,
             // self.omicron_domain.len(),
         );

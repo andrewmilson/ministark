@@ -1,16 +1,24 @@
 use super::table::Table;
+use crate::util::interpolate_columns;
+use crate::util::lift;
+use algebra::ExtensionOf;
+use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
+use algebra::StarkFelt;
+use mini_stark::number_theory_transform::inverse_number_theory_transform;
+use mini_stark::number_theory_transform::number_theory_transform;
 
 const BASE_WIDTH: usize = 1;
 const EXTENSION_WIDTH: usize = 2;
 
-struct IoTable<E> {
+struct IoTable<F, E> {
     num_padded_rows: usize,
-    matrix: Vec<[E; BASE_WIDTH]>,
+    matrix: Vec<[F; BASE_WIDTH]>,
+    extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
 }
 
-impl<E: PrimeFelt> IoTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> IoTable<F, E> {
     // base column
     const VALUE: usize = 0;
     // extension column
@@ -20,6 +28,7 @@ impl<E: PrimeFelt> IoTable<E> {
         IoTable {
             num_padded_rows: 0,
             matrix: Vec::new(),
+            extended_matrix: None,
         }
     }
 
@@ -34,7 +43,7 @@ impl<E: PrimeFelt> IoTable<E> {
     pub fn pad(&mut self, n: usize) {
         // TODO: seting length here seems kind of strange
         while self.matrix.len() < n {
-            self.matrix.push([E::zero()]);
+            self.matrix.push([F::zero()]);
             self.num_padded_rows += 1;
         }
     }
@@ -71,7 +80,7 @@ impl<E: PrimeFelt> IoTable<E> {
         vec![variables[Self::EVALUATION].clone() - actual_terminal]
     }
 
-    fn set_matrix(&mut self, matrix: Vec<[E; BASE_WIDTH]>) {
+    fn set_matrix(&mut self, matrix: Vec<[F; BASE_WIDTH]>) {
         self.num_padded_rows = 0;
         self.matrix = matrix;
     }
@@ -79,17 +88,30 @@ impl<E: PrimeFelt> IoTable<E> {
     fn interpolant_degree(&self) -> usize {
         self.matrix.len()
     }
+
+    fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        let polynomials = interpolate_columns(&self.matrix, 0);
+        // return the codewords
+        polynomials
+            .into_iter()
+            .map(|poly| {
+                let mut coefficients = poly.scale(offset).coefficients;
+                coefficients.resize(codeword_len, F::zero());
+                lift(number_theory_transform(&coefficients))
+            })
+            .collect()
+    }
 }
 
-pub struct OutputTable<E>(IoTable<E>);
+pub struct OutputTable<F, E>(IoTable<F, E>);
 
-impl<E: PrimeFelt> OutputTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> OutputTable<F, E> {
     pub fn new() -> Self {
         OutputTable(IoTable::new())
     }
 }
 
-impl<E: PrimeFelt> Table<E> for OutputTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for OutputTable<F, E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -106,15 +128,15 @@ impl<E: PrimeFelt> Table<E> for OutputTable<E> {
     }
 
     fn base_boundary_constraints() -> Vec<Multivariate<E>> {
-        IoTable::<E>::base_boundary_constraints()
+        IoTable::<F, E>::base_boundary_constraints()
     }
 
     fn base_transition_constraints() -> Vec<Multivariate<E>> {
-        IoTable::<E>::base_transition_constraints()
+        IoTable::<F, E>::base_transition_constraints()
     }
 
     fn extension_boundary_constraints(_challenges: &[E]) -> Vec<Multivariate<E>> {
-        IoTable::<E>::extension_boundary_constraints()
+        IoTable::<F, E>::extension_boundary_constraints()
     }
 
     fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
@@ -130,7 +152,7 @@ impl<E: PrimeFelt> Table<E> for OutputTable<E> {
         let _gamma = challenges_iter.next().unwrap();
         let delta = challenges_iter.next().unwrap();
         let _eta = challenges_iter.next().unwrap();
-        IoTable::<E>::extension_transition_constraints(delta)
+        IoTable::<F, E>::extension_transition_constraints(delta)
     }
 
     fn extension_terminal_constraints(
@@ -166,7 +188,7 @@ impl<E: PrimeFelt> Table<E> for OutputTable<E> {
         self.0.interpolant_degree()
     }
 
-    fn set_matrix(&mut self, matrix: Vec<[E; BASE_WIDTH]>) {
+    fn set_matrix(&mut self, matrix: Vec<[F; BASE_WIDTH]>) {
         self.0.set_matrix(matrix)
     }
 
@@ -174,24 +196,24 @@ impl<E: PrimeFelt> Table<E> for OutputTable<E> {
         todo!()
     }
 
-    fn base_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
-        todo!()
+    fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        self.0.base_lde(offset, codeword_len)
     }
 
-    fn extension_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }
 
-pub struct InputTable<E>(IoTable<E>);
+pub struct InputTable<F, E>(IoTable<F, E>);
 
-impl<E: PrimeFelt> InputTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> InputTable<F, E> {
     pub fn new() -> Self {
         InputTable(IoTable::new())
     }
 }
 
-impl<E: PrimeFelt> Table<E> for InputTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for InputTable<F, E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -208,15 +230,15 @@ impl<E: PrimeFelt> Table<E> for InputTable<E> {
     }
 
     fn base_boundary_constraints() -> Vec<Multivariate<E>> {
-        IoTable::<E>::base_boundary_constraints()
+        IoTable::<F, E>::base_boundary_constraints()
     }
 
     fn base_transition_constraints() -> Vec<Multivariate<E>> {
-        IoTable::<E>::base_transition_constraints()
+        IoTable::<F, E>::base_transition_constraints()
     }
 
     fn extension_boundary_constraints(_challenges: &[E]) -> Vec<Multivariate<E>> {
-        IoTable::<E>::extension_boundary_constraints()
+        IoTable::<F, E>::extension_boundary_constraints()
     }
 
     fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
@@ -232,7 +254,7 @@ impl<E: PrimeFelt> Table<E> for InputTable<E> {
         let gamma = challenges_iter.next().unwrap();
         let _delta = challenges_iter.next().unwrap();
         let _eta = challenges_iter.next().unwrap();
-        IoTable::<E>::extension_transition_constraints(gamma)
+        IoTable::<F, E>::extension_transition_constraints(gamma)
     }
 
     fn extension_terminal_constraints(
@@ -268,7 +290,7 @@ impl<E: PrimeFelt> Table<E> for InputTable<E> {
         self.0.interpolant_degree()
     }
 
-    fn set_matrix(&mut self, matrix: Vec<[E; BASE_WIDTH]>) {
+    fn set_matrix(&mut self, matrix: Vec<[F; BASE_WIDTH]>) {
         self.0.set_matrix(matrix)
     }
 
@@ -276,11 +298,11 @@ impl<E: PrimeFelt> Table<E> for InputTable<E> {
         todo!()
     }
 
-    fn base_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
-        todo!()
+    fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        self.0.base_lde(offset, codeword_len)
     }
 
-    fn extension_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }

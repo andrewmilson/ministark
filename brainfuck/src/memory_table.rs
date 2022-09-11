@@ -1,19 +1,25 @@
 use super::table::Table;
 use crate::processor_table::ProcessorTable;
+use crate::util::interpolate_columns;
+use crate::util::lift;
+use algebra::ExtensionOf;
+use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
 use algebra::StarkFelt;
+use mini_stark::number_theory_transform::number_theory_transform;
 
 const BASE_WIDTH: usize = 4;
 const EXTENSION_WIDTH: usize = 5;
 
-pub struct MemoryTable<E> {
+pub struct MemoryTable<F, E> {
     num_padded_rows: usize,
     num_randomizers: usize,
-    matrix: Vec<[E; BASE_WIDTH]>,
+    matrix: Vec<[F; BASE_WIDTH]>,
+    extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
 }
 
-impl<E: StarkFelt + PrimeFelt> MemoryTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> MemoryTable<F, E> {
     // base columns
     const CYCLE: usize = 0;
     const MP: usize = 1;
@@ -27,6 +33,7 @@ impl<E: StarkFelt + PrimeFelt> MemoryTable<E> {
             num_padded_rows: 0,
             num_randomizers,
             matrix: Vec::new(),
+            extended_matrix: None,
         }
     }
 
@@ -63,25 +70,25 @@ impl<E: StarkFelt + PrimeFelt> MemoryTable<E> {
     }
 
     /// Outputs an unpadded but interweaved matrix
-    pub fn derive_matrix(processor_matrix: &[[E; 7]]) -> Vec<[E; BASE_WIDTH]> {
+    pub fn derive_matrix(processor_matrix: &[[F; 7]]) -> Vec<[F; BASE_WIDTH]> {
         // copy unpadded rows and sort
         // TODO: sorted by IP and then CYCLE. Check to see if processor table sorts by
         // cycle.
         let mut matrix = processor_matrix
             .iter()
             .filter_map(|row| {
-                if row[ProcessorTable::<E, E>::CURR_INSTR].is_zero() {
+                if row[ProcessorTable::<F, F>::CURR_INSTR].is_zero() {
                     None
                 } else {
                     Some([
-                        row[ProcessorTable::<E, E>::CYCLE],
-                        row[ProcessorTable::<E, E>::MP],
-                        row[ProcessorTable::<E, E>::MEM_VAL],
-                        E::zero(), // dummy=no
+                        row[ProcessorTable::<F, F>::CYCLE],
+                        row[ProcessorTable::<F, F>::MP],
+                        row[ProcessorTable::<F, F>::MEM_VAL],
+                        F::zero(), // dummy=no
                     ])
                 }
             })
-            .collect::<Vec<[E; 4]>>();
+            .collect::<Vec<[F; 4]>>();
         matrix.sort_by_key(|row| row[Self::MP].into_bigint());
 
         // insert dummy rows for smooth clk jumps
@@ -89,15 +96,15 @@ impl<E: StarkFelt + PrimeFelt> MemoryTable<E> {
             let curr_row = &matrix[i];
             let next_row = &matrix[i + 1];
             if curr_row[Self::MP] == next_row[Self::MP]
-                && curr_row[Self::CYCLE] + E::one() != next_row[Self::CYCLE]
+                && curr_row[Self::CYCLE] + F::one() != next_row[Self::CYCLE]
             {
                 matrix.insert(
                     i + 1,
                     [
-                        curr_row[Self::CYCLE] + E::one(),
+                        curr_row[Self::CYCLE] + F::one(),
                         curr_row[Self::MP],
                         curr_row[Self::MEM_VAL],
-                        E::one(), // dummy=yes
+                        F::one(), // dummy=yes
                     ],
                 )
             }
@@ -107,7 +114,7 @@ impl<E: StarkFelt + PrimeFelt> MemoryTable<E> {
     }
 }
 
-impl<E: StarkFelt + PrimeFelt> Table<E> for MemoryTable<E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for MemoryTable<F, E> {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -123,10 +130,10 @@ impl<E: StarkFelt + PrimeFelt> Table<E> for MemoryTable<E> {
         while self.matrix.len() < n {
             let last_row = self.matrix.last().unwrap();
             self.matrix.push([
-                last_row[Self::CYCLE] + E::one(),
+                last_row[Self::CYCLE] + F::one(),
                 last_row[Self::MP],
                 last_row[Self::MEM_VAL],
-                E::one(), // dummy=yes
+                F::one(), // dummy=yes
             ]);
             self.num_padded_rows += 1;
         }
@@ -170,7 +177,7 @@ impl<E: StarkFelt + PrimeFelt> Table<E> for MemoryTable<E> {
             variables[Self::MP].clone(),
             variables[Self::MEM_VAL].clone(),
             // TODO: why is this not included?
-            // variables[Self::PERMUTATION].clone() - E::one(),
+            // variables[Self::PERMUTATION].clone() - F::one(),
         ]
     }
 
@@ -272,7 +279,7 @@ impl<E: StarkFelt + PrimeFelt> Table<E> for MemoryTable<E> {
         self.matrix.len() + self.num_randomizers
     }
 
-    fn set_matrix(&mut self, matrix: Vec<[E; BASE_WIDTH]>) {
+    fn set_matrix(&mut self, matrix: Vec<[F; BASE_WIDTH]>) {
         self.num_padded_rows = 0;
         self.matrix = matrix;
     }
@@ -281,11 +288,20 @@ impl<E: StarkFelt + PrimeFelt> Table<E> for MemoryTable<E> {
         todo!()
     }
 
-    fn base_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
-        todo!()
+    fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
+        // return the codewords
+        polynomials
+            .into_iter()
+            .map(|poly| {
+                let mut coefficients = poly.scale(offset).coefficients;
+                coefficients.resize(codeword_len, F::zero());
+                lift(number_theory_transform(&coefficients))
+            })
+            .collect()
     }
 
-    fn extension_lde(&mut self, offset: E, expansion_factor: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
         todo!()
     }
 }

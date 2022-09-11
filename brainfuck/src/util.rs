@@ -1,8 +1,10 @@
 use crate::OpCode;
+use algebra::ExtensionOf;
 use algebra::Felt;
 use algebra::Multivariate;
 use algebra::StarkFelt;
 use mini_stark::number_theory_transform::fast_interpolate;
+use mini_stark::number_theory_transform::inverse_number_theory_transform;
 use mini_stark::polynomial::Polynomial;
 use rand::Rng;
 
@@ -38,10 +40,16 @@ pub(crate) fn if_instr<E: Felt>(
     Multivariate::constant(Into::<usize>::into(instr.clone()).into()) - indeterminate.clone()
 }
 
+// Lifts a vector of field elements into array of extension field elements
+pub(crate) fn lift<F: Felt, E: Felt + ExtensionOf<F>>(v: Vec<F>) -> Vec<E> {
+    v.into_iter().map(|v| E::from(v)).collect()
+}
+
 pub(crate) fn interpolate_columns<F: StarkFelt, const WIDTH: usize>(
     matrix: &[[F; WIDTH]],
     num_randomizers: usize,
 ) -> Vec<Polynomial<F>> {
+    assert!(matrix.len().is_power_of_two());
     let mut rng = rand::thread_rng();
     let n = matrix.len();
     let omicron = F::get_root_of_unity(n.ilog2());
@@ -62,7 +70,11 @@ pub(crate) fn interpolate_columns<F: StarkFelt, const WIDTH: usize>(
             .collect::<Vec<F>>();
         let values = vec![trace_column, randomizers].concat();
         assert_eq!(values.len(), domain.len());
-        polynomials.push(fast_interpolate(&domain, &values))
+        if num_randomizers == 0 {
+            polynomials.push(Polynomial::new(inverse_number_theory_transform(&values)));
+        } else {
+            polynomials.push(fast_interpolate(&domain, &values))
+        }
     }
 
     polynomials

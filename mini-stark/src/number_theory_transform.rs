@@ -3,18 +3,25 @@ extern crate test;
 use crate::polynomial::MultivariatePolynomial;
 use crate::polynomial::Polynomial;
 use algebra::batch_inverse;
+use algebra::ExtensionOf;
+use algebra::Felt;
 use algebra::StarkFelt;
 use std::primitive;
 
-pub fn ntt<E: StarkFelt>(primitive_root: E, values: &[E]) -> Vec<E> {
-    assert!(values.len().is_power_of_two());
-    assert_eq!(primitive_root.pow(&[values.len() as u64]), E::one());
-    let half = values.len() / 2;
-    assert_ne!(primitive_root.pow(&[half as u64]), E::one());
-
+// TODO: fix types. E might have to have the same BaseField as F.
+pub fn ntt<F, E>(primitive_root: F, values: &[E]) -> Vec<E>
+where
+    F: StarkFelt,
+    E: Felt<BaseFelt = F>,
+{
     if values.len() <= 1 {
         return values.to_vec();
     }
+
+    assert!(values.len().is_power_of_two());
+    assert_eq!(primitive_root.pow(&[values.len() as u64]), F::one());
+    let half = values.len() / 2;
+    assert_ne!(primitive_root.pow(&[half as u64]), F::one());
 
     let odd_values = values
         .iter()
@@ -24,20 +31,28 @@ pub fn ntt<E: StarkFelt>(primitive_root: E, values: &[E]) -> Vec<E> {
         .collect::<Vec<E>>();
     let even_values = values.iter().step_by(2).copied().collect::<Vec<E>>();
 
-    let odds = number_theory_transform(&odd_values);
-    let evens = number_theory_transform(&even_values);
+    let odds = ntt(primitive_root.square(), &odd_values);
+    let evens = ntt(primitive_root.square(), &even_values);
 
     (0..values.len())
-        .map(|i| evens[i % half] + primitive_root.pow(&[i as u64]) * odds[i % half])
+        .map(|i| evens[i % half] + odds[i % half].mul_base(primitive_root.pow(&[i as u64])))
         .collect()
 }
 
-pub fn number_theory_transform<E: StarkFelt>(values: &[E]) -> Vec<E> {
-    let primitive_root = E::get_root_of_unity(values.len().ilog2());
+pub fn number_theory_transform<E>(values: &[E]) -> Vec<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
+    let primitive_root = E::BaseFelt::get_root_of_unity(values.len().ilog2());
     ntt(primitive_root, values)
 }
 
-pub fn inverse_number_theory_transfer<E: StarkFelt>(values: &[E]) -> Vec<E> {
+pub fn inverse_number_theory_transform<E>(values: &[E]) -> Vec<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
     // let ninv = E::from(values.len() as u32).inverse().unwrap();
     // // Inverse primitive root to calculate in reverse order
     // let transformed_values = ntt(primitive_root.inverse().unwrap(), values);
@@ -46,11 +61,18 @@ pub fn inverse_number_theory_transfer<E: StarkFelt>(values: &[E]) -> Vec<E> {
     //     .map(|transformed_value| ninv * transformed_value)
     //     .collect()
     let ninv = E::from(values.len() as u32).inverse().unwrap();
-    let primitive_root = E::get_root_of_unity(values.len().ilog2());
-    ntt(primitive_root, values)
+    let primitive_root = E::BaseFelt::get_root_of_unity(values.len().ilog2());
+    ntt(primitive_root.inverse().unwrap(), values)
+        .into_iter()
+        .map(|v| ninv * v)
+        .collect()
 }
 
-pub fn fast_multiply<E: StarkFelt>(lhs: &Polynomial<E>, rhs: &Polynomial<E>) -> Polynomial<E> {
+pub fn fast_multiply<E>(lhs: &Polynomial<E>, rhs: &Polynomial<E>) -> Polynomial<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
     if lhs.is_zero() || rhs.is_zero() {
         return Polynomial::new(vec![]);
     }
@@ -61,35 +83,44 @@ pub fn fast_multiply<E: StarkFelt>(lhs: &Polynomial<E>, rhs: &Polynomial<E>) -> 
         return lhs.clone() * rhs.clone();
     }
 
-    // let root = E::get_root_of_unity(degree.ilog2() + 1);
     let n = degree.next_power_of_two();
+    // let root = E::get_root_of_unity(degree.ilog2() + 1);
     // assert_eq!(root.pow(&[order as u64]), E::one());
     // assert_ne!(root.pow(&[(order / 2) as u64]), E::one());
 
-    let mut lhs_coefficients = (&lhs.coefficients[..(lhs.degree() as usize + 1)].to_vec()).clone();
-    while lhs_coefficients.len() < n {
-        lhs_coefficients.push(E::zero());
-    }
+    let mut lhs_coefficients = vec![E::zero(); n];
+    lhs_coefficients[..lhs.coefficients.len()].copy_from_slice(&lhs.coefficients);
+    // lhs.coefficients[..(lhs.degree() as usize + 1)].to_vec();
+    // while lhs_coefficients.len() < n {
+    //     lhs_coefficients.push(E::zero());
+    // }
 
-    let mut rhs_coefficients = (&rhs.coefficients[..(rhs.degree() as usize + 1)].to_vec()).clone();
-    while rhs_coefficients.len() < n {
-        rhs_coefficients.push(E::zero());
-    }
+    let mut rhs_coefficients = vec![E::zero(); n];
+    rhs_coefficients[..rhs.coefficients.len()].copy_from_slice(&rhs.coefficients);
+    // rhs.coefficients[..(rhs.degree() as usize + 1)].to_vec();
+    // while rhs_coefficients.len() < n {
+    //     rhs_coefficients.push(E::zero());
+    // }
 
     let lhs_codeword = number_theory_transform(&lhs_coefficients);
     let rhs_codeword = number_theory_transform(&rhs_coefficients);
 
     let hadamard_product = lhs_codeword
         .into_iter()
-        .zip(rhs_codeword.into_iter())
+        .zip(rhs_codeword)
         .map(|(l, r)| l * r)
         .collect::<Vec<E>>();
-    let product_coefficients = inverse_number_theory_transfer(&hadamard_product);
+    let product_coefficients = inverse_number_theory_transform(&hadamard_product);
 
-    Polynomial::new(product_coefficients[..(degree + 1)].to_vec())
+    // Polynomial::new(product_coefficients[..(degree + 1)].to_vec())
+    Polynomial::new(product_coefficients)
 }
 
-pub fn fast_zerofier<E: StarkFelt>(domain: &[E]) -> Polynomial<E> {
+pub fn fast_zerofier<E>(domain: &[E]) -> Polynomial<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
     // assert_eq!(
     //     primitive_root.pow(&[root_order as u64]),
     //     E::one(),
@@ -110,17 +141,21 @@ pub fn fast_zerofier<E: StarkFelt>(domain: &[E]) -> Polynomial<E> {
     }
 
     let half = domain.len() / 2;
-    let left = fast_zerofier(&domain[..half].to_vec());
-    let right = fast_zerofier(&domain[half..].to_vec());
+    let left = fast_zerofier(&domain[..half]);
+    let right = fast_zerofier(&domain[half..]);
     fast_multiply(&left, &right)
 }
 
-pub fn fast_evaluate_symbolic<E: StarkFelt>(
+pub fn fast_evaluate_symbolic<E>(
     polynomial: &MultivariatePolynomial<E>,
     point: &[Polynomial<E>],
     primitive_root: E,
     root_order: usize,
-) -> Polynomial<E> {
+) -> Polynomial<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
     let mut accumulator = Polynomial::new(vec![]);
     for (pad, coefficient) in polynomial.powers.iter().zip(polynomial.coefficients.iter()) {
         let mut product = Polynomial::new(vec![*coefficient]);
@@ -133,7 +168,11 @@ pub fn fast_evaluate_symbolic<E: StarkFelt>(
     accumulator
 }
 
-fn fast_evaluate_domain<E: StarkFelt>(polynomial: &Polynomial<E>, domain: &[E]) -> Vec<E> {
+fn fast_evaluate_domain<E>(polynomial: &Polynomial<E>, domain: &[E]) -> Vec<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
     if domain.is_empty() {
         return vec![];
     }
@@ -144,8 +183,8 @@ fn fast_evaluate_domain<E: StarkFelt>(polynomial: &Polynomial<E>, domain: &[E]) 
 
     let half = domain.len() / 2;
 
-    let left_zerofier = fast_zerofier(&domain[..half].to_vec());
-    let right_zerofier = fast_zerofier(&domain[half..].to_vec());
+    let left_zerofier = fast_zerofier(&domain[..half]);
+    let right_zerofier = fast_zerofier(&domain[half..]);
 
     let left = fast_evaluate_domain(
         &(polynomial.clone() % left_zerofier),
@@ -159,7 +198,11 @@ fn fast_evaluate_domain<E: StarkFelt>(polynomial: &Polynomial<E>, domain: &[E]) 
     left.into_iter().chain(right.into_iter()).collect()
 }
 
-pub fn fast_interpolate<E: StarkFelt>(domain: &[E], values: &[E]) -> Polynomial<E> {
+pub fn fast_interpolate<E>(domain: &[E], values: &[E]) -> Polynomial<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
     assert_eq!(
         domain.len(),
         values.len(),
@@ -207,11 +250,11 @@ pub fn fast_interpolate<E: StarkFelt>(domain: &[E], values: &[E]) -> Polynomial<
     // left_interpolant * right_zerofier + right_interpolant * left_zerofier
 }
 
-pub fn fast_coset_evaluate<E: StarkFelt>(
-    polynomial: &Polynomial<E>,
-    offset: E,
-    order: usize,
-) -> Vec<E> {
+pub fn fast_coset_evaluate<E>(polynomial: &Polynomial<E>, offset: E, order: usize) -> Vec<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
     let scaled_polynomial = polynomial.scale(offset);
     let mut scaled_coefficients = scaled_polynomial.coefficients;
     while scaled_coefficients.len() < order {
@@ -221,13 +264,17 @@ pub fn fast_coset_evaluate<E: StarkFelt>(
 }
 
 // Clean division only
-pub fn fast_coset_divide<E: StarkFelt>(
+pub fn fast_coset_divide<E>(
     lhs: &Polynomial<E>,
     rhs: &Polynomial<E>,
     offset: E,
     primitive_root: E,
     root_order: usize,
-) -> Polynomial<E> {
+) -> Polynomial<E>
+where
+    E: Felt,
+    E::BaseFelt: StarkFelt,
+{
     assert_eq!(
         primitive_root.pow(&[root_order as u64]),
         E::one(),
@@ -284,7 +331,7 @@ pub fn fast_coset_divide<E: StarkFelt>(
         .map(|(numerator, denominator_inverse)| numerator * denominator_inverse.unwrap())
         .collect::<Vec<E>>();
 
-    let scaled_quotient_coefficients = inverse_number_theory_transfer(&quotient_codeword);
+    let scaled_quotient_coefficients = inverse_number_theory_transform(&quotient_codeword);
     let scaled_quotient = Polynomial::new(scaled_quotient_coefficients);
 
     scaled_quotient.scale(offset.inverse().unwrap())

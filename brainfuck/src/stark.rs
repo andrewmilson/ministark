@@ -234,7 +234,7 @@ pub fn simulate<E: StarkFelt + PrimeFelt>(
     // sort instructions by address
     matrices.instruction.sort_by_key(|row| row[0].into_bigint());
 
-    matrices.memory = MemoryTable::<E>::derive_matrix(&matrices.processor);
+    matrices.memory = MemoryTable::<E, E>::derive_matrix(&matrices.processor);
 
     matrices
 }
