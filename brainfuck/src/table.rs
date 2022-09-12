@@ -67,13 +67,18 @@ where
         max_degree
     }
 
-    fn boundary_quotients(&self, codeword_len: usize, codewords: &[Vec<E>], challenges: &[E]) {
+    fn boundary_quotients(
+        &self,
+        codeword_len: usize,
+        codewords: &[Vec<E>],
+        challenges: &[E],
+    ) -> Vec<Vec<E>> {
         // TODO: HELP: trying to understand zerofier here
         let mut quotient_codewords = Vec::new();
         let omega = F::get_root_of_unity(codeword_len.ilog2());
-        // Evaluations of the polynomial (X - ω^0)
+        // Evaluations of the polynomial (x - ω^0) over the FRI domain
         let zerofier = (0..codeword_len)
-            .map(|i| F::GENERATOR * omega.pow(&[i as u64 + 1]) - F::one())
+            .map(|i| F::GENERATOR * omega.pow(&[i as u64]) - F::one())
             .collect::<Vec<F>>();
         let zerofier_inv = batch_inverse(&zerofier)
             .into_iter()
@@ -92,6 +97,20 @@ where
             }
             quotient_codewords.push(quotient_codeword);
         }
+
+        quotient_codewords
+    }
+
+    fn all_quotients(
+        &self,
+        codeword_len: usize,
+        codewords: &[Vec<E>],
+        challenges: &[E],
+    ) -> Vec<Vec<E>> {
+        let boundary_quotients = self.boundary_quotients(codeword_len, codewords, challenges);
+        let transition_quotients = todo!();
+        let terminal_quotients = todo!();
+        vec![boundary_quotients, transition_quotients, terminal_quotients].concat()
     }
 
     // //
