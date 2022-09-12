@@ -19,7 +19,7 @@ pub struct MemoryTable<F, E> {
     extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> MemoryTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> MemoryTable<F, E> {
     // base columns
     const CYCLE: usize = 0;
     const MP: usize = 1;
@@ -114,7 +114,9 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> MemoryTable<F, E> {
     }
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for MemoryTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, E>
+    for MemoryTable<F, E>
+{
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -308,7 +310,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for MemoryT
         let mut extended_matrix = Vec::new();
         for base_row in &self.matrix {
             let mut extension_row = [E::zero(); EXTENSION_WIDTH];
-            extension_row.copy_from_slice(&base_row.map(|v| v.into()));
+            extension_row[..BASE_WIDTH].copy_from_slice(&base_row.map(|v| v.into()));
             extension_row[Self::PERMUTATION] = mem_permutation_running_product;
             if extension_row[Self::DUMMY].is_zero() {
                 mem_permutation_running_product *= beta
@@ -339,6 +341,24 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for MemoryT
     }
 
     fn extension_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
-        todo!()
+        println!("mem_lde_ext");
+        let extension_rows = self
+            .extended_matrix
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|row| [row[Self::PERMUTATION]])
+            .collect::<Vec<[E; 1]>>();
+        let polynomials = interpolate_columns(&extension_rows, self.num_randomizers);
+        // return the codewords
+        polynomials
+            .into_iter()
+            .map(|poly| {
+                let mut coefficients = poly.scale(offset.into()).coefficients;
+                coefficients.resize(codeword_len, E::zero());
+                let coef = number_theory_transform(&coefficients);
+                lift(coef)
+            })
+            .collect()
     }
 }

@@ -21,6 +21,7 @@ use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::iter::empty;
 use std::marker::PhantomData;
 use std::vec;
 
@@ -58,7 +59,7 @@ impl StarkParams {
     }
 }
 
-pub struct BrainFuckStark<F, E> {
+pub struct BrainFuckStark<F, E = F> {
     params: StarkParams,
     processor_table: ProcessorTable<F, E>,
     memory_table: MemoryTable<F, E>,
@@ -121,6 +122,8 @@ where
         output_matrix: Vec<[F; OutputTable::<F, E>::BASE_WIDTH]>,
         proof_stream: &mut T,
     ) -> Vec<u8> {
+        let mut rng = rand::thread_rng();
+
         let padding_length = {
             let max_length = processor_matrix
                 .len()
@@ -147,7 +150,6 @@ where
         let codeword_len = self.fri_codeword_length();
 
         let randomizer_codewords = {
-            let mut rng = rand::thread_rng();
             let n = ceil_power_of_two(self.max_degree());
             let coefficients = (0..n).map(|_| E::rand(&mut rng)).collect();
             let polynomial = Univariate::new(coefficients);
@@ -157,25 +159,89 @@ where
             vec![number_theory_transform(&coefficients)]
         };
 
-        let base_codewords = vec![
-            self.processor_table.base_lde(F::GENERATOR, codeword_len),
-            self.memory_table.base_lde(F::GENERATOR, codeword_len),
-            self.instruction_table.base_lde(F::GENERATOR, codeword_len),
-            self.input_table.base_lde(F::GENERATOR, codeword_len),
-            self.output_table.base_lde(F::GENERATOR, codeword_len),
-            randomizer_codewords,
-        ]
-        .concat();
-        let zipped_codeword = (0..codeword_len)
-            .map(|i| base_codewords.iter().map(|codeword| codeword[i]).collect())
+        let offset = F::GENERATOR;
+
+        let base_processor_lde = self.processor_table.base_lde(offset, codeword_len);
+        let base_memory_lde = self.memory_table.base_lde(offset, codeword_len);
+        let base_instruction_lde = self.instruction_table.base_lde(offset, codeword_len);
+        let base_input_lde = self.input_table.base_lde(offset, codeword_len);
+        let base_output_lde = self.output_table.base_lde(offset, codeword_len);
+
+        let base_zipped_codeword = (0..codeword_len)
+            .map(|i| {
+                empty()
+                    .chain(&base_processor_lde)
+                    .chain(&base_memory_lde)
+                    .chain(&base_instruction_lde)
+                    .chain(&base_input_lde)
+                    .chain(&base_output_lde)
+                    .chain(&randomizer_codewords)
+                    .map(|codeword| codeword[i])
+                    .collect()
+            })
             .collect::<Vec<Vec<E>>>();
-        let base_tree = SaltedMerkle::new(&zipped_codeword);
+        let base_tree = SaltedMerkle::new(&base_zipped_codeword);
         proof_stream.push(protocol::ProofObject::MerkleRoot(base_tree.root()));
+        // TODO: base degree bounds
 
         // get coefficients for table extensions
         let challenges = self.sample_weights(11, proof_stream.prover_fiat_shamir());
+        let initials = vec![E::rand(&mut rng), E::rand(&mut rng)];
 
-        // println!("{}", base_tree.root());
+        self.processor_table.extend(&challenges, &initials);
+        self.memory_table.extend(&challenges, &initials);
+        self.instruction_table.extend(&challenges, &initials);
+        self.input_table.extend(&challenges, &initials);
+        self.output_table.extend(&challenges, &initials);
+
+        let terminals = vec![
+            self.processor_table.instr_permutation_terminal.unwrap(),
+            self.processor_table.memory_permutation_terminal.unwrap(),
+            self.processor_table.input_evaluation_terminal.unwrap(),
+            self.processor_table.output_evaluation_terminal.unwrap(),
+            self.instruction_table.evaluation_terminal.unwrap(),
+        ];
+
+        let ext_processor_lde = self.processor_table.extension_lde(offset, codeword_len);
+        let ext_memory_lde = self.memory_table.extension_lde(offset, codeword_len);
+        let ext_instruction_lde = self.instruction_table.extension_lde(offset, codeword_len);
+        let ext_input_lde = self.input_table.extension_lde(offset, codeword_len);
+        let ext_output_lde = self.output_table.extension_lde(offset, codeword_len);
+
+        let ext_zipped_codeword = (0..codeword_len)
+            .map(|i| {
+                empty()
+                    .chain(&ext_processor_lde)
+                    .chain(&ext_memory_lde)
+                    .chain(&ext_instruction_lde)
+                    .chain(&ext_input_lde)
+                    .chain(&ext_output_lde)
+                    .map(|codeword| codeword[i])
+                    .collect()
+            })
+            .collect::<Vec<Vec<E>>>();
+        let extension_tree = SaltedMerkle::new(&ext_zipped_codeword);
+        proof_stream.push(protocol::ProofObject::MerkleRoot(extension_tree.root()));
+        // TODO: extension degree bounds
+
+        let processor_codewords = vec![base_processor_lde, ext_processor_lde].concat();
+        let memory_codewords = vec![base_memory_lde, ext_memory_lde].concat();
+        let instruction_codewords = vec![base_instruction_lde, ext_instruction_lde].concat();
+        let input_codewords = vec![base_input_lde, ext_input_lde].concat();
+        let output_codewords = vec![base_output_lde, ext_output_lde].concat();
+
+        // let quotient_codewords = vec![
+        //     self.processor_table
+        //         .all_quotients(codeword_len, processor_codewords, challenges),
+        //     self.memory_table
+        //         .all_quotients(codeword_len, memory_codewords, challenges),
+        //     self.instruction_table
+        //         .all_quotients(codeword_len, instruction_codewords, challenges),
+        //     self.input_table
+        //         .all_quotients(codeword_len, input_codewords, challenges),
+        //     self.output_table
+        //         .all_quotients(codeword_len, output_codewords, challenges),
+        // ];
 
         Vec::new()
     }

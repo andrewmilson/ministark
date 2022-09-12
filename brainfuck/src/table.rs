@@ -1,14 +1,16 @@
 use crate::OpCode;
+use algebra::batch_inverse;
 use algebra::ExtensionOf;
 use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
+use algebra::StarkFelt;
 use std::marker::PhantomData;
 
 pub trait Table<F, E = F>
 where
-    F: Felt,
-    E: Felt + ExtensionOf<F>,
+    F: StarkFelt,
+    E: Felt<BaseFelt = F> + ExtensionOf<F>,
 {
     /// The width of the table before extension
     const BASE_WIDTH: usize;
@@ -63,6 +65,33 @@ where
             max_degree = max_degree.max(degree);
         }
         max_degree
+    }
+
+    fn boundary_quotients(&self, codeword_len: usize, codewords: &[Vec<E>], challenges: &[E]) {
+        // TODO: HELP: trying to understand zerofier here
+        let mut quotient_codewords = Vec::new();
+        let omega = F::get_root_of_unity(codeword_len.ilog2());
+        // Evaluations of the polynomial (X - ω^0)
+        let zerofier = (0..codeword_len)
+            .map(|i| F::GENERATOR * omega.pow(&[i as u64 + 1]) - F::one())
+            .collect::<Vec<F>>();
+        let zerofier_inv = batch_inverse(&zerofier)
+            .into_iter()
+            .map(|z| E::from(z.unwrap()))
+            .collect::<Vec<E>>();
+
+        let boundary_constraints = Self::extension_boundary_constraints(challenges);
+        for constraint in boundary_constraints {
+            let mut quotient_codeword = Vec::new();
+            for i in 0..codeword_len {
+                let point = codewords
+                    .iter()
+                    .map(|codeword| codeword[i])
+                    .collect::<Vec<E>>();
+                quotient_codeword.push(constraint.evaluate(&point) * zerofier_inv[i]);
+            }
+            quotient_codewords.push(quotient_codeword);
+        }
     }
 
     // //

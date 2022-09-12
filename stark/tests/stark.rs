@@ -5,6 +5,20 @@ use stark::protocol::StandardProofStream;
 use stark::BrainFuckStark;
 use stark::StarkParams;
 
+const FIB_TO_100_SOURCE: &str = "
++++++++++++
+>+>>>>++++++++++++++++++++++++++++++++++++++++++++
+>++++++++++++++++++++++++++++++++<<<<<<[>[>>>>>>+>
++<<<<<<<-]>>>>>>>[<<<<<<<+>>>>>>>-]<[>++++++++++[-
+<-[>>+>+<<<-]>>>[<<<+>>>-]+<[>[-]<[-]]>[<<[>>>+<<<
+-]>>[-]]<<]>>>[>>+>+<<<-]>>>[<<<+>>>-]+<[>[-]<[-]]
+>[<<+>>[-]]<<<<<<<]>>>>>[+++++++++++++++++++++++++
++++++++++++++++++++++++.[-]]++++++++++<[->-<]>++++
+++++++++++++++++++++++++++++++++++++++++++++.[-]<<
+<<<<<<<<<<[>>>+>+<<<<-]>>>>[<<<<+>>>>-]<-[>>.>.<<<
+[-]]<<[>>+>+<<<-]>>>[<<<+>>>-]<<[<+>-]>[<+>-]<<<-]
+";
+
 const HELLO_WORLD_SOURCE: &str = "
     +++++ +++++             initialize counter (cell #0) to 10
     [                       use loop to set 70/100/30/10
@@ -42,19 +56,20 @@ fn hello_world() {
     } = brainfuck::stark::simulate::<BaseFelt>(&program, &mut std::io::empty(), &mut output);
 
     // let running_time = processor_matrix.len();
+    // println!("{running_time}");
     // let memory_length = memory_matrix.len();
 
-    let mut proof_stream = StandardProofStream::<BaseFelt>::new();
-    let params = StarkParams::new(8, 0);
-    let mut bfs = BrainFuckStark::<BaseFelt, BaseFelt>::new(params);
-    let res = bfs.prove(
-        processor_matrix,
-        memory_matrix,
-        instruction_matrix,
-        input_matrix,
-        output_matrix,
-        &mut proof_stream,
-    );
+    // let mut proof_stream = StandardProofStream::<BaseFelt>::new();
+    // let params = StarkParams::new(8, 0);
+    // let mut bfs = BrainFuckStark::<BaseFelt, BaseFelt>::new(params);
+    // let res = bfs.prove(
+    //     processor_matrix,
+    //     memory_matrix,
+    //     instruction_matrix,
+    //     input_matrix,
+    //     output_matrix,
+    //     &mut proof_stream,
+    // );
 
     // assert_eq!(running_time, 10);
 }

@@ -45,20 +45,26 @@ pub(crate) fn lift<F: Felt, E: Felt + ExtensionOf<F>>(v: Vec<F>) -> Vec<E> {
     v.into_iter().map(|v| E::from(v)).collect()
 }
 
-pub(crate) fn interpolate_columns<F: StarkFelt, const WIDTH: usize>(
+pub(crate) fn interpolate_columns<F, const WIDTH: usize>(
     matrix: &[[F; WIDTH]],
     num_randomizers: usize,
-) -> Vec<Polynomial<F>> {
+) -> Vec<Polynomial<F>>
+where
+    F: Felt,
+    F::BaseFelt: StarkFelt,
+{
     assert!(matrix.len().is_power_of_two());
     let mut rng = rand::thread_rng();
     let n = matrix.len();
-    let omicron = F::get_root_of_unity(n.ilog2());
-    let omega = F::get_root_of_unity(n.ilog2() + 1);
+    let omicron = F::BaseFelt::get_root_of_unity(n.ilog2());
+    let omega = F::BaseFelt::get_root_of_unity(n.ilog2() + 1);
 
-    let matrix_domain = (0..n).map(|i| omicron.pow(&[i as u64])).collect::<Vec<F>>();
+    let matrix_domain = (0..n)
+        .map(|i| omicron.pow(&[i as u64]).into())
+        .collect::<Vec<F>>();
     // Odd indices to avoid collision with `matrix_domain`
     let randomizer_domain = (0..num_randomizers)
-        .map(|i| omega.pow(&[1 + 2 * i as u64]))
+        .map(|i| omega.pow(&[1 + 2 * i as u64]).into())
         .collect::<Vec<F>>();
     let domain = vec![matrix_domain, randomizer_domain].concat();
 

@@ -172,8 +172,10 @@ fn run(
     output: &mut impl std::io::Write,
     tape: &mut [u8],
     data_pointer: &mut usize,
+    counter: &mut usize,
 ) {
     for instr in instrs {
+        *counter += 1;
         match instr {
             Instr::IncrementPointer => *data_pointer += 1,
             Instr::DecrementPointer => *data_pointer -= 1,
@@ -189,19 +191,32 @@ fn run(
             }
             Instr::Loop(nested_instrs) => {
                 while tape[*data_pointer] != 0 {
-                    run(nested_instrs, input, output, tape, data_pointer);
+                    run(nested_instrs, input, output, tape, data_pointer, counter);
                 }
             }
         }
     }
 }
 
-pub fn execute(source: &str, input: &mut impl std::io::Read, output: &mut impl std::io::Write) {
+pub fn execute(
+    source: &str,
+    input: &mut impl std::io::Read,
+    output: &mut impl std::io::Write,
+) -> usize {
     let opcodes = lex(source);
     let program = parse(&opcodes);
     let mut tape: Vec<u8> = vec![0; 1024];
     let mut data_pointer = 512;
-    run(&program, input, output, &mut tape, &mut data_pointer);
+    let mut runtime = 0;
+    run(
+        &program,
+        input,
+        output,
+        &mut tape,
+        &mut data_pointer,
+        &mut runtime,
+    );
+    runtime
 }
 
 #[cfg(test)]

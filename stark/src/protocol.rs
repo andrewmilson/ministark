@@ -24,6 +24,8 @@ pub trait ProofStream<E> {
     fn prover_fiat_shamir(&self) -> u64;
     fn verifier_fiat_shamir(&self) -> u64;
 }
+
+#[derive(Serialize, Deserialize)]
 pub struct StandardProofStream<E> {
     pub objects: Vec<ProofObject<E>>,
     pub read_index: usize,
@@ -72,10 +74,10 @@ impl<E: Felt> ProofStream<E> for StandardProofStream<E> {
     }
 
     fn prover_fiat_shamir(&self) -> u64 {
-        // let mut hash = DefaultHasher::new();
-        // self.serialize().hash(&mut hash);
-        // hash.finish()
-        todo!()
+        let serialized_objects = serde_json::to_vec(self).unwrap();
+        let mut hash = DefaultHasher::new();
+        serialized_objects.hash(&mut hash);
+        hash.finish()
     }
 
     fn verifier_fiat_shamir(&self) -> u64 {

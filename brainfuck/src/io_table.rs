@@ -18,7 +18,7 @@ struct IoTable<F, E> {
     extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> IoTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> IoTable<F, E> {
     // base column
     const VALUE: usize = 0;
     // extension column
@@ -89,7 +89,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> IoTable<F, E> {
         self.matrix.len()
     }
 
-    fn extend(&mut self, iota: E) {
+    fn extend(&mut self, challenge: E) {
         // prepare
         let mut extended_matrix = Vec::new();
         let mut io_running_evaluation = E::zero();
@@ -99,8 +99,8 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> IoTable<F, E> {
         for i in 0..self.matrix.len() {
             let base_row = self.matrix[i];
             let mut extension_row = [E::zero(); EXTENSION_WIDTH];
-            extension_row.copy_from_slice(&base_row.map(|v| v.into()));
-            io_running_evaluation = io_running_evaluation * iota + extension_row[Self::VALUE];
+            extension_row[..BASE_WIDTH].copy_from_slice(&base_row.map(|v| v.into()));
+            io_running_evaluation = io_running_evaluation * challenge + extension_row[Self::VALUE];
             extension_row[Self::EVALUATION] = io_running_evaluation;
             if i == self.len() - 1 {
                 evaluation_terminal = io_running_evaluation;
@@ -125,17 +125,40 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> IoTable<F, E> {
             })
             .collect()
     }
+
+    fn extension_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        let extension_rows = self
+            .extended_matrix
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|row| [row[Self::EVALUATION]])
+            .collect::<Vec<[E; 1]>>();
+        let polynomials = interpolate_columns(&extension_rows, 0);
+        // return the codewords
+        polynomials
+            .into_iter()
+            .map(|poly| {
+                let mut coefficients = poly.scale(offset.into()).coefficients;
+                coefficients.resize(codeword_len, E::zero());
+                let coef = number_theory_transform(&coefficients);
+                lift(coef)
+            })
+            .collect()
+    }
 }
 
 pub struct OutputTable<F, E>(IoTable<F, E>);
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> OutputTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> OutputTable<F, E> {
     pub fn new() -> Self {
         OutputTable(IoTable::new())
     }
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for OutputTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, E>
+    for OutputTable<F, E>
+{
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -217,7 +240,20 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for OutputT
     }
 
     fn extend(&mut self, challenges: &[E], initials: &[E]) {
-        todo!()
+        let mut challenges_iter = challenges.iter().copied();
+        let _a = challenges_iter.next().unwrap();
+        let _b = challenges_iter.next().unwrap();
+        let _c = challenges_iter.next().unwrap();
+        let _d = challenges_iter.next().unwrap();
+        let _e = challenges_iter.next().unwrap();
+        let _f = challenges_iter.next().unwrap();
+        let _alpha = challenges_iter.next().unwrap();
+        let _beta = challenges_iter.next().unwrap();
+        let _gamma = challenges_iter.next().unwrap();
+        let delta = challenges_iter.next().unwrap();
+        let _eta = challenges_iter.next().unwrap();
+
+        self.0.extend(delta);
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
@@ -226,19 +262,22 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for OutputT
     }
 
     fn extension_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<E>> {
-        todo!()
+        println!("output_lde_ext");
+        self.0.extension_lde(offset, expansion_factor)
     }
 }
 
 pub struct InputTable<F, E>(IoTable<F, E>);
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> InputTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> InputTable<F, E> {
     pub fn new() -> Self {
         InputTable(IoTable::new())
     }
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for InputTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, E>
+    for InputTable<F, E>
+{
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -319,8 +358,21 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for InputTa
         self.0.set_matrix(matrix)
     }
 
-    fn extend(&mut self, challenges: &[E], initials: &[E]) {
-        todo!()
+    fn extend(&mut self, challenges: &[E], _initials: &[E]) {
+        let mut challenges_iter = challenges.iter().copied();
+        let _a = challenges_iter.next().unwrap();
+        let _b = challenges_iter.next().unwrap();
+        let _c = challenges_iter.next().unwrap();
+        let _d = challenges_iter.next().unwrap();
+        let _e = challenges_iter.next().unwrap();
+        let _f = challenges_iter.next().unwrap();
+        let _alpha = challenges_iter.next().unwrap();
+        let _beta = challenges_iter.next().unwrap();
+        let gamma = challenges_iter.next().unwrap();
+        let _delta = challenges_iter.next().unwrap();
+        let _eta = challenges_iter.next().unwrap();
+
+        self.0.extend(gamma)
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
@@ -329,6 +381,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for InputTa
     }
 
     fn extension_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<E>> {
-        todo!()
+        println!("input_lde_ext");
+        self.0.extension_lde(offset, expansion_factor)
     }
 }

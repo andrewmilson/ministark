@@ -5,6 +5,7 @@ use crate::util::instr_zerofier;
 use crate::util::interpolate_columns;
 use crate::util::lift;
 use crate::OpCode;
+use algebra::fp_u128::BaseFelt;
 use algebra::ExtensionOf;
 use algebra::Felt;
 use algebra::Multivariate;
@@ -17,14 +18,18 @@ use std::convert::From;
 const BASE_WIDTH: usize = 7;
 const EXTENSION_WIDTH: usize = 11;
 
-pub struct ProcessorTable<F, E = F> {
+pub struct ProcessorTable<F, E> {
     num_padded_rows: usize,
     num_randomizers: usize,
     matrix: Vec<[F; BASE_WIDTH]>,
     extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
+    pub instr_permutation_terminal: Option<E>,
+    pub memory_permutation_terminal: Option<E>,
+    pub input_evaluation_terminal: Option<E>,
+    pub output_evaluation_terminal: Option<E>,
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> ProcessorTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> ProcessorTable<F, E> {
     // base columns
     pub const CYCLE: usize = 0;
     pub const IP: usize = 1;
@@ -45,6 +50,10 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> ProcessorTable<F, E> {
             num_randomizers,
             matrix: Vec::new(),
             extended_matrix: None,
+            instr_permutation_terminal: None,
+            memory_permutation_terminal: None,
+            input_evaluation_terminal: None,
+            output_evaluation_terminal: None,
         }
     }
 
@@ -144,7 +153,9 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> ProcessorTable<F, E> {
     }
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for ProcessorTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, E>
+    for ProcessorTable<F, E>
+{
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -358,7 +369,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Process
         let _eta = challenges_iter.next().unwrap();
 
         let mut terminal_iter = terminals.iter().copied();
-        let processor_instruction_permutation_terminal = terminal_iter.next().unwrap();
+        let processor_instr_permutation_terminal = terminal_iter.next().unwrap();
         let processor_memory_permutation_terminal = terminal_iter.next().unwrap();
         let processor_input_evaluation_terminal = terminal_iter.next().unwrap();
         let processor_output_evaluation_terminal = terminal_iter.next().unwrap();
@@ -375,7 +386,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Process
         let output_evaluation = variables[Self::OUTPUT_EVALUATION].clone();
         vec![
             // running product for instruction table permutation
-            instruction_permutation.clone() - processor_instruction_permutation_terminal,
+            instruction_permutation.clone() - processor_instr_permutation_terminal,
             // running product for memory table permutation
             // TODO: this is so strange. Can't explain this terminal constraint
             // ...think it's to do with the padding and that the terminal constraints are checked
@@ -434,7 +445,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Process
         for i in 0..self.matrix.len() {
             let base_row = self.matrix[i];
             let mut extension_row = [E::zero(); EXTENSION_WIDTH];
-            extension_row.copy_from_slice(&base_row.map(|v| v.into()));
+            extension_row[..BASE_WIDTH].copy_from_slice(&base_row.map(|v| v.into()));
 
             // Permutations columns
             extension_row[Self::INSTRUCTION_PERMUTATION] = instr_permutation_running_product;
@@ -457,11 +468,12 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Process
             let curr_instr = Into::<BigUint>::into(base_row[Self::CURR_INSTR]);
             let read_instr = BigUint::from(Into::<usize>::into(OpCode::Read));
             let write_instr = BigUint::from(Into::<usize>::into(OpCode::Write));
-            let next_row = self.matrix[i + 1];
             if curr_instr == read_instr {
+                let next_row = self.matrix[i + 1];
                 let input_val: E = next_row[Self::MEM_VAL].into();
                 input_running_evaluation = input_running_evaluation * gamma + input_val;
             } else if curr_instr == write_instr {
+                let next_row = self.matrix[i + 1];
                 let output_val: E = next_row[Self::MEM_VAL].into();
                 output_running_evaluation = output_running_evaluation * delta + output_val;
             }
@@ -470,6 +482,10 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Process
         }
 
         self.extended_matrix = Some(extended_matrix);
+        self.instr_permutation_terminal = Some(instr_permutation_running_product);
+        self.memory_permutation_terminal = Some(mem_permutation_running_product);
+        self.input_evaluation_terminal = Some(input_running_evaluation);
+        self.output_evaluation_terminal = Some(output_running_evaluation);
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
@@ -488,19 +504,31 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Process
     }
 
     fn extension_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
-        // let polynomials = interpolate_columns(
-        //     &self.extended_matrix.expect("table has not been extended"),
-        //     self.num_randomizers,
-        // );
-        // // return the codewords
-        // polynomials
-        //     .into_iter()
-        //     .map(|poly| {
-        //         let mut coefficients = poly.scale(offset).coefficients;
-        //         coefficients.resize(codeword_len, F::zero());
-        //         number_theory_transform(&coefficients)
-        //     })
-        //     .collect()
-        todo!()
+        println!("proc_lde_ext");
+        let extension_rows = self
+            .extended_matrix
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                [
+                    row[Self::INSTRUCTION_PERMUTATION],
+                    row[Self::MEMORY_PERMUTATION],
+                    row[Self::INPUT_EVALUATION],
+                    row[Self::OUTPUT_EVALUATION],
+                ]
+            })
+            .collect::<Vec<[E; 4]>>();
+        let polynomials = interpolate_columns(&extension_rows, self.num_randomizers);
+        // return the codewords
+        polynomials
+            .into_iter()
+            .map(|poly| {
+                let mut coefficients = poly.scale(offset.into()).coefficients;
+                coefficients.resize(codeword_len, E::zero());
+                let coef = number_theory_transform(&coefficients);
+                lift(coef)
+            })
+            .collect()
     }
 }

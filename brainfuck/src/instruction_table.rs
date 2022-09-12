@@ -17,9 +17,11 @@ pub struct InstructionTable<F, E> {
     num_randomizers: usize,
     matrix: Vec<[F; BASE_WIDTH]>,
     extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
+    pub permutation_terminal: Option<E>,
+    pub evaluation_terminal: Option<E>,
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> InstructionTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> InstructionTable<F, E> {
     // base columns
     const IP: usize = 0;
     const CURR_INSTR: usize = 1;
@@ -34,6 +36,8 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> InstructionTable<F, E> 
             num_randomizers,
             matrix: Vec::new(),
             extended_matrix: None,
+            permutation_terminal: None,
+            evaluation_terminal: None,
         }
     }
 
@@ -60,7 +64,9 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> InstructionTable<F, E> 
     }
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for InstructionTable<F, E> {
+impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, E>
+    for InstructionTable<F, E>
+{
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
 
@@ -224,7 +230,61 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Instruc
     }
 
     fn extend(&mut self, challenges: &[E], initials: &[E]) {
-        todo!()
+        let mut challenges_iter = challenges.iter().copied();
+        let a = challenges_iter.next().unwrap();
+        let b = challenges_iter.next().unwrap();
+        let c = challenges_iter.next().unwrap();
+        let d = challenges_iter.next().unwrap();
+        let e = challenges_iter.next().unwrap();
+        let f = challenges_iter.next().unwrap();
+        let alpha = challenges_iter.next().unwrap();
+        let beta = challenges_iter.next().unwrap();
+        let gamma = challenges_iter.next().unwrap();
+        let delta = challenges_iter.next().unwrap();
+        let eta = challenges_iter.next().unwrap();
+
+        let instr_permutation_initial = initials[0];
+        let mem_permutation_initial = initials[1];
+
+        // prepare
+        let mut permutation_running_product = instr_permutation_initial;
+        let mut evaluation_running_sum = E::zero();
+        let mut previous_address = -F::one();
+
+        let mut extended_matrix = Vec::new();
+        let mut num_padded_rows = 0usize;
+        for i in 0..self.matrix.len() {
+            let base_row = self.matrix[i];
+            let mut extension_row = [E::zero(); EXTENSION_WIDTH];
+            extension_row[..BASE_WIDTH].copy_from_slice(&base_row.map(|v| v.into()));
+            if extension_row[Self::CURR_INSTR].is_zero() {
+                num_padded_rows += 1;
+            } else if i > 0 && base_row[Self::IP] == self.matrix[i - 1][Self::IP] {
+                // permutation argument
+                // update running product
+                // make sure new row is not padding
+                // and that the instruction address didn't just change
+                permutation_running_product *= alpha
+                    - extension_row[Self::IP] * a
+                    - extension_row[Self::CURR_INSTR] * b
+                    - extension_row[Self::NEXT_INSTR] * c;
+            }
+            extension_row[Self::PROCESSOR_PERMUTATION] = permutation_running_product;
+            // evaluation argument
+            if base_row[Self::IP] != previous_address {
+                evaluation_running_sum = eta * evaluation_running_sum
+                    + extension_row[Self::IP] * a
+                    + extension_row[Self::CURR_INSTR] * b
+                    + extension_row[Self::NEXT_INSTR] * c;
+            }
+            extension_row[Self::PROGRAM_EVALUATION] = evaluation_running_sum;
+            previous_address = base_row[Self::IP];
+            extended_matrix.push(extension_row);
+        }
+
+        self.extended_matrix = Some(extended_matrix);
+        self.permutation_terminal = Some(permutation_running_product);
+        self.evaluation_terminal = Some(evaluation_running_sum);
     }
 
     fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
@@ -241,7 +301,30 @@ impl<F: StarkFelt + PrimeFelt, E: Felt + ExtensionOf<F>> Table<F, E> for Instruc
             .collect()
     }
 
-    fn extension_lde(&mut self, offset: F, expansion_factor: usize) -> Vec<Vec<E>> {
-        todo!()
+    fn extension_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+        println!("instr_lde_ext");
+        let extension_rows = self
+            .extended_matrix
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                [
+                    row[Self::PROCESSOR_PERMUTATION],
+                    row[Self::PROGRAM_EVALUATION],
+                ]
+            })
+            .collect::<Vec<[E; 2]>>();
+        let polynomials = interpolate_columns(&extension_rows, self.num_randomizers);
+        // return the codewords
+        polynomials
+            .into_iter()
+            .map(|poly| {
+                let mut coefficients = poly.scale(offset.into()).coefficients;
+                coefficients.resize(codeword_len, E::zero());
+                let coef = number_theory_transform(&coefficients);
+                lift(coef)
+            })
+            .collect()
     }
 }
