@@ -6,7 +6,7 @@ use std::hash::Hasher;
 
 // TODO: Using default hasher to make prototyping easier. Fix later
 pub struct SaltedMerkle<T> {
-    leafs: Vec<(T, u64)>,
+    pub leafs: Vec<(T, u64)>,
     nodes: Vec<u64>,
 }
 
@@ -39,5 +39,18 @@ impl<T: Hash + Clone> SaltedMerkle<T> {
 
     pub fn root(&self) -> u64 {
         self.nodes[1]
+    }
+
+    // Returns element, salt and authentication path
+    pub fn open(&self, i: usize) -> (T, u64, Vec<u64>) {
+        let (element, salt) = self.leafs[i].clone();
+        let mut authentication_path = vec![];
+        let mut i = i + self.leafs.len();
+        assert!(self.leafs.len().is_power_of_two());
+        while i > 0 {
+            authentication_path.push(self.nodes[i]);
+            i >>= 1;
+        }
+        (element, salt, authentication_path)
     }
 }

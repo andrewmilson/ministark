@@ -101,17 +101,27 @@ where
     }
 
     fn fri_codeword_length(&self) -> usize {
-        (self.max_degree() + 1) * self.params.expansion_factor
+        (self.max_degree() + 1) * self.params.expansion_factor()
     }
 
     fn sample_weights(&self, n: usize, randomness: u64) -> Vec<E> {
         (0..n)
             .map(|i| {
                 let mut hash = DefaultHasher::new();
-                (randomness + i as u64).hash(&mut hash);
+                (randomness as u128 + i as u128).hash(&mut hash);
                 E::from(hash.finish())
             })
             .collect()
+    }
+
+    fn sample_indices(n: usize, randomness: u64, bound: usize) -> Vec<usize> {
+        let mut indices = vec![];
+        let mut hasher = DefaultHasher::new();
+        for _ in 0..n {
+            randomness.hash(&mut hasher);
+            indices.push((hasher.finish() as usize) % bound)
+        }
+        indices
     }
 
     pub fn prove<T: ProofStream<E>>(
@@ -366,17 +376,60 @@ where
         // compute terms of non-linear combination polynomial
         let mut terms = randomizer_codewords.clone();
         assert_eq!(base_codewords.len(), num_base_polynomials);
-        for (codeword, degree_bound) in base_codewords.into_iter().zip(base_degree_bounds) {
+        assert_eq!(extension_codewords.len(), num_extension_polynomials);
+        assert_eq!(quotient_codewords.len(), num_quotient_polynomials);
+
+        for (codeword, degree_bound) in empty()
+            .chain(base_codewords.into_iter().zip(base_degree_bounds))
+            .chain(extension_codewords.into_iter().zip(extension_degree_bounds))
+            .chain(quotient_codewords.into_iter().zip(quotient_degree_bounds))
+        {
             let shift = (self.max_degree() - degree_bound) as u64;
             // dot product of codeword and evaluation of the polynomial `x^shift`
             let shifted_codeword = (0..codeword_len)
-                .map(|i| (offset * omega.pow(&[i as u64])).pow(&[shift]).into() * codeword[i])
+                .map(|i| E::from(offset * omega.pow(&[i as u64])).pow(&[shift]) * codeword[i])
                 .collect::<Vec<E>>();
             terms.push(codeword);
             terms.push(shifted_codeword);
         }
 
-        assert_eq!(extension_codewords.len(), num_extension_polynomials);
+        assert_eq!(terms.len(), weights.len());
+        let combination_codeword = terms
+            .into_iter()
+            .zip(weights)
+            .map(|(term, weight)| term.into_iter().map(|v| v * weight).collect())
+            .fold(vec![E::zero(); codeword_len], sum);
+        let combination_tree = SaltedMerkle::new(&combination_codeword);
+        proof_stream.push(protocol::ProofObject::MerkleRoot(combination_tree.root()));
+
+        // get indices of leafs to prove non-linear combination
+        let indices_seed = proof_stream.prover_fiat_shamir();
+        let indices =
+            Self::sample_indices(self.params.security_level(), indices_seed, codeword_len);
+
+        let row_step = self.params.expansion_factor();
+        assert!(row_step.is_power_of_two());
+
+        // open leafs of zipped codewords at indicated positions
+        for &index in &indices {
+            let idx = (index + row_step) % codeword_len;
+            let (element, salt, path) = base_tree.open(idx);
+            proof_stream.push(protocol::ProofObject::LeafItems(element));
+            proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
+            let (element, salt, path) = extension_tree.open(idx);
+            proof_stream.push(protocol::ProofObject::LeafItems(element));
+            proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
+        }
+
+        // TODO: merge these arrays
+
+        // open combination codewords at same positions
+        for index in indices {
+            let (element, salt, path) = combination_tree.open(index);
+            proof_stream.push(protocol::ProofObject::LeafItem(element));
+            proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
+            // asser
+        }
 
         Vec::new()
     }
@@ -389,4 +442,10 @@ fn ceil_power_of_two(value: usize) -> usize {
     } else {
         value.next_power_of_two()
     }
+}
+
+fn sum<E: Felt>(a: Vec<E>, b: Vec<E>) -> Vec<E> {
+    assert_eq!(a.len(), b.len());
+    let n = a.len();
+    (0..n).map(|i| a[i] + b[i]).collect()
 }
