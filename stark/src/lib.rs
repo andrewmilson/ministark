@@ -230,18 +230,34 @@ where
         let input_codewords = vec![base_input_lde, ext_input_lde].concat();
         let output_codewords = vec![base_output_lde, ext_output_lde].concat();
 
-        // let quotient_codewords = vec![
-        //     self.processor_table
-        //         .all_quotients(codeword_len, processor_codewords, challenges),
-        //     self.memory_table
-        //         .all_quotients(codeword_len, memory_codewords, challenges),
-        //     self.instruction_table
-        //         .all_quotients(codeword_len, instruction_codewords, challenges),
-        //     self.input_table
-        //         .all_quotients(codeword_len, input_codewords, challenges),
-        //     self.output_table
-        //         .all_quotients(codeword_len, output_codewords, challenges),
-        // ];
+        let quotient_codewords = vec![
+            self.processor_table.all_quotients(
+                codeword_len,
+                &processor_codewords,
+                &challenges,
+                &terminals,
+            ),
+            self.memory_table.all_quotients(
+                codeword_len,
+                &memory_codewords,
+                &challenges,
+                &terminals,
+            ),
+            self.instruction_table.all_quotients(
+                codeword_len,
+                &instruction_codewords,
+                &challenges,
+                &terminals,
+            ),
+            self.input_table
+                .all_quotients(codeword_len, &input_codewords, &challenges, &terminals),
+            self.output_table.all_quotients(
+                codeword_len,
+                &output_codewords,
+                &challenges,
+                &terminals,
+            ),
+        ];
 
         Vec::new()
     }

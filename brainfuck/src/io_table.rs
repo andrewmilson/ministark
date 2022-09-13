@@ -53,7 +53,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> IoTable<F
     }
 
     fn extension_boundary_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::variables(2);
+        let variables = Multivariate::variables(EXTENSION_WIDTH);
         vec![variables[Self::EVALUATION].clone() - variables[Self::VALUE].clone()]
     }
 
@@ -62,7 +62,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> IoTable<F
     }
 
     fn extension_transition_constraints(challenge: E) -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(4);
+        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH * 2);
         let value = variables[Self::VALUE].clone();
         let evaluation = variables[Self::EVALUATION].clone();
         let value_next = variables[Self::VALUE].clone();
@@ -71,7 +71,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> IoTable<F
     }
 
     fn extension_terminal_constraints(&self, challenge: E, terminal: E) -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(2);
+        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH);
         let offset = challenge.pow(&[self.num_padded_rows as u64]);
         // In every padded row the running evaluation variable is multiplied by another
         // factor `challenge`. We need to multiply `challenge ^ padding_length` to get

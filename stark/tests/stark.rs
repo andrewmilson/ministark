@@ -68,7 +68,8 @@ fn hello_world() {
     // let memory_length = memory_matrix.len();
 
     let mut proof_stream = StandardProofStream::<BaseFelt>::new();
-    let params = StarkParams::new(8, 0);
+    // let params = StarkParams::new(8, 128);
+    let params = StarkParams::new(4, 0);
     let mut bfs = BrainFuckStark::<BaseFelt, BaseFelt>::new(params);
     let res = bfs.prove(
         processor_matrix,

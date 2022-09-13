@@ -73,6 +73,7 @@ where
         codewords: &[Vec<E>],
         challenges: &[E],
     ) -> Vec<Vec<E>> {
+        println!("boundary_quotient");
         // TODO: HELP: trying to understand zerofier here
         let mut quotient_codewords = Vec::new();
         let omega = F::get_root_of_unity(codeword_len.ilog2());
@@ -87,6 +88,7 @@ where
 
         let boundary_constraints = Self::extension_boundary_constraints(challenges);
         for constraint in boundary_constraints {
+            println!("constraint");
             let mut quotient_codeword = Vec::new();
             for i in 0..codeword_len {
                 let point = codewords
@@ -107,6 +109,7 @@ where
         codewords: &[Vec<E>],
         challenges: &[E],
     ) -> Vec<Vec<E>> {
+        println!("trans_quotient");
         let mut quotient_codewords = Vec::new();
         // Evaluations of the polynomial (x - o^0)...(x - o^(n-1)) over the FRI domain
         // (x - o^0)...(x - o^(n-1)) = x^n - 1
@@ -141,9 +144,13 @@ where
         let row_step = codeword_len / self.height();
         let transition_constraints = Self::extension_transition_constraints(challenges);
         for constraint in transition_constraints {
+            println!("constraint");
             let mut quotient_codeword = Vec::new();
             // let combination_codeword = Vec::new();
             for i in 0..codeword_len {
+                if i % 1024 == 0 {
+                    println!("pos:{i} {codeword_len}");
+                }
                 let point_lhs = codewords
                     .iter()
                     .map(|codeword| codeword[i])
@@ -173,6 +180,7 @@ where
         challenges: &[E],
         terminals: &[E],
     ) -> Vec<Vec<E>> {
+        println!("term_quotient");
         let mut quotient_codewords = Vec::new();
         let omega = F::get_root_of_unity(codeword_len.ilog2());
         let last_omicron = F::get_root_of_unity(self.height().ilog2())
@@ -190,6 +198,7 @@ where
 
         let terminal_constraints = self.extension_terminal_constraints(challenges, terminals);
         for constraint in terminal_constraints {
+            println!("constraint");
             let mut quotient_codeword = Vec::new();
             for i in 0..codeword_len {
                 let point = codewords
@@ -211,6 +220,7 @@ where
         challenges: &[E],
         terminals: &[E],
     ) -> Vec<Vec<E>> {
+        println!("pos:{codeword_len}");
         let boundary_quotients = self.boundary_quotients(codeword_len, codewords, challenges);
         let transition_quotients = self.transition_quotients(codeword_len, codewords, challenges);
         let terminal_quotients =

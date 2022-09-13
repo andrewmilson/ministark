@@ -142,7 +142,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
     }
 
     fn base_boundary_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(5);
+        let variables = Multivariate::<E>::variables(BASE_WIDTH);
         vec![
             variables[Self::CYCLE].clone(),
             variables[Self::MP].clone(),
@@ -151,7 +151,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
     }
 
     fn base_transition_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(8);
+        let variables = Multivariate::<E>::variables(BASE_WIDTH * 2);
         let cycle = variables[Self::CYCLE].clone();
         let mp = variables[Self::MP].clone();
         let mem_val = variables[Self::MEM_VAL].clone();
@@ -173,7 +173,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
     }
 
     fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(5);
+        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH);
         vec![
             variables[Self::CYCLE].clone(),
             variables[Self::MP].clone(),
@@ -197,7 +197,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         let delta = challenges_iter.next().unwrap();
         let eta = challenges_iter.next().unwrap();
 
-        let variables = Multivariate::<E>::variables(10);
+        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH * 2);
         let cycle = variables[Self::CYCLE].clone();
         let mp = variables[Self::MP].clone();
         let mem_val = variables[Self::MEM_VAL].clone();
@@ -258,7 +258,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         let processor_output_evaluation_terminal = terminal_iter.next().unwrap();
         let instruction_evaluation_terminal = terminal_iter.next().unwrap();
 
-        let variables = Multivariate::<E>::variables(5);
+        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH);
         let cycle = variables[Self::CYCLE].clone();
         let mp = variables[Self::MP].clone();
         let mem_val = variables[Self::MEM_VAL].clone();

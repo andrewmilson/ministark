@@ -118,17 +118,18 @@ impl<E: Felt> Multivariate<E> {
         accumulator
     }
 
-    pub fn evaluate(&self, _point: &[E]) -> E {
-        // let mut accumulator = E::zero();
-        // for (pad, coefficient) in self.powers.iter().zip(self.coefficients.iter()) {
-        //     let mut product = *coefficient;
-        //     for (i, power) in pad.iter().enumerate() {
-        //         product *= point[i].pow((*power).into());
-        //     }
-        //     accumulator += product;
-        // }
-        // accumulator
-        todo!()
+    pub fn evaluate(&self, point: &[E]) -> E {
+        let mut accumulator = E::zero();
+        for (pad, coefficient) in self.powers.iter().zip(self.coefficients.iter()) {
+            let mut product = *coefficient;
+            for (i, &power) in pad.iter().enumerate() {
+                product *= point[i].pow(&[power as u64]); // , (power >> 64) as
+                                                          // u64]);
+            }
+            accumulator += product;
+        }
+        accumulator
+        // todo!()
     }
 
     pub fn evaluate_symbolic(&self, point: &[Univariate<E>]) -> Univariate<E> {
