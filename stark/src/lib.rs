@@ -414,9 +414,23 @@ where
         for &index in &indices {
             let idx = (index + row_step) % codeword_len;
             let (element, salt, path) = base_tree.open(idx);
+            assert!(SaltedMerkle::verify(
+                base_tree.root(),
+                idx,
+                salt,
+                &path,
+                &element
+            ));
             proof_stream.push(protocol::ProofObject::LeafItems(element));
             proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
             let (element, salt, path) = extension_tree.open(idx);
+            assert!(SaltedMerkle::verify(
+                base_tree.root(),
+                idx,
+                salt,
+                &path,
+                &element
+            ));
             proof_stream.push(protocol::ProofObject::LeafItems(element));
             proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
         }
@@ -426,12 +440,21 @@ where
         // open combination codewords at same positions
         for index in indices {
             let (element, salt, path) = combination_tree.open(index);
+            assert!(SaltedMerkle::verify(
+                combination_tree.root(),
+                index,
+                salt,
+                &path,
+                &element
+            ));
             proof_stream.push(protocol::ProofObject::LeafItem(element));
             proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
-            // asser
         }
 
-        Vec::new()
+        // prove low degree of combination polynomial and collect indices
+
+        // the final proof is just the serialized stream
+        proof_stream.serialize()
     }
 }
 

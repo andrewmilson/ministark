@@ -63,8 +63,8 @@ fn hello_world() {
         memory: memory_matrix,
     } = brainfuck::stark::simulate::<BaseFelt>(&program, &mut std::io::empty(), &mut output);
 
-    // let running_time = processor_matrix.len();
-    // println!("{running_time}");
+    let running_time = processor_matrix.len();
+    println!("{running_time}");
     // let memory_length = memory_matrix.len();
 
     let mut proof_stream = StandardProofStream::<BaseFelt>::new();
@@ -80,7 +80,7 @@ fn hello_world() {
         &mut proof_stream,
     );
 
-    // assert_eq!(running_time, 10);
+    println!("Size: {}", res.len());
 }
 
 #[test]

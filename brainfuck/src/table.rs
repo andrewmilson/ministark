@@ -229,15 +229,33 @@ where
     }
 
     fn boundary_quotient_degree_bounds(&self, challenges: &[E]) -> Vec<usize> {
-        todo!()
+        let max_degrees = vec![self.interpolant_degree(); Self::EXTENSION_WIDTH];
+        Self::extension_boundary_constraints(challenges)
+            .into_iter()
+            // TODO: improve this comment. It's late. Can't think
+            // -1 at the end since the boundary is divided out
+            .map(|constraint| constraint.symbolic_degree_bound(&max_degrees) - 1)
+            .collect()
     }
 
     fn transition_quotient_degree_bounds(&self, challenges: &[E]) -> Vec<usize> {
-        todo!()
+        let max_degrees = vec![self.interpolant_degree(); 2 * Self::EXTENSION_WIDTH];
+        Self::extension_transition_constraints(challenges)
+            .into_iter()
+            // TODO: improve this comment. It's late. Can't think
+            // divide out all 0 roots. +1 at the end since the last point is not checked
+            .map(|constraint| constraint.symbolic_degree_bound(&max_degrees) - self.height() + 1)
+            .collect()
     }
 
     fn terminal_quotient_degree_bounds(&self, challenges: &[E], terminals: &[E]) -> Vec<usize> {
-        todo!()
+        let max_degrees = vec![self.interpolant_degree(); Self::EXTENSION_WIDTH];
+        self.extension_terminal_constraints(challenges, terminals)
+            .into_iter()
+            // TODO: improve this comment. It's late. Can't think
+            // -1 at the end since the terminal is divided out
+            .map(|constraint| constraint.symbolic_degree_bound(&max_degrees) - 1)
+            .collect()
     }
 
     fn all_quotient_degree_bounds(&self, challenges: &[E], terminals: &[E]) -> Vec<usize> {

@@ -114,7 +114,29 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
     }
 
     fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
-        todo!()
+        let mut challenges_iter = challenges.iter().copied();
+        let a = challenges_iter.next().unwrap();
+        let b = challenges_iter.next().unwrap();
+        let c = challenges_iter.next().unwrap();
+        let d = challenges_iter.next().unwrap();
+        let _e = challenges_iter.next().unwrap();
+        let _f = challenges_iter.next().unwrap();
+        let _alpha = challenges_iter.next().unwrap();
+        let _beta = challenges_iter.next().unwrap();
+        let _gamma = challenges_iter.next().unwrap();
+        let _delta = challenges_iter.next().unwrap();
+        let _eta = challenges_iter.next().unwrap();
+
+        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH);
+        let ip = variables[Self::IP].clone();
+        let curr_instr = variables[Self::CURR_INSTR].clone();
+        let next_instr = variables[Self::NEXT_INSTR].clone();
+        let evaluation = variables[Self::PROGRAM_EVALUATION].clone();
+
+        vec![
+            ip.clone(),
+            evaluation.clone() - ip.clone() * a - curr_instr.clone() * b - next_instr.clone() * c,
+        ]
     }
 
     fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
