@@ -14,6 +14,7 @@ pub enum ProofObject<E> {
     MerklePath(Vec<u64>),
     YValue(E),
     YValues((E, E, E)),
+    Terminal(E),
 }
 
 pub trait ProofStream<E> {

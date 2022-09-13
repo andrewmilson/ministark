@@ -228,6 +228,30 @@ where
         vec![boundary_quotients, transition_quotients, terminal_quotients].concat()
     }
 
+    fn boundary_quotient_degree_bounds(&self, challenges: &[E]) -> Vec<usize> {
+        todo!()
+    }
+
+    fn transition_quotient_degree_bounds(&self, challenges: &[E]) -> Vec<usize> {
+        todo!()
+    }
+
+    fn terminal_quotient_degree_bounds(&self, challenges: &[E], terminals: &[E]) -> Vec<usize> {
+        todo!()
+    }
+
+    fn all_quotient_degree_bounds(&self, challenges: &[E], terminals: &[E]) -> Vec<usize> {
+        let boundary_degree_bounds = self.boundary_quotient_degree_bounds(challenges);
+        let transition_degree_bounds = self.transition_quotient_degree_bounds(challenges);
+        let terminal_degree_bounds = self.terminal_quotient_degree_bounds(challenges, terminals);
+        vec![
+            boundary_degree_bounds,
+            transition_degree_bounds,
+            terminal_degree_bounds,
+        ]
+        .concat()
+    }
+
     // //
     // fn get_base_columns(&self) -> [Vec<E>; Self::BASE_WIDTH];
     // //

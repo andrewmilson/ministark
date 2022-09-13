@@ -3,9 +3,11 @@
 
 use std::slice::Iter;
 
+pub mod evaluation_argument;
 mod instruction_table;
 mod io_table;
 mod memory_table;
+pub mod permutation_argument;
 mod processor_table;
 pub mod stark;
 mod table;

@@ -23,12 +23,12 @@ pub struct InstructionTable<F, E> {
 
 impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> InstructionTable<F, E> {
     // base columns
-    const IP: usize = 0;
-    const CURR_INSTR: usize = 1;
-    const NEXT_INSTR: usize = 2;
+    pub const IP: usize = 0;
+    pub const CURR_INSTR: usize = 1;
+    pub const NEXT_INSTR: usize = 2;
     // extension columns
-    const PROCESSOR_PERMUTATION: usize = 3;
-    const PROGRAM_EVALUATION: usize = 4;
+    pub const PROCESSOR_PERMUTATION: usize = 3;
+    pub const PROGRAM_EVALUATION: usize = 4;
 
     pub fn new(num_randomizers: usize) -> Self {
         InstructionTable {
@@ -90,13 +90,13 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
     }
 
     fn base_boundary_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::variables(3);
+        let variables = Multivariate::variables(BASE_WIDTH);
         // address starts at zero
         vec![variables[Self::IP].clone()]
     }
 
     fn base_transition_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(14);
+        let variables = Multivariate::<E>::variables(BASE_WIDTH * 2);
         let ip = variables[Self::IP].clone();
         let curr_instr = variables[Self::CURR_INSTR].clone();
         let next_instr = variables[Self::NEXT_INSTR].clone();
@@ -131,7 +131,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         let delta = challenges_iter.next().unwrap();
         let eta = challenges_iter.next().unwrap();
 
-        let variables = Multivariate::<E>::variables(10);
+        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH * 2);
         let ip = variables[Self::IP].clone();
         let curr_instr = variables[Self::CURR_INSTR].clone();
         let next_instr = variables[Self::NEXT_INSTR].clone();
@@ -211,7 +211,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         let processor_output_evaluation_terminal = terminal_iter.next().unwrap();
         let instruction_evaluation_terminal = terminal_iter.next().unwrap();
 
-        let variables = Multivariate::<E>::variables(5);
+        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH);
 
         vec![
             variables[Self::PROCESSOR_PERMUTATION].clone()

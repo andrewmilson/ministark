@@ -20,9 +20,9 @@ struct IoTable<F, E> {
 
 impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> IoTable<F, E> {
     // base column
-    const VALUE: usize = 0;
+    pub const VALUE: usize = 0;
     // extension column
-    const EVALUATION: usize = 1;
+    pub const EVALUATION: usize = 1;
 
     pub fn new() -> Self {
         IoTable {

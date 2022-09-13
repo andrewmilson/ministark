@@ -6,6 +6,7 @@ use algebra::Multivariate;
 use algebra::PrimeFelt;
 use algebra::StarkFelt;
 use algebra::Univariate;
+use brainfuck::permutation_argument;
 use brainfuck::InputTable;
 use brainfuck::InstructionTable;
 use brainfuck::MemoryTable;
@@ -113,7 +114,7 @@ where
             .collect()
     }
 
-    pub fn prove<T: ProofStream<F>>(
+    pub fn prove<T: ProofStream<E>>(
         &mut self,
         processor_matrix: Vec<[F; ProcessorTable::<F, E>::BASE_WIDTH]>,
         memory_matrix: Vec<[F; MemoryTable::<F, E>::BASE_WIDTH]>,
@@ -148,18 +149,18 @@ where
         self.output_table.pad(padding_length);
 
         let codeword_len = self.fri_codeword_length();
+        let offset = F::GENERATOR;
+        let omega = F::get_root_of_unity(codeword_len.ilog2());
 
         let randomizer_codewords = {
             let n = ceil_power_of_two(self.max_degree());
             let coefficients = (0..n).map(|_| E::rand(&mut rng)).collect();
             let polynomial = Univariate::new(coefficients);
-            polynomial.scale(F::GENERATOR.into());
+            polynomial.scale(offset.into());
             let mut coefficients = polynomial.coefficients;
             coefficients.resize(codeword_len, E::zero());
             vec![number_theory_transform(&coefficients)]
         };
-
-        let offset = F::GENERATOR;
 
         let base_processor_lde = self.processor_table.base_lde(offset, codeword_len);
         let base_memory_lde = self.memory_table.base_lde(offset, codeword_len);
@@ -167,18 +168,26 @@ where
         let base_input_lde = self.input_table.base_lde(offset, codeword_len);
         let base_output_lde = self.output_table.base_lde(offset, codeword_len);
 
+        let base_codewords = vec![
+            base_processor_lde.clone(),
+            base_memory_lde.clone(),
+            base_instruction_lde.clone(),
+            base_input_lde.clone(),
+            base_output_lde.clone(),
+        ]
+        .concat();
+
+        let base_degree_bounds = vec![
+            vec![self.processor_table.interpolant_degree(); ProcessorTable::<F, E>::BASE_WIDTH],
+            vec![self.memory_table.interpolant_degree(); MemoryTable::<F, E>::BASE_WIDTH],
+            vec![self.instruction_table.interpolant_degree(); InstructionTable::<F, E>::BASE_WIDTH],
+            vec![self.input_table.interpolant_degree(); InputTable::<F, E>::BASE_WIDTH],
+            vec![self.output_table.interpolant_degree(); OutputTable::<F, E>::BASE_WIDTH],
+        ]
+        .concat();
+
         let base_zipped_codeword = (0..codeword_len)
-            .map(|i| {
-                empty()
-                    .chain(&base_processor_lde)
-                    .chain(&base_memory_lde)
-                    .chain(&base_instruction_lde)
-                    .chain(&base_input_lde)
-                    .chain(&base_output_lde)
-                    .chain(&randomizer_codewords)
-                    .map(|codeword| codeword[i])
-                    .collect()
-            })
+            .map(|i| base_codewords.iter().map(|codeword| codeword[i]).collect())
             .collect::<Vec<Vec<E>>>();
         let base_tree = SaltedMerkle::new(&base_zipped_codeword);
         proof_stream.push(protocol::ProofObject::MerkleRoot(base_tree.root()));
@@ -208,14 +217,43 @@ where
         let ext_input_lde = self.input_table.extension_lde(offset, codeword_len);
         let ext_output_lde = self.output_table.extension_lde(offset, codeword_len);
 
+        let extension_codewords = vec![
+            ext_processor_lde.clone(),
+            ext_memory_lde.clone(),
+            ext_instruction_lde.clone(),
+            ext_input_lde.clone(),
+            ext_output_lde.clone(),
+        ]
+        .concat();
+
+        let extension_degree_bounds = vec![
+            vec![
+                self.processor_table.interpolant_degree();
+                ProcessorTable::<F, E>::EXTENSION_WIDTH - ProcessorTable::<F, E>::BASE_WIDTH
+            ],
+            vec![
+                self.memory_table.interpolant_degree();
+                MemoryTable::<F, E>::EXTENSION_WIDTH - MemoryTable::<F, E>::BASE_WIDTH
+            ],
+            vec![
+                self.instruction_table.interpolant_degree();
+                InstructionTable::<F, E>::EXTENSION_WIDTH - InstructionTable::<F, E>::BASE_WIDTH
+            ],
+            vec![
+                self.input_table.interpolant_degree();
+                InputTable::<F, E>::EXTENSION_WIDTH - InputTable::<F, E>::BASE_WIDTH
+            ],
+            vec![
+                self.output_table.interpolant_degree();
+                OutputTable::<F, E>::EXTENSION_WIDTH - OutputTable::<F, E>::BASE_WIDTH
+            ],
+        ]
+        .concat();
+
         let ext_zipped_codeword = (0..codeword_len)
             .map(|i| {
-                empty()
-                    .chain(&ext_processor_lde)
-                    .chain(&ext_memory_lde)
-                    .chain(&ext_instruction_lde)
-                    .chain(&ext_input_lde)
-                    .chain(&ext_output_lde)
+                extension_codewords
+                    .iter()
                     .map(|codeword| codeword[i])
                     .collect()
             })
@@ -230,7 +268,7 @@ where
         let input_codewords = vec![base_input_lde, ext_input_lde].concat();
         let output_codewords = vec![base_output_lde, ext_output_lde].concat();
 
-        let quotient_codewords = vec![
+        let mut quotient_codewords = vec![
             self.processor_table.all_quotients(
                 codeword_len,
                 &processor_codewords,
@@ -257,7 +295,88 @@ where
                 &challenges,
                 &terminals,
             ),
-        ];
+        ]
+        .concat();
+
+        let mut quotient_degree_bounds = vec![
+            self.processor_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+            self.memory_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+            self.instruction_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+            self.input_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+            self.output_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+        ]
+        .concat();
+
+        // Instruction permutation
+        quotient_codewords.push(permutation_argument::quotient(
+            &processor_codewords[ProcessorTable::<F, E>::INSTRUCTION_PERMUTATION],
+            &instruction_codewords[InstructionTable::<F, E>::PROCESSOR_PERMUTATION],
+        ));
+        quotient_degree_bounds.push(
+            usize::max(
+                self.processor_table.interpolant_degree(),
+                self.instruction_table.interpolant_degree(),
+            ) - 1,
+        );
+
+        // Memory permutation
+        quotient_codewords.push(permutation_argument::quotient(
+            &processor_codewords[ProcessorTable::<F, E>::MEMORY_PERMUTATION],
+            &memory_codewords[MemoryTable::<F, E>::PERMUTATION],
+        ));
+        quotient_degree_bounds.push(
+            usize::max(
+                self.processor_table.interpolant_degree(),
+                self.memory_table.interpolant_degree(),
+            ) - 1,
+        );
+
+        for &terminal in &terminals {
+            proof_stream.push(protocol::ProofObject::Terminal(terminal));
+        }
+
+        // get weights for non-linear combination
+        // - 1 for randomizer polynomial
+        // - 2 for every other polynomial (base, extension, quotients)
+        let num_base_polynomials = ProcessorTable::<F, E>::BASE_WIDTH
+            + MemoryTable::<F, E>::BASE_WIDTH
+            + InstructionTable::<F, E>::BASE_WIDTH
+            + InputTable::<F, E>::BASE_WIDTH
+            + OutputTable::<F, E>::BASE_WIDTH;
+        let num_extension_polynomials = ProcessorTable::<F, E>::EXTENSION_WIDTH
+            + MemoryTable::<F, E>::EXTENSION_WIDTH
+            + InstructionTable::<F, E>::EXTENSION_WIDTH
+            + InputTable::<F, E>::EXTENSION_WIDTH
+            + OutputTable::<F, E>::EXTENSION_WIDTH
+            - num_base_polynomials;
+        let num_randomizer_polynomials = randomizer_codewords.len();
+        let num_quotient_polynomials = quotient_degree_bounds.len();
+        let weights_seed = proof_stream.prover_fiat_shamir();
+        let weights = self.sample_weights(
+            num_randomizer_polynomials
+                + 2 * (num_base_polynomials + num_extension_polynomials + num_quotient_polynomials),
+            weights_seed,
+        );
+
+        // compute terms of non-linear combination polynomial
+        let mut terms = randomizer_codewords.clone();
+        assert_eq!(base_codewords.len(), num_base_polynomials);
+        for (codeword, degree_bound) in base_codewords.into_iter().zip(base_degree_bounds) {
+            let shift = (self.max_degree() - degree_bound) as u64;
+            // dot product of codeword and evaluation of the polynomial `x^shift`
+            let shifted_codeword = (0..codeword_len)
+                .map(|i| (offset * omega.pow(&[i as u64])).pow(&[shift]).into() * codeword[i])
+                .collect::<Vec<E>>();
+            terms.push(codeword);
+            terms.push(shifted_codeword);
+        }
+
+        assert_eq!(extension_codewords.len(), num_extension_polynomials);
 
         Vec::new()
     }

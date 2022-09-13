@@ -21,12 +21,12 @@ pub struct MemoryTable<F, E> {
 
 impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> MemoryTable<F, E> {
     // base columns
-    const CYCLE: usize = 0;
-    const MP: usize = 1;
-    const MEM_VAL: usize = 2;
-    const DUMMY: usize = 3;
+    pub const CYCLE: usize = 0;
+    pub const MP: usize = 1;
+    pub const MEM_VAL: usize = 2;
+    pub const DUMMY: usize = 3;
     // extension columns
-    const PERMUTATION: usize = 4;
+    pub const PERMUTATION: usize = 4;
 
     pub fn new(num_randomizers: usize) -> Self {
         MemoryTable {
