@@ -76,17 +76,120 @@ where
         // TODO: HELP: trying to understand zerofier here
         let mut quotient_codewords = Vec::new();
         let omega = F::get_root_of_unity(codeword_len.ilog2());
-        // Evaluations of the polynomial (x - ω^0) over the FRI domain
+        // Evaluations of the polynomial (x - o^0) over the FRI domain
         let zerofier = (0..codeword_len)
             .map(|i| F::GENERATOR * omega.pow(&[i as u64]) - F::one())
             .collect::<Vec<F>>();
         let zerofier_inv = batch_inverse(&zerofier)
             .into_iter()
-            .map(|z| E::from(z.unwrap()))
+            .map(|z| z.unwrap().into())
             .collect::<Vec<E>>();
 
         let boundary_constraints = Self::extension_boundary_constraints(challenges);
         for constraint in boundary_constraints {
+            let mut quotient_codeword = Vec::new();
+            for i in 0..codeword_len {
+                let point = codewords
+                    .iter()
+                    .map(|codeword| codeword[i])
+                    .collect::<Vec<E>>();
+                quotient_codeword.push(constraint.evaluate(&point) * zerofier_inv[i]);
+            }
+            quotient_codewords.push(quotient_codeword);
+        }
+
+        quotient_codewords
+    }
+
+    fn transition_quotients(
+        &self,
+        codeword_len: usize,
+        codewords: &[Vec<E>],
+        challenges: &[E],
+    ) -> Vec<Vec<E>> {
+        let mut quotient_codewords = Vec::new();
+        // Evaluations of the polynomial (x - o^0)...(x - o^(n-1)) over the FRI domain
+        // (x - o^0)...(x - o^(n-1)) = x^n - 1
+        // Note: codeword_len = n * expansion_factor
+        let omega = F::get_root_of_unity(codeword_len.ilog2());
+        let subgroup_zerofier = (0..codeword_len)
+            .map(|i| {
+                (F::GENERATOR * omega.pow(&[i as u64])).pow(&[self.height() as u64]) - F::one()
+            })
+            .collect::<Vec<F>>();
+        let subgroup_zerofier_inv = batch_inverse(&subgroup_zerofier)
+            .into_iter()
+            .map(|z| z.unwrap())
+            .collect::<Vec<F>>();
+        // Transition constraints apply to all rows of execution trace except the last
+        // row. We need to change the inverse zerofier from being the
+        // evaluations of the polynomial `1/((x - o^0)...(x - o^(n-1)))` to
+        // `1/((x - o^0)...(x - o^(n-2)))`. This is achieved by performing the
+        // dot product of the inverse zerofier codeword and the codeword defined by
+        // the evaluations of the polynomial (x - o^(n-1)). Note that o^(n-1) is the
+        // inverse of `o`.
+        let last_omicron = F::get_root_of_unity(self.height().ilog2())
+            .inverse()
+            .unwrap();
+        let zerofier_inv = (0..codeword_len)
+            .map(|i| {
+                subgroup_zerofier_inv[i] * (F::GENERATOR * omega.pow(&[i as u64]) - last_omicron)
+            })
+            .map(E::from)
+            .collect::<Vec<E>>();
+
+        let row_step = codeword_len / self.height();
+        let transition_constraints = Self::extension_transition_constraints(challenges);
+        for constraint in transition_constraints {
+            let mut quotient_codeword = Vec::new();
+            // let combination_codeword = Vec::new();
+            for i in 0..codeword_len {
+                let point_lhs = codewords
+                    .iter()
+                    .map(|codeword| codeword[i])
+                    .collect::<Vec<E>>();
+                // TODO: HELP: why do we just wrap around here. Don't we need the codeword to be
+                // extended so we have the right point?
+                // Right. We are dealing with roots of unity so the evaluation is o^(n-1)*o=o^0
+                let point_rhs = codewords
+                    .iter()
+                    .map(|codeword| codeword[(i + row_step) % codeword_len])
+                    .collect::<Vec<E>>();
+                let point = vec![point_lhs, point_rhs].concat();
+                let evaluation = constraint.evaluate(&point);
+                // combination_codeword.push(evaluation);
+                quotient_codeword.push(evaluation * zerofier_inv[i]);
+            }
+            quotient_codewords.push(quotient_codeword);
+        }
+
+        quotient_codewords
+    }
+
+    fn terminal_quotients(
+        &self,
+        codeword_len: usize,
+        codewords: &[Vec<E>],
+        challenges: &[E],
+        terminals: &[E],
+    ) -> Vec<Vec<E>> {
+        let mut quotient_codewords = Vec::new();
+        let omega = F::get_root_of_unity(codeword_len.ilog2());
+        let last_omicron = F::get_root_of_unity(self.height().ilog2())
+            .inverse()
+            .unwrap();
+        // evaluations of the polynomial (x - o^(n-1)). Note that o^(n-1) is the
+        // inverse of `o`.
+        let zerofier = (0..codeword_len)
+            .map(|i| F::GENERATOR * omega.pow(&[i as u64]) - F::one())
+            .collect::<Vec<F>>();
+        let zerofier_inv = batch_inverse(&zerofier)
+            .into_iter()
+            .map(|z| z.unwrap().into())
+            .collect::<Vec<E>>();
+
+        let terminal_constraints = self.extension_terminal_constraints(challenges, terminals);
+        for constraint in terminal_constraints {
             let mut quotient_codeword = Vec::new();
             for i in 0..codeword_len {
                 let point = codewords
@@ -106,10 +209,12 @@ where
         codeword_len: usize,
         codewords: &[Vec<E>],
         challenges: &[E],
+        terminals: &[E],
     ) -> Vec<Vec<E>> {
         let boundary_quotients = self.boundary_quotients(codeword_len, codewords, challenges);
-        let transition_quotients = todo!();
-        let terminal_quotients = todo!();
+        let transition_quotients = self.transition_quotients(codeword_len, codewords, challenges);
+        let terminal_quotients =
+            self.terminal_quotients(codeword_len, codewords, challenges, terminals);
         vec![boundary_quotients, transition_quotients, terminal_quotients].concat()
     }
 
