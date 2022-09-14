@@ -370,6 +370,7 @@ impl<E: StarkFelt<BaseFelt = E>> Stark<E> {
             fast_coset_evaluate(&randomizer_polynomial, E::GENERATOR, self.fri.domain_length);
         let randomizer_root = MerkleTree::commit(&randomizer_codeword);
         proof_stream.push(ProofObject::MerkleRoot(randomizer_root));
+        println!("OOOOIIIII");
 
         // get weights for nonlinear combination
         // - 1 randomizer
@@ -504,6 +505,7 @@ impl<E: StarkFelt<BaseFelt = E>> Stark<E> {
 
         profile.sort_by(|a, b| b.1.cmp(&a.1));
 
+        println!("WHYYYYYYY NOTTT");
         println!("============================");
         println!("STARK proof generation profile:");
         for (name, duration) in profile {

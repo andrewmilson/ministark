@@ -72,10 +72,10 @@ impl<E: Felt> ProofStream<E> for StandardProofStream<E> {
     }
 
     fn prover_fiat_shamir(&self) -> u64 {
-        // let mut hash = DefaultHasher::new();
-        // self.serialize().hash(&mut hash);
-        // hash.finish()
-        todo!()
+        let mut hash = DefaultHasher::new();
+        <Self as ProofStream<E>>::serialize(self).hash(&mut hash);
+        hash.finish()
+        // todo!()
     }
 
     fn verifier_fiat_shamir(&self) -> u64 {

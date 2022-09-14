@@ -20,6 +20,7 @@ pub enum ProofObject<E> {
     LeafItems(Vec<E>),
     LeafItem(E),
     MerklePathWithSalt((u64, Vec<u64>)),
+    FriLeafs((E, E, E)),
 }
 
 pub trait ProofStream<E> {

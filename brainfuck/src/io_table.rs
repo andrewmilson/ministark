@@ -8,6 +8,7 @@ use algebra::PrimeFelt;
 use algebra::StarkFelt;
 use mini_stark::number_theory_transform::inverse_number_theory_transform;
 use mini_stark::number_theory_transform::number_theory_transform;
+use num_traits::Zero;
 
 const BASE_WIDTH: usize = 1;
 const EXTENSION_WIDTH: usize = 2;
@@ -102,7 +103,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> IoTable<F
             extension_row[..BASE_WIDTH].copy_from_slice(&base_row.map(|v| v.into()));
             io_running_evaluation = io_running_evaluation * challenge + extension_row[Self::VALUE];
             extension_row[Self::EVALUATION] = io_running_evaluation;
-            if i == self.len() - 1 {
+            if !self.len().is_zero() && i == self.len() - 1 {
                 evaluation_terminal = io_running_evaluation;
             }
             extended_matrix.push(extension_row);

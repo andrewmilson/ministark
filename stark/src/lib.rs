@@ -13,6 +13,8 @@ use brainfuck::MemoryTable;
 use brainfuck::OutputTable;
 use brainfuck::ProcessorTable;
 use brainfuck::Table;
+use fri::Fri;
+use fri::FriParams;
 use mini_stark::number_theory_transform::number_theory_transform;
 use mini_stark::polynomial::Polynomial;
 use protocol::ProofStream;
@@ -26,6 +28,8 @@ use std::iter::empty;
 use std::marker::PhantomData;
 use std::vec;
 
+mod fri;
+mod merkle;
 pub mod protocol;
 mod salted_merkle;
 
@@ -48,7 +52,7 @@ impl StarkParams {
     }
 
     pub fn num_randomizers(&self) -> usize {
-        self.security_level
+        0 //self.security_level
     }
 
     pub fn security_level(&self) -> usize {
@@ -58,10 +62,17 @@ impl StarkParams {
     pub fn expansion_factor(&self) -> usize {
         self.expansion_factor
     }
+
+    pub fn fri_params(&self) -> FriParams {
+        let expension_factor = self.expansion_factor();
+        let num_colinearity_checks = self.security_level() / expension_factor.ilog2() as usize;
+        FriParams::new(expension_factor, num_colinearity_checks)
+    }
 }
 
 pub struct BrainFuckStark<F, E = F> {
     params: StarkParams,
+    fri: Fri<E>,
     processor_table: ProcessorTable<F, E>,
     memory_table: MemoryTable<F, E>,
     instruction_table: InstructionTable<F, E>,
@@ -69,15 +80,17 @@ pub struct BrainFuckStark<F, E = F> {
     output_table: OutputTable<F, E>,
 }
 
-impl<F: PrimeFelt + StarkFelt, E: Felt + ExtensionOf<F>> BrainFuckStark<F, E>
+impl<F, E> BrainFuckStark<F, E>
 where
     F: PrimeFelt + StarkFelt,
     E: Felt<BaseFelt = F> + ExtensionOf<F>,
 {
     pub fn new(params: StarkParams) -> Self {
         let num_randomizers = params.num_randomizers();
+        let fri = Fri::new(params.fri_params());
         BrainFuckStark {
             params,
+            fri,
             processor_table: ProcessorTable::new(num_randomizers),
             memory_table: MemoryTable::new(num_randomizers),
             instruction_table: InstructionTable::new(num_randomizers),
@@ -425,7 +438,7 @@ where
             proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
             let (element, salt, path) = extension_tree.open(idx);
             assert!(SaltedMerkle::verify(
-                base_tree.root(),
+                extension_tree.root(),
                 idx,
                 salt,
                 &path,
@@ -452,6 +465,7 @@ where
         }
 
         // prove low degree of combination polynomial and collect indices
+        self.fri.prove(proof_stream, &combination_codeword);
 
         // the final proof is just the serialized stream
         proof_stream.serialize()
@@ -459,7 +473,7 @@ where
 }
 
 /// Rounds the input value up the the nearest power of two
-fn ceil_power_of_two(value: usize) -> usize {
+pub(crate) fn ceil_power_of_two(value: usize) -> usize {
     if value.is_power_of_two() {
         value
     } else {

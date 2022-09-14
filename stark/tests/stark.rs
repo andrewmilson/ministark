@@ -12,6 +12,7 @@ use num_traits::Zero;
 use stark::protocol::StandardProofStream;
 use stark::BrainFuckStark;
 use stark::StarkParams;
+use std::fs;
 
 const FIB_TO_100_SOURCE: &str = "
 +++++++++++
@@ -51,9 +52,13 @@ const HELLO_WORLD_SOURCE: &str = "
     > .                     print '\n'
 ";
 
+const TINY: &str = "
++++++++++.
+";
+
 #[test]
 fn hello_world() {
-    let program = compile(HELLO_WORLD_SOURCE);
+    let program = compile(FIB_TO_100_SOURCE); //HELLO_WORLD_SOURCE);
     let mut output = Vec::new();
     let SimulationMatrices {
         processor: processor_matrix,
@@ -64,12 +69,11 @@ fn hello_world() {
     } = brainfuck::stark::simulate::<BaseFelt>(&program, &mut std::io::empty(), &mut output);
 
     let running_time = processor_matrix.len();
-    println!("{running_time}");
+    println!("Running time: {running_time}");
     // let memory_length = memory_matrix.len();
 
     let mut proof_stream = StandardProofStream::<BaseFelt>::new();
-    // let params = StarkParams::new(8, 128);
-    let params = StarkParams::new(4, 0);
+    let params = StarkParams::new(4, 128);
     let mut bfs = BrainFuckStark::<BaseFelt, BaseFelt>::new(params);
     let res = bfs.prove(
         processor_matrix,
@@ -80,7 +84,13 @@ fn hello_world() {
         &mut proof_stream,
     );
 
+    println!(
+        "Output: {}",
+        String::from_utf8(output).unwrap(),
+        // output.iter().map(|v| v as char).collect::<Vec<char>>()
+    );
     println!("Size: {}", res.len());
+    fs::write("./proof.json", res).unwrap();
 }
 
 #[test]

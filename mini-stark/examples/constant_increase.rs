@@ -78,9 +78,10 @@ fn execute_program_with_trace(
 }
 
 fn main() {
+    println!("IS THIS WORKING");
     // Parameters for the program
     let starting_number = 7;
-    let increment_times = 2090;
+    let increment_times = 150;
 
     // Execution and generation of the trace. Prover would provide the output along
     // with the STARK proof to the verifier. The program increments the number
@@ -120,6 +121,7 @@ fn main() {
 
     // Prover generates the STARK proof.
     let mut prover_proof_stream = StandardProofStream::new();
+    println!("WHOA");
     println!("Generating proof to prove program output '{program_output}'...");
     let now = Instant::now();
     let serialized_proof = stark.prove(

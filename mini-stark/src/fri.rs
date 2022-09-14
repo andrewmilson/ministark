@@ -51,6 +51,7 @@ impl<E: Felt> Fri<E> {
     }
 
     pub fn prove<T: ProofStream<E>>(&self, codeword: Vec<E>, proof_stream: &mut T) -> Vec<usize> {
+        println!("Doing FRI");
         assert_eq!(
             self.domain_length,
             codeword.len(),
@@ -88,6 +89,8 @@ impl<E: Felt> Fri<E> {
         reduced_size: usize,
         number: usize,
     ) -> Vec<usize> {
+        println!("expantion: {reduced_size}");
+        println!("colinearity: {number}");
         assert!(number <= reduced_size, "cannot sample more indices than available in last codeword; requested: {}, available: {}", number, reduced_size);
         assert!(
             number <= 2 * reduced_size,
