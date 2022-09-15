@@ -11,7 +11,7 @@ use num_traits::One;
 use num_traits::Zero;
 use stark::protocol::StandardProofStream;
 use stark::BrainFuckStark;
-use stark::StarkParams;
+use stark::Config;
 use std::fs;
 
 const FIB_TO_100_SOURCE: &str = "
@@ -56,9 +56,20 @@ const TINY: &str = "
 +++++++++.
 ";
 
+struct TestStark;
+
+impl Config for TestStark {
+    type BaseFelt = BaseFelt;
+    type ExtensionFelt = BaseFelt;
+
+    const EXPANSION_FACTOR: usize = 4;
+    const SECURITY_LEVEL: usize = 128;
+    const NUM_RANDOMIZERS: usize = 0;
+}
+
 #[test]
 fn hello_world() {
-    let program = compile(FIB_TO_100_SOURCE); //HELLO_WORLD_SOURCE);
+    let program = compile(TINY); //HELLO_WORLD_SOURCE);
     let mut output = Vec::new();
     let SimulationMatrices {
         processor: processor_matrix,
@@ -73,8 +84,7 @@ fn hello_world() {
     // let memory_length = memory_matrix.len();
 
     let mut proof_stream = StandardProofStream::<BaseFelt>::new();
-    let params = StarkParams::new(4, 128);
-    let mut bfs = BrainFuckStark::<BaseFelt, BaseFelt>::new(params);
+    let mut bfs = BrainFuckStark::<TestStark>::new(TestStark);
     let res = bfs.prove(
         processor_matrix,
         memory_matrix,

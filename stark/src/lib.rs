@@ -5,6 +5,7 @@ use algebra::Felt;
 use algebra::Multivariate;
 use algebra::PrimeFelt;
 use algebra::StarkFelt;
+use algebra::UniformRand;
 use algebra::Univariate;
 use brainfuck::permutation_argument;
 use brainfuck::InputTable;
@@ -14,9 +15,9 @@ use brainfuck::OutputTable;
 use brainfuck::ProcessorTable;
 use brainfuck::Table;
 use fri::Fri;
-use fri::FriParams;
 use mini_stark::number_theory_transform::number_theory_transform;
 use mini_stark::polynomial::Polynomial;
+use num_traits::Zero;
 use protocol::ProofStream;
 use rand::Rng;
 use salted_merkle::SaltedMerkle;
@@ -33,67 +34,81 @@ mod merkle;
 pub mod protocol;
 mod salted_merkle;
 
-pub struct StarkParams {
-    /// power of 2 expansion factor
-    expansion_factor: usize,
-    /// security level of generated proofs
-    security_level: usize,
-    // TODO: fri params. folding factor, queries, etc.
+pub trait Config {
+    type BaseFelt: PrimeFelt + StarkFelt;
+    type ExtensionFelt: Felt<BaseFelt = Self::BaseFelt> + ExtensionOf<Self::BaseFelt>;
+    // type MerkleParams: ark_crypto_primitives::merkle_tree::Config;
+
+    const EXPANSION_FACTOR: usize;
+    const SECURITY_LEVEL: usize;
+    const NUM_RANDOMIZERS: usize = Self::SECURITY_LEVEL;
 }
 
-impl StarkParams {
-    pub fn new(expansion_factor: usize, security_level: usize) -> StarkParams {
-        assert!(expansion_factor >= 4, "must be 4 or greater");
-        assert!(expansion_factor.is_power_of_two(), "not a power of two");
-        StarkParams {
-            expansion_factor,
-            security_level,
-        }
-    }
+// Generate fri config from stark config
+impl<P: Config> fri::Config for P {
+    type BaseFelt = P::BaseFelt;
+    type ExtensionFelt = P::ExtensionFelt;
+    // type MerkleParams = P::MerkleParams;
 
-    pub fn num_randomizers(&self) -> usize {
-        0 //self.security_level
-    }
+    const EXPANSION_FACTOR: usize = P::EXPANSION_FACTOR;
+    const SECURITY_LEVEL: usize = P::SECURITY_LEVEL;
 
-    pub fn security_level(&self) -> usize {
-        self.security_level
-    }
-
-    pub fn expansion_factor(&self) -> usize {
-        self.expansion_factor
-    }
-
-    pub fn fri_params(&self) -> FriParams {
-        let expension_factor = self.expansion_factor();
-        let num_colinearity_checks = self.security_level() / expension_factor.ilog2() as usize;
-        FriParams::new(expension_factor, num_colinearity_checks)
-    }
+    // assert!(EXPANSION_FACTOR >= 4, "must be 4 or greater");
+    // assert!(EXPANSION_FACTOR.is_power_of_two(), "not a power of two");
 }
 
-pub struct BrainFuckStark<F, E = F> {
-    params: StarkParams,
-    fri: Fri<E>,
-    processor_table: ProcessorTable<F, E>,
-    memory_table: MemoryTable<F, E>,
-    instruction_table: InstructionTable<F, E>,
-    input_table: InputTable<F, E>,
-    output_table: OutputTable<F, E>,
+// pub struct StarkParams {
+//     /// power of 2 expansion factor
+//     EXPANSION_FACTOR: usize,
+//     /// security level of generated proofs
+//     SECURITY_LEVEL: usize,
+//     // TODO: fri params. folding factor, queries, etc.
+// }
+
+// impl StarkParams {
+//     pub fn new(EXPANSION_FACTOR: usize, SECURITY_LEVEL: usize) -> StarkParams
+// {
+//         StarkParams {
+//             EXPANSION_FACTOR,
+//             SECURITY_LEVEL,
+//         }
+//     }
+
+//     pub fn NUM_RANDOMIZERS(&self) -> usize {
+//         0 //self.SECURITY_LEVEL
+//     }
+
+//     pub fn SECURITY_LEVEL(&self) -> usize {
+//         self.SECURITY_LEVEL
+//     }
+
+//     pub fn EXPANSION_FACTOR(&self) -> usize {
+//         self.EXPANSION_FACTOR
+//     }
+
+//     pub fn fri_params(&self) -> FriParams {
+//         let expension_factor = self.EXPANSION_FACTOR();
+//         let num_colinearity_checks = self.SECURITY_LEVEL() /
+// expension_factor.ilog2() as usize;         FriParams::new(expension_factor,
+// num_colinearity_checks)     }
+// }
+
+pub struct BrainFuckStark<P: Config> {
+    fri: Fri<P>,
+    processor_table: ProcessorTable<P::BaseFelt, P::ExtensionFelt>,
+    memory_table: MemoryTable<P::BaseFelt, P::ExtensionFelt>,
+    instruction_table: InstructionTable<P::BaseFelt, P::ExtensionFelt>,
+    input_table: InputTable<P::BaseFelt, P::ExtensionFelt>,
+    output_table: OutputTable<P::BaseFelt, P::ExtensionFelt>,
 }
 
-impl<F, E> BrainFuckStark<F, E>
-where
-    F: PrimeFelt + StarkFelt,
-    E: Felt<BaseFelt = F> + ExtensionOf<F>,
-{
-    pub fn new(params: StarkParams) -> Self {
-        let num_randomizers = params.num_randomizers();
-        let fri = Fri::new(params.fri_params());
+impl<P: Config> BrainFuckStark<P> {
+    pub fn new(params: P) -> Self {
         BrainFuckStark {
-            params,
-            fri,
-            processor_table: ProcessorTable::new(num_randomizers),
-            memory_table: MemoryTable::new(num_randomizers),
-            instruction_table: InstructionTable::new(num_randomizers),
+            fri: Fri::new(params),
+            processor_table: ProcessorTable::new(P::NUM_RANDOMIZERS),
+            memory_table: MemoryTable::new(P::NUM_RANDOMIZERS),
+            instruction_table: InstructionTable::new(P::NUM_RANDOMIZERS),
             input_table: InputTable::new(),
             output_table: OutputTable::new(),
         }
@@ -114,15 +129,15 @@ where
     }
 
     fn fri_codeword_length(&self) -> usize {
-        (self.max_degree() + 1) * self.params.expansion_factor()
+        (self.max_degree() + 1) * P::EXPANSION_FACTOR
     }
 
-    fn sample_weights(&self, n: usize, randomness: u64) -> Vec<E> {
+    fn sample_weights(&self, n: usize, randomness: u64) -> Vec<P::ExtensionFelt> {
         (0..n)
             .map(|i| {
                 let mut hash = DefaultHasher::new();
                 (randomness as u128 + i as u128).hash(&mut hash);
-                E::from(hash.finish())
+                P::ExtensionFelt::from(hash.finish())
             })
             .collect()
     }
@@ -137,13 +152,17 @@ where
         indices
     }
 
-    pub fn prove<T: ProofStream<E>>(
+    pub fn prove<T: ProofStream<P::ExtensionFelt>>(
         &mut self,
-        processor_matrix: Vec<[F; ProcessorTable::<F, E>::BASE_WIDTH]>,
-        memory_matrix: Vec<[F; MemoryTable::<F, E>::BASE_WIDTH]>,
-        instruction_matrix: Vec<[F; InstructionTable::<F, E>::BASE_WIDTH]>,
-        input_matrix: Vec<[F; InputTable::<F, E>::BASE_WIDTH]>,
-        output_matrix: Vec<[F; OutputTable::<F, E>::BASE_WIDTH]>,
+        processor_matrix: Vec<
+            [P::BaseFelt; ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH],
+        >,
+        memory_matrix: Vec<[P::BaseFelt; MemoryTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH]>,
+        instruction_matrix: Vec<
+            [P::BaseFelt; InstructionTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH],
+        >,
+        input_matrix: Vec<[P::BaseFelt; InputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH]>,
+        output_matrix: Vec<[P::BaseFelt; OutputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH]>,
         proof_stream: &mut T,
     ) -> Vec<u8> {
         let mut rng = rand::thread_rng();
@@ -172,16 +191,16 @@ where
         self.output_table.pad(padding_length);
 
         let codeword_len = self.fri_codeword_length();
-        let offset = F::GENERATOR;
-        let omega = F::get_root_of_unity(codeword_len.ilog2());
+        let offset = P::BaseFelt::GENERATOR;
+        let omega = P::BaseFelt::get_root_of_unity(codeword_len.ilog2());
 
         let randomizer_codewords = {
             let n = ceil_power_of_two(self.max_degree());
-            let coefficients = (0..n).map(|_| E::rand(&mut rng)).collect();
+            let coefficients = (0..n).map(|_| P::ExtensionFelt::rand(&mut rng)).collect();
             let polynomial = Univariate::new(coefficients);
             polynomial.scale(offset.into());
             let mut coefficients = polynomial.coefficients;
-            coefficients.resize(codeword_len, E::zero());
+            coefficients.resize(codeword_len, P::ExtensionFelt::zero());
             vec![number_theory_transform(&coefficients)]
         };
 
@@ -201,24 +220,42 @@ where
         .concat();
 
         let base_degree_bounds = vec![
-            vec![self.processor_table.interpolant_degree(); ProcessorTable::<F, E>::BASE_WIDTH],
-            vec![self.memory_table.interpolant_degree(); MemoryTable::<F, E>::BASE_WIDTH],
-            vec![self.instruction_table.interpolant_degree(); InstructionTable::<F, E>::BASE_WIDTH],
-            vec![self.input_table.interpolant_degree(); InputTable::<F, E>::BASE_WIDTH],
-            vec![self.output_table.interpolant_degree(); OutputTable::<F, E>::BASE_WIDTH],
+            vec![
+                self.processor_table.interpolant_degree();
+                ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            ],
+            vec![
+                self.memory_table.interpolant_degree();
+                MemoryTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            ],
+            vec![
+                self.instruction_table.interpolant_degree();
+                InstructionTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            ],
+            vec![
+                self.input_table.interpolant_degree();
+                InputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            ],
+            vec![
+                self.output_table.interpolant_degree();
+                OutputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            ],
         ]
         .concat();
 
         let base_zipped_codeword = (0..codeword_len)
             .map(|i| base_codewords.iter().map(|codeword| codeword[i]).collect())
-            .collect::<Vec<Vec<E>>>();
+            .collect::<Vec<Vec<P::ExtensionFelt>>>();
         let base_tree = SaltedMerkle::new(&base_zipped_codeword);
         proof_stream.push(protocol::ProofObject::MerkleRoot(base_tree.root()));
         // TODO: base degree bounds
 
         // get coefficients for table extensions
         let challenges = self.sample_weights(11, proof_stream.prover_fiat_shamir());
-        let initials = vec![E::rand(&mut rng), E::rand(&mut rng)];
+        let initials = vec![
+            P::ExtensionFelt::rand(&mut rng),
+            P::ExtensionFelt::rand(&mut rng),
+        ];
 
         self.processor_table.extend(&challenges, &initials);
         self.memory_table.extend(&challenges, &initials);
@@ -252,23 +289,28 @@ where
         let extension_degree_bounds = vec![
             vec![
                 self.processor_table.interpolant_degree();
-                ProcessorTable::<F, E>::EXTENSION_WIDTH - ProcessorTable::<F, E>::BASE_WIDTH
+                ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                    - ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
             ],
             vec![
                 self.memory_table.interpolant_degree();
-                MemoryTable::<F, E>::EXTENSION_WIDTH - MemoryTable::<F, E>::BASE_WIDTH
+                MemoryTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                    - MemoryTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
             ],
             vec![
                 self.instruction_table.interpolant_degree();
-                InstructionTable::<F, E>::EXTENSION_WIDTH - InstructionTable::<F, E>::BASE_WIDTH
+                InstructionTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                    - InstructionTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
             ],
             vec![
                 self.input_table.interpolant_degree();
-                InputTable::<F, E>::EXTENSION_WIDTH - InputTable::<F, E>::BASE_WIDTH
+                InputTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                    - InputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
             ],
             vec![
                 self.output_table.interpolant_degree();
-                OutputTable::<F, E>::EXTENSION_WIDTH - OutputTable::<F, E>::BASE_WIDTH
+                OutputTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                    - OutputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
             ],
         ]
         .concat();
@@ -280,7 +322,7 @@ where
                     .map(|codeword| codeword[i])
                     .collect()
             })
-            .collect::<Vec<Vec<E>>>();
+            .collect::<Vec<Vec<P::ExtensionFelt>>>();
         let extension_tree = SaltedMerkle::new(&ext_zipped_codeword);
         proof_stream.push(protocol::ProofObject::MerkleRoot(extension_tree.root()));
         // TODO: extension degree bounds
@@ -337,8 +379,10 @@ where
 
         // Instruction permutation
         quotient_codewords.push(permutation_argument::quotient(
-            &processor_codewords[ProcessorTable::<F, E>::INSTRUCTION_PERMUTATION],
-            &instruction_codewords[InstructionTable::<F, E>::PROCESSOR_PERMUTATION],
+            &processor_codewords
+                [ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::INSTRUCTION_PERMUTATION],
+            &instruction_codewords
+                [InstructionTable::<P::BaseFelt, P::ExtensionFelt>::PROCESSOR_PERMUTATION],
         ));
         quotient_degree_bounds.push(
             usize::max(
@@ -349,8 +393,9 @@ where
 
         // Memory permutation
         quotient_codewords.push(permutation_argument::quotient(
-            &processor_codewords[ProcessorTable::<F, E>::MEMORY_PERMUTATION],
-            &memory_codewords[MemoryTable::<F, E>::PERMUTATION],
+            &processor_codewords
+                [ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::MEMORY_PERMUTATION],
+            &memory_codewords[MemoryTable::<P::BaseFelt, P::ExtensionFelt>::PERMUTATION],
         ));
         quotient_degree_bounds.push(
             usize::max(
@@ -366,17 +411,18 @@ where
         // get weights for non-linear combination
         // - 1 for randomizer polynomial
         // - 2 for every other polynomial (base, extension, quotients)
-        let num_base_polynomials = ProcessorTable::<F, E>::BASE_WIDTH
-            + MemoryTable::<F, E>::BASE_WIDTH
-            + InstructionTable::<F, E>::BASE_WIDTH
-            + InputTable::<F, E>::BASE_WIDTH
-            + OutputTable::<F, E>::BASE_WIDTH;
-        let num_extension_polynomials = ProcessorTable::<F, E>::EXTENSION_WIDTH
-            + MemoryTable::<F, E>::EXTENSION_WIDTH
-            + InstructionTable::<F, E>::EXTENSION_WIDTH
-            + InputTable::<F, E>::EXTENSION_WIDTH
-            + OutputTable::<F, E>::EXTENSION_WIDTH
-            - num_base_polynomials;
+        let num_base_polynomials = ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            + MemoryTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            + InstructionTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            + InputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+            + OutputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH;
+        let num_extension_polynomials =
+            ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                + MemoryTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                + InstructionTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                + InputTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                + OutputTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
+                - num_base_polynomials;
         let num_randomizer_polynomials = randomizer_codewords.len();
         let num_quotient_polynomials = quotient_degree_bounds.len();
         let weights_seed = proof_stream.prover_fiat_shamir();
@@ -400,8 +446,11 @@ where
             let shift = (self.max_degree() - degree_bound) as u64;
             // dot product of codeword and evaluation of the polynomial `x^shift`
             let shifted_codeword = (0..codeword_len)
-                .map(|i| E::from(offset * omega.pow(&[i as u64])).pow(&[shift]) * codeword[i])
-                .collect::<Vec<E>>();
+                .map(|i| {
+                    P::ExtensionFelt::from(offset * omega.pow(&[i as u64])).pow(&[shift])
+                        * codeword[i]
+                })
+                .collect::<Vec<P::ExtensionFelt>>();
             terms.push(codeword);
             terms.push(shifted_codeword);
         }
@@ -411,16 +460,15 @@ where
             .into_iter()
             .zip(weights)
             .map(|(term, weight)| term.into_iter().map(|v| v * weight).collect())
-            .fold(vec![E::zero(); codeword_len], sum);
+            .fold(vec![P::ExtensionFelt::zero(); codeword_len], sum);
         let combination_tree = SaltedMerkle::new(&combination_codeword);
         proof_stream.push(protocol::ProofObject::MerkleRoot(combination_tree.root()));
 
         // get indices of leafs to prove non-linear combination
         let indices_seed = proof_stream.prover_fiat_shamir();
-        let indices =
-            Self::sample_indices(self.params.security_level(), indices_seed, codeword_len);
+        let indices = Self::sample_indices(P::SECURITY_LEVEL, indices_seed, codeword_len);
 
-        let row_step = self.params.expansion_factor();
+        let row_step = P::EXPANSION_FACTOR;
         assert!(row_step.is_power_of_two());
 
         // open leafs of zipped codewords at indicated positions

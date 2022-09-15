@@ -3,6 +3,8 @@
 
 .DS_Store
 
+proof.json
+
 # Metal GPU artifacts
 *.air
 *.metallib

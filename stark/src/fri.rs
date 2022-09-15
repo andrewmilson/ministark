@@ -1,10 +1,12 @@
 use crate::ceil_power_of_two;
 use crate::merkle::Merkle;
 use crate::protocol::ProofStream;
+use algebra::fp_u128::BaseFelt;
 use algebra::ExtensionOf;
 use algebra::Felt;
 use algebra::PrimeFelt;
 use algebra::StarkFelt;
+use num_traits::One;
 use std::collections::hash_map::DefaultHasher;
 use std::hash;
 use std::hash::Hash;
@@ -12,43 +14,46 @@ use std::hash::Hasher;
 use std::iter::zip;
 use std::marker::PhantomData;
 
-pub struct FriParams {
-    expansion_factor: usize,
-    num_colinearity_tests: usize,
+pub trait Config {
+    type BaseFelt: PrimeFelt + StarkFelt;
+    type ExtensionFelt: Felt<BaseFelt = Self::BaseFelt> + ExtensionOf<Self::BaseFelt>;
+    // type MerkleParams: ark_crypto_primitives::merkle_tree::Config;
+
+    const EXPANSION_FACTOR: usize;
+    const SECURITY_LEVEL: usize;
+    const NUM_COLINEARITY_CHECKS: usize =
+        Self::SECURITY_LEVEL / Self::EXPANSION_FACTOR.ilog2() as usize;
 }
 
-impl FriParams {
-    pub fn new(expansion_factor: usize, num_colinearity_tests: usize) -> FriParams {
-        Self {
-            expansion_factor,
-            num_colinearity_tests,
-        }
-    }
+// pub struct FriParams {
+//     EXPANSION_FACTOR: usize,
+//     num_colinearity_tests: usize,
+// }
 
-    pub fn expansion_factor(&self) -> usize {
-        self.expansion_factor
-    }
+// impl FriParams {
+//     pub fn new(EXPANSION_FACTOR: usize, num_colinearity_tests: usize) ->
+// FriParams {         Self {
+//             EXPANSION_FACTOR,
+//             num_colinearity_tests,
+//         }
+//     }
 
-    pub fn num_colinearity_tests(&self) -> usize {
-        self.num_colinearity_tests
-    }
+//     pub fn EXPANSION_FACTOR(&self) -> usize {
+//         self.EXPANSION_FACTOR
+//     }
+
+//     pub fn num_colinearity_tests(&self) -> usize {
+//         self.num_colinearity_tests
+//     }
+// }
+
+pub struct Fri<P: Config> {
+    params: P,
 }
 
-pub struct Fri<F> {
-    params: FriParams,
-    _phantom: PhantomData<F>,
-}
-
-impl<E> Fri<E>
-where
-    E: Felt,
-    E::BaseFelt: StarkFelt,
-{
-    pub fn new(params: FriParams) -> Self {
-        Fri {
-            params,
-            _phantom: PhantomData,
-        }
+impl<P: Config> Fri<P> {
+    pub fn new(params: P) -> Self {
+        Fri { params }
     }
 
     fn sample_indices(
@@ -80,21 +85,21 @@ where
 
     pub fn commit(
         &self,
-        proof_stream: &mut impl ProofStream<E>,
-        codeword: &[E],
-    ) -> (Vec<Vec<E>>, Vec<Merkle<E>>) {
-        let one = E::one();
+        proof_stream: &mut impl ProofStream<P::ExtensionFelt>,
+        codeword: &[P::ExtensionFelt],
+    ) -> (Vec<Vec<P::ExtensionFelt>>, Vec<Merkle<P::ExtensionFelt>>) {
+        let one = P::ExtensionFelt::one();
         let two = one + one;
 
         let mut codeword = codeword.to_vec();
-        let mut omega = E::BaseFelt::get_root_of_unity(codeword.len().ilog2());
-        let mut offset = E::BaseFelt::GENERATOR;
+        let mut omega = P::BaseFelt::get_root_of_unity(codeword.len().ilog2());
+        let mut offset = P::BaseFelt::GENERATOR;
 
         let mut codewords = Vec::new();
         let mut trees = Vec::new();
 
-        while codeword.len() >= ceil_power_of_two(self.params.num_colinearity_tests())
-            && codeword.len() >= self.params.expansion_factor()
+        while codeword.len() >= ceil_power_of_two(P::NUM_COLINEARITY_CHECKS)
+            && codeword.len() >= P::EXPANSION_FACTOR
         {
             let tree = Merkle::new(&codeword);
             let root = tree.root();
@@ -106,7 +111,7 @@ where
             }
 
             // only prepare next round if necessary
-            if codeword.len() == self.params.expansion_factor() {
+            if codeword.len() == P::EXPANSION_FACTOR {
                 break;
             }
 
@@ -114,13 +119,14 @@ where
             codewords.push(codeword.clone());
 
             // get challenge for split and fold
-            let alpha = E::from(proof_stream.prover_fiat_shamir());
+            let alpha = P::ExtensionFelt::from(proof_stream.prover_fiat_shamir());
             let (lhs, rhs) = codeword.split_at(codeword.len() / 2);
             codeword = zip(lhs, rhs)
                 .enumerate()
                 .map(|(i, (&l, &r))| {
-                    (one + alpha / E::from(offset * omega.pow(&[i as u64])) * l
-                        + (one - alpha / E::from(offset * omega.pow(&[i as u64]))) * r)
+                    (one + alpha / P::ExtensionFelt::from(offset * omega.pow(&[i as u64])) * l
+                        + (one - alpha / P::ExtensionFelt::from(offset * omega.pow(&[i as u64])))
+                            * r)
                         / two
                 })
                 .collect();
@@ -138,9 +144,9 @@ where
 
     pub fn query(
         &self,
-        proof_stream: &mut impl ProofStream<E>,
-        curr_tree: &Merkle<E>,
-        next_tree: &Merkle<E>,
+        proof_stream: &mut impl ProofStream<P::ExtensionFelt>,
+        curr_tree: &Merkle<P::ExtensionFelt>,
+        next_tree: &Merkle<P::ExtensionFelt>,
         indices: &[usize],
     ) {
         let lhs_indices = indices.to_vec();
@@ -150,7 +156,7 @@ where
             .collect::<Vec<usize>>();
 
         // reveal leafs
-        for i in 0..self.params.num_colinearity_tests() {
+        for i in 0..P::NUM_COLINEARITY_CHECKS {
             proof_stream.push(crate::protocol::ProofObject::FriLeafs((
                 curr_tree.leafs[lhs_indices[i]],
                 curr_tree.leafs[rhs_indices[i]],
@@ -159,10 +165,8 @@ where
         }
 
         // reveal authentication paths
-        for i in 0..self.params.num_colinearity_tests() {
-            println!("WE ARE HERE");
+        for i in 0..P::NUM_COLINEARITY_CHECKS {
             let mp = crate::protocol::ProofObject::MerklePath(curr_tree.open(lhs_indices[i]).1);
-            println!("MERKLE PATH: {}", serde_json::to_string(&mp).unwrap());
             proof_stream.push(mp);
             proof_stream.push(crate::protocol::ProofObject::MerklePath(
                 curr_tree.open(rhs_indices[i]).1,
@@ -175,9 +179,9 @@ where
 
     pub fn query_last(
         &self,
-        proof_stream: &mut impl ProofStream<E>,
-        curr_tree: &Merkle<E>,
-        last_codeword: &[E],
+        proof_stream: &mut impl ProofStream<P::ExtensionFelt>,
+        curr_tree: &Merkle<P::ExtensionFelt>,
+        last_codeword: &[P::ExtensionFelt],
         indices: &[usize],
     ) {
         let lhs_indices = indices.to_vec();
@@ -187,7 +191,7 @@ where
             .collect::<Vec<usize>>();
 
         // reveal leafs
-        for i in 0..self.params.num_colinearity_tests() {
+        for i in 0..P::NUM_COLINEARITY_CHECKS {
             proof_stream.push(crate::protocol::ProofObject::FriLeafs((
                 curr_tree.leafs[lhs_indices[i]],
                 curr_tree.leafs[rhs_indices[i]],
@@ -196,7 +200,7 @@ where
         }
 
         // reveal authentication paths
-        for i in 0..self.params.num_colinearity_tests() {
+        for i in 0..P::NUM_COLINEARITY_CHECKS {
             proof_stream.push(crate::protocol::ProofObject::MerklePath(
                 curr_tree.open(lhs_indices[i]).1,
             ));
@@ -206,16 +210,21 @@ where
         }
     }
 
-    pub fn prove(&self, proof_stream: &mut impl ProofStream<E>, codeword: &[E]) -> Vec<usize> {
+    pub fn prove(
+        &self,
+        proof_stream: &mut impl ProofStream<P::ExtensionFelt>,
+        codeword: &[P::ExtensionFelt],
+    ) -> Vec<usize> {
         // commit phase
         let (codewords, trees) = self.commit(proof_stream, codeword);
 
         // query phase
         let last_codeword = codewords.last().unwrap();
+        println!("Codewords: {}", codewords.len());
         println!("Last codeword len: {}", last_codeword.len());
         let top_level_indices = self.sample_indices(
-            self.params.num_colinearity_tests(),
-            ceil_power_of_two(self.params.num_colinearity_tests()),
+            P::NUM_COLINEARITY_CHECKS,
+            ceil_power_of_two(P::NUM_COLINEARITY_CHECKS),
             codeword.len() / 2,
             proof_stream.prover_fiat_shamir(),
         );
