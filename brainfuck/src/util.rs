@@ -1,8 +1,8 @@
 use crate::OpCode;
-use algebra::ExtensionOf;
-use algebra::Felt;
-use algebra::Multivariate;
-use algebra::StarkFelt;
+use legacy_algebra::ExtensionOf;
+use legacy_algebra::Felt;
+use legacy_algebra::Multivariate;
+use legacy_algebra::StarkFelt;
 use mini_stark::number_theory_transform::fast_interpolate;
 use mini_stark::number_theory_transform::inverse_number_theory_transform;
 use mini_stark::polynomial::Polynomial;

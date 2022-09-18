@@ -4,7 +4,7 @@ use crate::Fri;
 use crate::MerkleTree;
 use crate::ProofObject;
 use crate::ProofStream;
-use algebra::StarkFelt;
+use legacy_algebra::StarkFelt;
 use rand::Rng;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;

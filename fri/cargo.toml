@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
-algebra = { path = "../algebra" }
+legacy-algebra = { path = "../legacy-algebra" }

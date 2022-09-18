@@ -1,6 +1,6 @@
 #![feature(int_log)]
 
-use algebra::StarkFelt;
+use legacy_algebra::StarkFelt;
 use rand::Rng;
 use std::marker::PhantomData;
 

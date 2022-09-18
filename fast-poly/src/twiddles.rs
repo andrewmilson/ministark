@@ -1,5 +1,5 @@
 use crate::NttDirection;
-use algebra::StarkFelt;
+use legacy_algebra::StarkFelt;
 
 /// Fills a slice with twiddle factors
 ///

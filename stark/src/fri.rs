@@ -1,11 +1,11 @@
 use crate::ceil_power_of_two;
 use crate::merkle::Merkle;
 use crate::protocol::ProofStream;
-use algebra::fp_u128::BaseFelt;
-use algebra::ExtensionOf;
-use algebra::Felt;
-use algebra::PrimeFelt;
-use algebra::StarkFelt;
+use legacy_algebra::fp_u128::BaseFelt;
+use legacy_algebra::ExtensionOf;
+use legacy_algebra::Felt;
+use legacy_algebra::PrimeFelt;
+use legacy_algebra::StarkFelt;
 use num_traits::One;
 use std::collections::hash_map::DefaultHasher;
 use std::hash;

@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "algebra",
+    "legacy-algebra",
     "fast-poly",
     "mini-stark",
     "brainfuck",

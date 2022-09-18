@@ -2,10 +2,10 @@ extern crate test;
 
 use crate::polynomial::MultivariatePolynomial;
 use crate::polynomial::Polynomial;
-use algebra::batch_inverse;
-use algebra::ExtensionOf;
-use algebra::Felt;
-use algebra::StarkFelt;
+use legacy_algebra::batch_inverse;
+use legacy_algebra::ExtensionOf;
+use legacy_algebra::Felt;
+use legacy_algebra::StarkFelt;
 use std::primitive;
 
 // TODO: fix types. E might have to have the same BaseField as F.
@@ -340,8 +340,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use algebra::fp_u128::BaseFelt;
-    use algebra::Felt;
+    use legacy_algebra::fp_u128::BaseFelt;
+    use legacy_algebra::Felt;
     use num_traits::One;
     use num_traits::Zero;
     use test::Bencher;

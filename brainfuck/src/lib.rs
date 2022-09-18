@@ -225,8 +225,8 @@ pub fn execute(
 mod tests {
     use super::*;
     use crate::stark::SimulationMatrices;
-    use algebra::fp_u64::BaseFelt;
-    use algebra::PrimeFelt;
+    use legacy_algebra::fp_u64::BaseFelt;
+    use legacy_algebra::PrimeFelt;
 
     const HELLO_WORLD_SOURCE: &str = "
         +++++ +++++             initialize counter (cell #0) to 10

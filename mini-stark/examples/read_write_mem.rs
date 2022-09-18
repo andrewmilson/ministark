@@ -1,4 +1,4 @@
-use algebra::fp_u128::BaseFelt;
+use legacy_algebra::fp_u128::BaseFelt;
 use mini_stark::polynomial::MultivariatePolynomial;
 use mini_stark::polynomial::Polynomial;
 use mini_stark::StandardProofStream;

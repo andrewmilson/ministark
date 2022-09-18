@@ -1,7 +1,7 @@
 #![feature(int_log)]
 
-use algebra::fp_u128::BaseFelt;
-use algebra::StarkFelt;
+use legacy_algebra::fp_u128::BaseFelt;
+use legacy_algebra::StarkFelt;
 use num_traits::One;
 use num_traits::Zero;
 use std::fs;

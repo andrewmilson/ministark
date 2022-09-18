@@ -1,5 +1,5 @@
-use algebra::fp_u128::BaseFelt;
-use algebra::PrimeFelt;
+use legacy_algebra::fp_u128::BaseFelt;
+use legacy_algebra::PrimeFelt;
 use mini_stark::polynomial::MultivariatePolynomial;
 use mini_stark::polynomial::Polynomial;
 use mini_stark::StandardProofStream;

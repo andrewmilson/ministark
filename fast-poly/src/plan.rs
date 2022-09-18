@@ -6,8 +6,8 @@ use crate::utils::bit_reverse;
 use crate::utils::buffer_no_copy;
 use crate::NttDirection;
 use crate::NttOrdering;
-use algebra::PrimeFelt;
-use algebra::StarkFelt;
+use legacy_algebra::PrimeFelt;
+use legacy_algebra::StarkFelt;
 use std::time::Instant;
 
 pub struct Ntt<'a, E> {

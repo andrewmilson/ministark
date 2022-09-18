@@ -1,5 +1,5 @@
 use crate::polynomial::*;
-use algebra::Felt;
+use legacy_algebra::Felt;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;

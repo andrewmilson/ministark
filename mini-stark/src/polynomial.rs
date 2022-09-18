@@ -1,5 +1,5 @@
-use algebra::batch_inverse;
-use algebra::Felt;
+use legacy_algebra::batch_inverse;
+use legacy_algebra::Felt;
 use serde::Deserialize;
 use serde::Serialize;
 use std::char;

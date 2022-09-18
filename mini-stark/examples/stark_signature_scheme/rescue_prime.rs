@@ -1,6 +1,6 @@
-use algebra::fp_u128::BaseFelt;
-use algebra::Felt;
 use fast_poly::allocator::PageAlignedAllocator;
+use legacy_algebra::fp_u128::BaseFelt;
+use legacy_algebra::Felt;
 use mini_stark::polynomial::MultivariatePolynomial;
 use mini_stark::polynomial::Polynomial;
 use num_traits::Zero;

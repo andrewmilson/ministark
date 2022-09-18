@@ -4,7 +4,7 @@ use std::time::Instant;
 mod rescue_prime;
 
 mod signature_scheme;
-use algebra::fp_u128::BaseFelt;
+use legacy_algebra::fp_u128::BaseFelt;
 use signature_scheme::*;
 
 fn main() {

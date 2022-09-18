@@ -1,5 +1,5 @@
-use algebra::Felt;
-use algebra::Univariate;
+use legacy_algebra::Felt;
+use legacy_algebra::Univariate;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;

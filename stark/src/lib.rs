@@ -1,12 +1,5 @@
 #![feature(generic_const_exprs, int_log)]
 
-use algebra::ExtensionOf;
-use algebra::Felt;
-use algebra::Multivariate;
-use algebra::PrimeFelt;
-use algebra::StarkFelt;
-use algebra::UniformRand;
-use algebra::Univariate;
 use brainfuck::permutation_argument;
 use brainfuck::InputTable;
 use brainfuck::InstructionTable;
@@ -15,18 +8,20 @@ use brainfuck::OutputTable;
 use brainfuck::ProcessorTable;
 use brainfuck::Table;
 use fri::Fri;
+use legacy_algebra::ExtensionOf;
+use legacy_algebra::Felt;
+use legacy_algebra::PrimeFelt;
+use legacy_algebra::StarkFelt;
+use legacy_algebra::UniformRand;
+use legacy_algebra::Univariate;
 use mini_stark::number_theory_transform::number_theory_transform;
-use mini_stark::polynomial::Polynomial;
 use num_traits::Zero;
 use protocol::ProofStream;
-use rand::Rng;
 use salted_merkle::SaltedMerkle;
-use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::iter::empty;
-use std::marker::PhantomData;
 use std::vec;
 
 mod fri;
@@ -34,10 +29,14 @@ mod merkle;
 pub mod protocol;
 mod salted_merkle;
 
+// struct FeltMTConfig
+
 pub trait Config {
     type BaseFelt: PrimeFelt + StarkFelt;
     type ExtensionFelt: Felt<BaseFelt = Self::BaseFelt> + ExtensionOf<Self::BaseFelt>;
-    // type MerkleParams: ark_crypto_primitives::merkle_tree::Config;
+
+    // type MTParams: ark_crypto_primitives::merkle_tree::Config;
+    // type SaltedMTParams: ark_crypto_primitives::merkle_tree::Config;
 
     const EXPANSION_FACTOR: usize;
     const SECURITY_LEVEL: usize;
@@ -56,42 +55,6 @@ impl<P: Config> fri::Config for P {
     // assert!(EXPANSION_FACTOR >= 4, "must be 4 or greater");
     // assert!(EXPANSION_FACTOR.is_power_of_two(), "not a power of two");
 }
-
-// pub struct StarkParams {
-//     /// power of 2 expansion factor
-//     EXPANSION_FACTOR: usize,
-//     /// security level of generated proofs
-//     SECURITY_LEVEL: usize,
-//     // TODO: fri params. folding factor, queries, etc.
-// }
-
-// impl StarkParams {
-//     pub fn new(EXPANSION_FACTOR: usize, SECURITY_LEVEL: usize) -> StarkParams
-// {
-//         StarkParams {
-//             EXPANSION_FACTOR,
-//             SECURITY_LEVEL,
-//         }
-//     }
-
-//     pub fn NUM_RANDOMIZERS(&self) -> usize {
-//         0 //self.SECURITY_LEVEL
-//     }
-
-//     pub fn SECURITY_LEVEL(&self) -> usize {
-//         self.SECURITY_LEVEL
-//     }
-
-//     pub fn EXPANSION_FACTOR(&self) -> usize {
-//         self.EXPANSION_FACTOR
-//     }
-
-//     pub fn fri_params(&self) -> FriParams {
-//         let expension_factor = self.EXPANSION_FACTOR();
-//         let num_colinearity_checks = self.SECURITY_LEVEL() /
-// expension_factor.ilog2() as usize;         FriParams::new(expension_factor,
-// num_colinearity_checks)     }
-// }
 
 pub struct BrainFuckStark<P: Config> {
     fri: Fri<P>,

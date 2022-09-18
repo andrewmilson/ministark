@@ -1,6 +1,6 @@
 use crate::rescue_prime::RescuePrime;
-use algebra::fp_u128::BaseFelt;
-use algebra::StarkFelt;
+use legacy_algebra::fp_u128::BaseFelt;
+use legacy_algebra::StarkFelt;
 use mini_stark::polynomial::Polynomial;
 use mini_stark::ProofObject;
 use mini_stark::ProofStream;

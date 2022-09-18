@@ -1,6 +1,6 @@
-use algebra::batch_inverse;
-use algebra::Felt;
-use algebra::StarkFelt;
+use legacy_algebra::batch_inverse;
+use legacy_algebra::Felt;
+use legacy_algebra::StarkFelt;
 use num_traits::One;
 
 pub fn quotient<E>(a: &[E], b: &[E]) -> Vec<E>

@@ -1,7 +1,7 @@
 use crate::memory_table::MemoryTable;
 use crate::OpCode;
-use algebra::PrimeFelt;
-use algebra::StarkFelt;
+use legacy_algebra::PrimeFelt;
+use legacy_algebra::StarkFelt;
 
 // trait TableCollection<E: Felt> {
 //     fn pad(&mut self);

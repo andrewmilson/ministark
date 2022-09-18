@@ -1,10 +1,10 @@
 use crate::OpCode;
-use algebra::batch_inverse;
-use algebra::ExtensionOf;
-use algebra::Felt;
-use algebra::Multivariate;
-use algebra::PrimeFelt;
-use algebra::StarkFelt;
+use legacy_algebra::batch_inverse;
+use legacy_algebra::ExtensionOf;
+use legacy_algebra::Felt;
+use legacy_algebra::Multivariate;
+use legacy_algebra::PrimeFelt;
+use legacy_algebra::StarkFelt;
 use std::marker::PhantomData;
 
 pub trait Table<F, E = F>

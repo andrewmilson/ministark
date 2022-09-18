@@ -1,11 +1,11 @@
 #![feature(int_log)]
 
-use algebra::fp_u64::BaseFelt;
-use algebra::Felt;
-use algebra::StarkFelt;
-use algebra::Univariate;
 use brainfuck::stark::compile;
 use brainfuck::stark::SimulationMatrices;
+use legacy_algebra::fp_u64::BaseFelt;
+use legacy_algebra::Felt;
+use legacy_algebra::StarkFelt;
+use legacy_algebra::Univariate;
 use mini_stark::number_theory_transform::number_theory_transform;
 use num_traits::One;
 use num_traits::Zero;
@@ -13,6 +13,7 @@ use stark::protocol::StandardProofStream;
 use stark::BrainFuckStark;
 use stark::Config;
 use std::fs;
+use std::mem::size_of;
 
 const FIB_TO_100_SOURCE: &str = "
 +++++++++++
@@ -56,15 +57,29 @@ const TINY: &str = "
 +++++++++.
 ";
 
-struct TestStark;
+// pub type Fq = ark_ff::fields::Fp64<ark_ff::fields::MontBackend<FqConfig, 6>>;
+// pub const FQ_ONE: Fq = ark_ff::MontFp!("1");
+// pub const FQ_ZERO: Fq = ark_ff::MontFp!("0");
 
-impl Config for TestStark {
+struct StarkConfig;
+impl Config for StarkConfig {
     type BaseFelt = BaseFelt;
     type ExtensionFelt = BaseFelt;
 
     const EXPANSION_FACTOR: usize = 4;
     const SECURITY_LEVEL: usize = 128;
     const NUM_RANDOMIZERS: usize = 0;
+}
+
+#[derive(ark_ff::MontConfig)]
+#[modulus = "127"]
+#[generator = "7"]
+pub struct FpConfig;
+pub type Fp = ark_ff::Fp64<ark_ff::fields::MontBackend<FpConfig, 1>>;
+
+#[test]
+fn playground() {
+    println!("Size: {}", size_of::<Fp>())
 }
 
 #[test]
@@ -84,7 +99,7 @@ fn hello_world() {
     // let memory_length = memory_matrix.len();
 
     let mut proof_stream = StandardProofStream::<BaseFelt>::new();
-    let mut bfs = BrainFuckStark::<TestStark>::new(TestStark);
+    let mut bfs = BrainFuckStark::<StarkConfig>::new(StarkConfig);
     let res = bfs.prove(
         processor_matrix,
         memory_matrix,

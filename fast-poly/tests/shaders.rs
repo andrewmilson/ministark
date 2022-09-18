@@ -1,12 +1,12 @@
 #![feature(allocator_api, int_log)]
 
-use algebra::fp_u128::BaseFelt;
-use algebra::Felt;
-use algebra::StarkFelt;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::Planner;
 use fast_poly::utils::bit_reverse;
 use fast_poly::NttOrdering;
+use legacy_algebra::fp_u128::BaseFelt;
+use legacy_algebra::Felt;
+use legacy_algebra::StarkFelt;
 use objc::rc::autoreleasepool;
 use rand::Rng;
 use rand::SeedableRng;

@@ -2,11 +2,11 @@ use super::table::Table;
 use crate::util::instr_zerofier;
 use crate::util::interpolate_columns;
 use crate::util::lift;
-use algebra::ExtensionOf;
-use algebra::Felt;
-use algebra::Multivariate;
-use algebra::PrimeFelt;
-use algebra::StarkFelt;
+use legacy_algebra::ExtensionOf;
+use legacy_algebra::Felt;
+use legacy_algebra::Multivariate;
+use legacy_algebra::PrimeFelt;
+use legacy_algebra::StarkFelt;
 use mini_stark::number_theory_transform::number_theory_transform;
 
 const BASE_WIDTH: usize = 3;

@@ -13,4 +13,4 @@ serde_json = "1.0"
 rand = "0.8.5"
 rand_pcg = "0.3.1"
 fast-poly = { path = "../fast-poly" }
-algebra = { path = "../algebra" }
+legacy-algebra = { path = "../legacy-algebra" }

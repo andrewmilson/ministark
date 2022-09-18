@@ -1,11 +1,11 @@
 #![feature(test, allocator_api)]
 
 extern crate test;
-use algebra::fp_u128::BaseFelt;
-use algebra::Felt;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::Planner;
 use fast_poly::NttOrdering;
+use legacy_algebra::fp_u128::BaseFelt;
+use legacy_algebra::Felt;
 use objc::rc::autoreleasepool;
 use rand::Rng;
 use rand::SeedableRng;
