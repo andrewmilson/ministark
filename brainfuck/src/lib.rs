@@ -47,23 +47,16 @@ impl OpCode {
         ];
         VALUES.iter()
     }
-
-    //     fn into_felt<E: Felt>(self) -> E {
-    //         match self {
-    //             OpCode::IncrementPointer => E::from(b'>'),
-    //             OpCode::DecrementPointer => E::from(b'<'),
-    //             OpCode::Increment => E::from(b'+'),
-    //             OpCode::Decrement => E::from(b'-'),
-    //             OpCode::Write => E::from(b'.'),
-    //             OpCode::Read => E::from(b','),
-    //             OpCode::LoopBegin => E::from(b'['),
-    //             OpCode::LoopEnd => E::from(b']'),
-    //         }
-    //     }
 }
 
 impl std::convert::Into<usize> for OpCode {
     fn into(self) -> usize {
+        Into::<u64>::into(self) as usize
+    }
+}
+
+impl std::convert::Into<u64> for OpCode {
+    fn into(self) -> u64 {
         match self {
             OpCode::IncrementPointer => b'>'.into(),
             OpCode::DecrementPointer => b'<'.into(),
@@ -225,7 +218,7 @@ pub fn execute(
 mod tests {
     use super::*;
     use crate::stark::SimulationMatrices;
-    use legacy_algebra::fp_u64::BaseFelt;
+    use ark_ff_optimized::fp64::Fp;
     use legacy_algebra::PrimeFelt;
 
     const HELLO_WORLD_SOURCE: &str = "

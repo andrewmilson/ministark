@@ -1,12 +1,12 @@
 #![feature(int_log)]
 
+use ark_ff_optimized::fp64::Fp;
 use brainfuck::stark::compile;
 use brainfuck::stark::SimulationMatrices;
-use legacy_algebra::fp_u64::BaseFelt;
+use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::Felt;
 use legacy_algebra::StarkFelt;
 use legacy_algebra::Univariate;
-use mini_stark::number_theory_transform::number_theory_transform;
 use num_traits::One;
 use num_traits::Zero;
 use stark::protocol::StandardProofStream;
@@ -63,28 +63,17 @@ const TINY: &str = "
 
 struct StarkConfig;
 impl Config for StarkConfig {
-    type BaseFelt = BaseFelt;
-    type ExtensionFelt = BaseFelt;
+    type Fp = Fp;
+    type Fx = Fp;
 
     const EXPANSION_FACTOR: usize = 4;
     const SECURITY_LEVEL: usize = 128;
     const NUM_RANDOMIZERS: usize = 0;
 }
 
-#[derive(ark_ff::MontConfig)]
-#[modulus = "127"]
-#[generator = "7"]
-pub struct FpConfig;
-pub type Fp = ark_ff::Fp64<ark_ff::fields::MontBackend<FpConfig, 1>>;
-
-#[test]
-fn playground() {
-    println!("Size: {}", size_of::<Fp>())
-}
-
 #[test]
 fn hello_world() {
-    let program = compile(TINY); //HELLO_WORLD_SOURCE);
+    let program = compile(HELLO_WORLD_SOURCE); //TINY); //HELLO_WORLD_SOURCE);
     let mut output = Vec::new();
     let SimulationMatrices {
         processor: processor_matrix,
@@ -92,13 +81,13 @@ fn hello_world() {
         input: input_matrix,
         output: output_matrix,
         memory: memory_matrix,
-    } = brainfuck::stark::simulate::<BaseFelt>(&program, &mut std::io::empty(), &mut output);
+    } = brainfuck::stark::simulate::<Fp>(&program, &mut std::io::empty(), &mut output);
 
     let running_time = processor_matrix.len();
     println!("Running time: {running_time}");
     // let memory_length = memory_matrix.len();
 
-    let mut proof_stream = StandardProofStream::<BaseFelt>::new();
+    let mut proof_stream = StandardProofStream::<Fp>::new();
     let mut bfs = BrainFuckStark::<StarkConfig>::new(StarkConfig);
     let res = bfs.prove(
         processor_matrix,
@@ -118,21 +107,21 @@ fn hello_world() {
     fs::write("./proof.json", res).unwrap();
 }
 
-#[test]
-fn zerofier() {
-    let n = 1usize << 4;
-    let offset = BaseFelt::GENERATOR;
-    let root = BaseFelt::get_root_of_unity(n.ilog2());
+// #[test]
+// fn zerofier() {
+//     let n = 1usize << 4;
+//     let offset = Fp::GENERATOR;
+//     let root = Fp::get_root_of_unity(n as u64);
 
-    // x - 1
-    let poly = Univariate::new(vec![-BaseFelt::one(), BaseFelt::one()]);
-    let mut coefficients = poly.scale(offset).coefficients;
-    coefficients.resize(n, BaseFelt::zero());
+//     // x - 1
+//     let poly = Univariate::new(vec![-Fp::one(), Fp::one()]);
+//     let mut coefficients = poly.scale(offset).coefficients;
+//     coefficients.resize(n, Fp::zero());
 
-    let eval1 = number_theory_transform(&coefficients);
-    let eval2 = (0..n)
-        .map(|i| offset * root.pow(&[i as u64]) - BaseFelt::one())
-        .collect::<Vec<BaseFelt>>();
+//     let eval1 = number_theory_transform(&coefficients);
+//     let eval2 = (0..n)
+//         .map(|i| offset * root.pow(&[i as u64]) - Fp::one())
+//         .collect::<Vec<Fp>>();
 
-    assert_eq!(eval1, eval2);
-}
+//     assert_eq!(eval1, eval2);
+// }

@@ -1,5 +1,7 @@
 use super::Felt;
 use super::Univariate;
+use ark_ff::Field;
+// use ark_ff::Zero;
 use num_traits::NumAssign;
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,12 +20,12 @@ use std::ops::Sub;
 
 /// Multivariate polynomial
 #[derive(Clone)]
-pub struct Multivariate<E> {
+pub struct Multivariate<Fx> {
     pub powers: Vec<Vec<u128>>,
-    pub coefficients: Vec<E>,
+    pub coefficients: Vec<Fx>,
 }
 
-impl<E: Felt> Multivariate<E> {
+impl<F: Field> Multivariate<F> {
     fn search_for_power<'a>(seek: &'a [u128]) -> impl FnMut(&'a Vec<u128>) -> Ordering {
         move |probe: &Vec<u128>| {
             assert_eq!(seek.len(), probe.len());
@@ -67,7 +69,7 @@ impl<E: Felt> Multivariate<E> {
     pub fn one() -> Self {
         Self {
             powers: vec![vec![0]],
-            coefficients: vec![E::one()],
+            coefficients: vec![F::one()],
         }
     }
 
@@ -81,7 +83,7 @@ impl<E: Felt> Multivariate<E> {
         true
     }
 
-    pub fn constant(element: E) -> Self {
+    pub fn constant(element: F) -> Self {
         Self {
             powers: vec![vec![0]],
             coefficients: vec![element],
@@ -96,12 +98,12 @@ impl<E: Felt> Multivariate<E> {
                     .chain(once(1))
                     .chain(repeat(0).take(num_variables - i - 1))
                     .collect()],
-                coefficients: vec![E::one()],
+                coefficients: vec![F::one()],
             })
             .collect()
     }
 
-    pub fn lift(polynomial: Univariate<E>, lift_index: usize) -> Self {
+    pub fn lift(polynomial: Univariate<F>, lift_index: usize) -> Self {
         if polynomial.is_zero() {
             return Self::zero();
         }
@@ -118,8 +120,8 @@ impl<E: Felt> Multivariate<E> {
         accumulator
     }
 
-    pub fn evaluate(&self, point: &[E]) -> E {
-        let mut accumulator = E::zero();
+    pub fn evaluate(&self, point: &[F]) -> F {
+        let mut accumulator = F::zero();
         for (pad, coefficient) in self.powers.iter().zip(self.coefficients.iter()) {
             let mut product = *coefficient;
             for (i, &power) in pad.iter().enumerate() {
@@ -129,10 +131,9 @@ impl<E: Felt> Multivariate<E> {
             accumulator += product;
         }
         accumulator
-        // todo!()
     }
 
-    pub fn evaluate_symbolic(&self, point: &[Univariate<E>]) -> Univariate<E> {
+    pub fn evaluate_symbolic(&self, point: &[Univariate<F>]) -> Univariate<F> {
         let mut accumulator = Univariate::new(vec![]);
         for (pad, coefficient) in self.powers.iter().zip(self.coefficients.iter()) {
             let mut product = Univariate::new(vec![*coefficient]);
@@ -164,18 +165,18 @@ impl<E: Felt> Multivariate<E> {
     }
 }
 
-impl<E: Felt> From<E> for Multivariate<E> {
-    fn from(v: E) -> Self {
+impl<F: Field> From<F> for Multivariate<F> {
+    fn from(v: F) -> Self {
         Multivariate::constant(v)
     }
 }
 
-impl<E: Felt> Add for Multivariate<E> {
+impl<F: Field> Add for Multivariate<F> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
         let mut powers: Vec<Vec<u128>> = vec![];
-        let mut coefficients: Vec<E> = vec![];
+        let mut coefficients: Vec<F> = vec![];
 
         let num_variables = self
             .powers
@@ -220,15 +221,15 @@ impl<E: Felt> Add for Multivariate<E> {
     }
 }
 
-impl<E: Felt> Add<E> for Multivariate<E> {
+impl<F: Field> Add<F> for Multivariate<F> {
     type Output = Self;
 
-    fn add(self, rhs: E) -> Self::Output {
+    fn add(self, rhs: F) -> Self::Output {
         self + Self::constant(rhs)
     }
 }
 
-impl<E: Felt> Sub for Multivariate<E> {
+impl<F: Field> Sub for Multivariate<F> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -236,15 +237,15 @@ impl<E: Felt> Sub for Multivariate<E> {
     }
 }
 
-impl<E: Felt> Sub<E> for Multivariate<E> {
+impl<F: Field> Sub<F> for Multivariate<F> {
     type Output = Self;
 
-    fn sub(self, rhs: E) -> Self::Output {
+    fn sub(self, rhs: F) -> Self::Output {
         self + Self::constant(-rhs)
     }
 }
 
-impl<E: Felt> Neg for Multivariate<E> {
+impl<F: Field> Neg for Multivariate<F> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -259,12 +260,12 @@ impl<E: Felt> Neg for Multivariate<E> {
     }
 }
 
-impl<E: Felt> Mul for Multivariate<E> {
+impl<F: Field> Mul for Multivariate<F> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
         let mut powers: Vec<Vec<u128>> = vec![];
-        let mut coefficients: Vec<E> = vec![];
+        let mut coefficients: Vec<F> = vec![];
 
         let num_variables = self
             .powers
@@ -304,15 +305,15 @@ impl<E: Felt> Mul for Multivariate<E> {
     }
 }
 
-impl<E: Felt> Mul<E> for Multivariate<E> {
+impl<F: Field> Mul<F> for Multivariate<F> {
     type Output = Self;
 
-    fn mul(self, rhs: E) -> Self::Output {
+    fn mul(self, rhs: F) -> Self::Output {
         self * Multivariate::constant(rhs)
     }
 }
 
-impl<E: Felt> BitXor<u128> for Multivariate<E> {
+impl<F: Field> BitXor<u128> for Multivariate<F> {
     type Output = Self;
 
     fn bitxor(self, exponent: u128) -> Self::Output {
@@ -335,7 +336,7 @@ impl<E: Felt> BitXor<u128> for Multivariate<E> {
     }
 }
 
-impl<E: Felt> fmt::Display for Multivariate<E> {
+impl<F: Field> fmt::Display for Multivariate<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let formatted_coefficients: Vec<String> = self
             .powers

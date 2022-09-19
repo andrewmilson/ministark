@@ -1,4 +1,8 @@
 use crate::OpCode;
+use ark_ff::FftField;
+use ark_ff::Field;
+use ark_ff::One;
+use ark_ff::PrimeField;
 use legacy_algebra::batch_inverse;
 use legacy_algebra::ExtensionOf;
 use legacy_algebra::Felt;
@@ -7,10 +11,10 @@ use legacy_algebra::PrimeFelt;
 use legacy_algebra::StarkFelt;
 use std::marker::PhantomData;
 
-pub trait Table<F, E = F>
+pub trait Table<F>
 where
-    F: StarkFelt,
-    E: Felt<BaseFelt = F> + ExtensionOf<F>,
+    F: Field,
+    F::BasePrimeField: FftField,
 {
     /// The width of the table before extension
     const BASE_WIDTH: usize;
@@ -33,23 +37,23 @@ where
     fn pad(&mut self, n: usize);
 
     /// TODO
-    fn base_boundary_constraints() -> Vec<Multivariate<E>>;
+    fn base_boundary_constraints() -> Vec<Multivariate<F>>;
 
     /// TODO
-    fn base_transition_constraints() -> Vec<Multivariate<E>>;
+    fn base_transition_constraints() -> Vec<Multivariate<F>>;
 
     /// TODO
-    fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>>;
+    fn extension_boundary_constraints(challenges: &[F]) -> Vec<Multivariate<F>>;
 
     /// TODO
-    fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>>;
+    fn extension_transition_constraints(challenges: &[F]) -> Vec<Multivariate<F>>;
 
     /// TODO
     fn extension_terminal_constraints(
         &self,
-        challenges: &[E],
-        terminals: &[E],
-    ) -> Vec<Multivariate<E>>;
+        challenges: &[F],
+        terminals: &[F],
+    ) -> Vec<Multivariate<F>>;
 
     // TODO
     fn interpolant_degree(&self) -> usize;
@@ -57,7 +61,7 @@ where
     // TODO
     fn max_degree(&self) -> usize {
         // TODO: This NEEDS to be improved...
-        let transition_constraints = Self::extension_transition_constraints(&[E::one(); 30]);
+        let transition_constraints = Self::extension_transition_constraints(&[F::one(); 30]);
         let mut max_degree = 1;
         println!("{}, {}", Self::BASE_WIDTH, Self::EXTENSION_WIDTH);
         for air in transition_constraints {
@@ -71,21 +75,25 @@ where
     fn boundary_quotients(
         &self,
         codeword_len: usize,
-        codewords: &[Vec<E>],
-        challenges: &[E],
-    ) -> Vec<Vec<E>> {
+        codewords: &[Vec<F>],
+        challenges: &[F],
+    ) -> Vec<Vec<F>> {
         println!("boundary_quotient");
         // TODO: HELP: trying to understand zerofier here
         let mut quotient_codewords = Vec::new();
-        let omega = F::get_root_of_unity(codeword_len.ilog2());
+        let omega = F::BasePrimeField::get_root_of_unity(codeword_len as u64).unwrap();
         // Evaluations of the polynomial (x - o^0) over the FRI domain
         let zerofier = (0..codeword_len)
-            .map(|i| F::GENERATOR * omega.pow(&[i as u64]) - F::one())
-            .collect::<Vec<F>>();
-        let zerofier_inv = batch_inverse(&zerofier)
+            .map(|i| {
+                F::BasePrimeField::GENERATOR * omega.pow([i as u64]) - F::BasePrimeField::one()
+            })
+            .collect::<Vec<F::BasePrimeField>>();
+        let mut zerofier_inv = zerofier;
+        ark_ff::batch_inversion(&mut zerofier_inv);
+        let zerofier_inv = zerofier_inv
             .into_iter()
-            .map(|z| z.unwrap().into())
-            .collect::<Vec<E>>();
+            .map(F::from_base_prime_field)
+            .collect::<Vec<F>>();
 
         let boundary_constraints = Self::extension_boundary_constraints(challenges);
         for constraint in boundary_constraints {
@@ -95,7 +103,7 @@ where
                 let point = codewords
                     .iter()
                     .map(|codeword| codeword[i])
-                    .collect::<Vec<E>>();
+                    .collect::<Vec<F>>();
                 quotient_codeword.push(constraint.evaluate(&point) * zerofier_inv[i]);
             }
             quotient_codewords.push(quotient_codeword);
@@ -107,24 +115,24 @@ where
     fn transition_quotients(
         &self,
         codeword_len: usize,
-        codewords: &[Vec<E>],
-        challenges: &[E],
-    ) -> Vec<Vec<E>> {
+        codewords: &[Vec<F>],
+        challenges: &[F],
+    ) -> Vec<Vec<F>> {
         println!("trans_quotient");
         let mut quotient_codewords = Vec::new();
         // Evaluations of the polynomial (x - o^0)...(x - o^(n-1)) over the FRI domain
         // (x - o^0)...(x - o^(n-1)) = x^n - 1
         // Note: codeword_len = n * expansion_factor
-        let omega = F::get_root_of_unity(codeword_len.ilog2());
+        let omega = F::BasePrimeField::get_root_of_unity(codeword_len as u64).unwrap();
         let subgroup_zerofier = (0..codeword_len)
             .map(|i| {
-                (F::GENERATOR * omega.pow(&[i as u64])).pow(&[self.height() as u64]) - F::one()
+                (F::BasePrimeField::GENERATOR * omega.pow([i as u64])).pow([self.height() as u64])
+                    - F::BasePrimeField::one()
             })
-            .collect::<Vec<F>>();
-        let subgroup_zerofier_inv = batch_inverse(&subgroup_zerofier)
-            .into_iter()
-            .map(|z| z.unwrap())
-            .collect::<Vec<F>>();
+            .collect::<Vec<F::BasePrimeField>>();
+        let mut subgroup_zerofier_inv = subgroup_zerofier.clone();
+        ark_ff::batch_inversion(&mut subgroup_zerofier_inv);
+
         // Transition constraints apply to all rows of execution trace except the last
         // row. We need to change the inverse zerofier from being the
         // evaluations of the polynomial `1/((x - o^0)...(x - o^(n-1)))` to
@@ -132,15 +140,17 @@ where
         // dot product of the inverse zerofier codeword and the codeword defined by
         // the evaluations of the polynomial (x - o^(n-1)). Note that o^(n-1) is the
         // inverse of `o`.
-        let last_omicron = F::get_root_of_unity(self.height().ilog2())
+        let last_omicron = F::BasePrimeField::get_root_of_unity(self.height() as u64)
+            .unwrap()
             .inverse()
             .unwrap();
         let zerofier_inv = (0..codeword_len)
             .map(|i| {
-                subgroup_zerofier_inv[i] * (F::GENERATOR * omega.pow(&[i as u64]) - last_omicron)
+                subgroup_zerofier_inv[i]
+                    * (F::BasePrimeField::GENERATOR * omega.pow([i as u64]) - last_omicron)
             })
-            .map(E::from)
-            .collect::<Vec<E>>();
+            .map(F::from_base_prime_field)
+            .collect::<Vec<F>>();
 
         let row_step = codeword_len / self.height();
         let transition_constraints = Self::extension_transition_constraints(challenges);
@@ -155,14 +165,14 @@ where
                 let point_lhs = codewords
                     .iter()
                     .map(|codeword| codeword[i])
-                    .collect::<Vec<E>>();
+                    .collect::<Vec<F>>();
                 // TODO: HELP: why do we just wrap around here. Don't we need the codeword to be
                 // extended so we have the right point?
                 // Right. We are dealing with roots of unity so the evaluation is o^(n-1)*o=o^0
                 let point_rhs = codewords
                     .iter()
                     .map(|codeword| codeword[(i + row_step) % codeword_len])
-                    .collect::<Vec<E>>();
+                    .collect::<Vec<F>>();
                 let point = vec![point_lhs, point_rhs].concat();
                 let evaluation = constraint.evaluate(&point);
                 // combination_codeword.push(evaluation);
@@ -177,25 +187,30 @@ where
     fn terminal_quotients(
         &self,
         codeword_len: usize,
-        codewords: &[Vec<E>],
-        challenges: &[E],
-        terminals: &[E],
-    ) -> Vec<Vec<E>> {
+        codewords: &[Vec<F>],
+        challenges: &[F],
+        terminals: &[F],
+    ) -> Vec<Vec<F>> {
         println!("term_quotient");
         let mut quotient_codewords = Vec::new();
-        let omega = F::get_root_of_unity(codeword_len.ilog2());
-        let last_omicron = F::get_root_of_unity(self.height().ilog2())
+        let omega = F::BasePrimeField::get_root_of_unity(codeword_len as u64).unwrap();
+        let last_omicron = F::BasePrimeField::get_root_of_unity(self.height() as u64)
+            .unwrap()
             .inverse()
             .unwrap();
         // evaluations of the polynomial (x - o^(n-1)). Note that o^(n-1) is the
         // inverse of `o`.
         let zerofier = (0..codeword_len)
-            .map(|i| F::GENERATOR * omega.pow(&[i as u64]) - F::one())
-            .collect::<Vec<F>>();
-        let zerofier_inv = batch_inverse(&zerofier)
+            .map(|i| {
+                F::BasePrimeField::GENERATOR * omega.pow(&[i as u64]) - F::BasePrimeField::one()
+            })
+            .collect::<Vec<F::BasePrimeField>>();
+        let mut zerofier_inv = zerofier;
+        ark_ff::batch_inversion(&mut zerofier_inv);
+        let zerofier_inv = zerofier_inv
             .into_iter()
-            .map(|z| z.unwrap().into())
-            .collect::<Vec<E>>();
+            .map(F::from_base_prime_field)
+            .collect::<Vec<F>>();
 
         let terminal_constraints = self.extension_terminal_constraints(challenges, terminals);
         for constraint in terminal_constraints {
@@ -205,7 +220,7 @@ where
                 let point = codewords
                     .iter()
                     .map(|codeword| codeword[i])
-                    .collect::<Vec<E>>();
+                    .collect::<Vec<F>>();
                 quotient_codeword.push(constraint.evaluate(&point) * zerofier_inv[i]);
             }
             quotient_codewords.push(quotient_codeword);
@@ -217,10 +232,10 @@ where
     fn all_quotients(
         &self,
         codeword_len: usize,
-        codewords: &[Vec<E>],
-        challenges: &[E],
-        terminals: &[E],
-    ) -> Vec<Vec<E>> {
+        codewords: &[Vec<F>],
+        challenges: &[F],
+        terminals: &[F],
+    ) -> Vec<Vec<F>> {
         println!("pos:{codeword_len}");
         let boundary_quotients = self.boundary_quotients(codeword_len, codewords, challenges);
         let transition_quotients = self.transition_quotients(codeword_len, codewords, challenges);
@@ -229,7 +244,7 @@ where
         vec![boundary_quotients, transition_quotients, terminal_quotients].concat()
     }
 
-    fn boundary_quotient_degree_bounds(&self, challenges: &[E]) -> Vec<usize> {
+    fn boundary_quotient_degree_bounds(&self, challenges: &[F]) -> Vec<usize> {
         let max_degrees = vec![self.interpolant_degree(); Self::EXTENSION_WIDTH];
         Self::extension_boundary_constraints(challenges)
             .into_iter()
@@ -239,7 +254,7 @@ where
             .collect()
     }
 
-    fn transition_quotient_degree_bounds(&self, challenges: &[E]) -> Vec<usize> {
+    fn transition_quotient_degree_bounds(&self, challenges: &[F]) -> Vec<usize> {
         let max_degrees = vec![self.interpolant_degree(); 2 * Self::EXTENSION_WIDTH];
         Self::extension_transition_constraints(challenges)
             .into_iter()
@@ -249,7 +264,7 @@ where
             .collect()
     }
 
-    fn terminal_quotient_degree_bounds(&self, challenges: &[E], terminals: &[E]) -> Vec<usize> {
+    fn terminal_quotient_degree_bounds(&self, challenges: &[F], terminals: &[F]) -> Vec<usize> {
         let max_degrees = vec![self.interpolant_degree(); Self::EXTENSION_WIDTH];
         self.extension_terminal_constraints(challenges, terminals)
             .into_iter()
@@ -259,7 +274,7 @@ where
             .collect()
     }
 
-    fn all_quotient_degree_bounds(&self, challenges: &[E], terminals: &[E]) -> Vec<usize> {
+    fn all_quotient_degree_bounds(&self, challenges: &[F], terminals: &[F]) -> Vec<usize> {
         let boundary_degree_bounds = self.boundary_quotient_degree_bounds(challenges);
         let transition_degree_bounds = self.transition_quotient_degree_bounds(challenges);
         let terminal_degree_bounds = self.terminal_quotient_degree_bounds(challenges, terminals);
@@ -272,18 +287,18 @@ where
     }
 
     // //
-    // fn get_base_columns(&self) -> [Vec<E>; Self::BASE_WIDTH];
+    // fn get_base_columns(&self) -> [Vec<Fx>; Self::BASE_WIDTH];
     // //
-    // fn get_extension_columns(&self) -> [Vec<E>; Self::EXTENSION_WIDTH];
+    // fn get_extension_columns(&self) -> [Vec<Fx>; Self::EXTENSION_WIDTH];
 
     // TODO
-    fn set_matrix(&mut self, matrix: Vec<[F; Self::BASE_WIDTH]>);
+    fn set_matrix(&mut self, matrix: Vec<[F::BasePrimeField; Self::BASE_WIDTH]>);
 
-    fn extend(&mut self, challenges: &[E], initials: &[E]);
+    fn extend(&mut self, challenges: &[F], initials: &[F]);
 
     /// Computes the low degree extension of the base columns
-    fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>>;
+    fn base_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>>;
 
     /// Computes the low degree extension of all columns
-    fn extension_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>>;
+    fn extension_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>>;
 }

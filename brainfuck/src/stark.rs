@@ -1,5 +1,8 @@
 use crate::memory_table::MemoryTable;
 use crate::OpCode;
+use ark_ff::FftField;
+use ark_ff::Field;
+use ark_ff::PrimeField;
 use legacy_algebra::PrimeFelt;
 use legacy_algebra::StarkFelt;
 
@@ -112,26 +115,26 @@ impl Register {
     }
 }
 
-pub struct SimulationMatrices<E> {
-    pub processor: Vec<[E; 7]>,
-    pub instruction: Vec<[E; 3]>,
-    pub input: Vec<[E; 1]>,
-    pub output: Vec<[E; 1]>,
-    pub memory: Vec<[E; 4]>,
+pub struct SimulationMatrices<F> {
+    pub processor: Vec<[F; 7]>,
+    pub instruction: Vec<[F; 3]>,
+    pub input: Vec<[F; 1]>,
+    pub output: Vec<[F; 1]>,
+    pub memory: Vec<[F; 4]>,
 }
 
-pub fn simulate<E: StarkFelt + PrimeFelt>(
+pub fn simulate<F: FftField + PrimeField>(
     program: &[usize],
     input: &mut impl std::io::Read,
     output: &mut impl std::io::Write,
-) -> SimulationMatrices<E> {
+) -> SimulationMatrices<F> {
     let mut register = Register::new();
     register.curr_instr = program[0];
     register.next_instr = if program.len() == 1 { 0 } else { program[1] };
     let mut tape = [0u8; 1024];
 
     // Prepare tables
-    let mut matrices = SimulationMatrices::<E> {
+    let mut matrices = SimulationMatrices::<F> {
         processor: Vec::new(),
         instruction: Vec::new(),
         input: Vec::new(),
@@ -141,30 +144,30 @@ pub fn simulate<E: StarkFelt + PrimeFelt>(
 
     for i in 0..program.len() {
         matrices.instruction.push([
-            i.into(),
-            program[i].into(),
-            program.get(i + 1).map_or(0, |&x| x).into(),
+            F::from(i as u64),
+            F::from(program[i] as u64),
+            F::from(program.get(i + 1).map_or(0, |&x| x as u64)),
         ])
     }
 
     // main loop
     while register.ip < program.len() {
-        let mem_val = register.mem_val.into();
+        let mem_val = F::from(register.mem_val as u64);
 
         matrices.processor.push([
-            register.cycle.into(),
-            register.ip.into(),
-            register.curr_instr.into(),
-            register.next_instr.into(),
-            register.mp.into(),
+            F::from(register.cycle as u64),
+            F::from(register.ip as u64),
+            F::from(register.curr_instr as u64),
+            F::from(register.next_instr as u64),
+            F::from(register.mp as u64),
             mem_val,
-            mem_val.inverse().unwrap(),
+            mem_val.inverse().unwrap_or_else(F::zero),
         ]);
 
         matrices.instruction.push([
-            register.ip.into(),
-            register.curr_instr.into(),
-            register.next_instr.into(),
+            F::from(register.ip as u64),
+            F::from(register.curr_instr as u64),
+            F::from(register.next_instr as u64),
         ]);
 
         // Update pointer registers according to instruction
@@ -214,27 +217,27 @@ pub fn simulate<E: StarkFelt + PrimeFelt>(
     }
 
     // Collect final state into execution tables
-    let mem_val = register.mem_val.into();
+    let mem_val = F::from(register.mem_val as u64);
     matrices.processor.push([
-        register.cycle.into(),
-        register.ip.into(),
-        register.curr_instr.into(),
-        register.next_instr.into(),
-        register.mp.into(),
+        F::from(register.cycle as u64),
+        F::from(register.ip as u64),
+        F::from(register.curr_instr as u64),
+        F::from(register.next_instr as u64),
+        F::from(register.mp as u64),
         mem_val,
         mem_val.inverse().unwrap(),
     ]);
 
     matrices.instruction.push([
-        register.ip.into(),
-        register.curr_instr.into(),
-        register.next_instr.into(),
+        F::from(register.ip as u64),
+        F::from(register.curr_instr as u64),
+        F::from(register.next_instr as u64),
     ]);
 
     // sort instructions by address
     matrices.instruction.sort_by_key(|row| row[0].into_bigint());
 
-    matrices.memory = MemoryTable::<E, E>::derive_matrix(&matrices.processor);
+    matrices.memory = MemoryTable::<F>::derive_matrix(&matrices.processor);
 
     matrices
 }

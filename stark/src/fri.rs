@@ -1,6 +1,9 @@
 use crate::ceil_power_of_two;
 use crate::merkle::Merkle;
 use crate::protocol::ProofStream;
+use ark_ff::FftField;
+use ark_ff::Field;
+use ark_ff::PrimeField;
 use legacy_algebra::fp_u128::BaseFelt;
 use legacy_algebra::ExtensionOf;
 use legacy_algebra::Felt;
@@ -15,9 +18,10 @@ use std::iter::zip;
 use std::marker::PhantomData;
 
 pub trait Config {
-    type BaseFelt: PrimeFelt + StarkFelt;
-    type ExtensionFelt: Felt<BaseFelt = Self::BaseFelt> + ExtensionOf<Self::BaseFelt>;
-    // type MerkleParams: ark_crypto_primitives::merkle_tree::Config;
+    /// Base prime field
+    type Fp: PrimeField + FftField;
+    /// Extension field element
+    type Fx: Field<BasePrimeField = Self::Fp>;
 
     const EXPANSION_FACTOR: usize;
     const SECURITY_LEVEL: usize;
@@ -85,15 +89,15 @@ impl<P: Config> Fri<P> {
 
     pub fn commit(
         &self,
-        proof_stream: &mut impl ProofStream<P::ExtensionFelt>,
-        codeword: &[P::ExtensionFelt],
-    ) -> (Vec<Vec<P::ExtensionFelt>>, Vec<Merkle<P::ExtensionFelt>>) {
-        let one = P::ExtensionFelt::one();
+        proof_stream: &mut impl ProofStream<P::Fx>,
+        codeword: &[P::Fx],
+    ) -> (Vec<Vec<P::Fx>>, Vec<Merkle<P::Fx>>) {
+        let one = P::Fx::one();
         let two = one + one;
 
         let mut codeword = codeword.to_vec();
-        let mut omega = P::BaseFelt::get_root_of_unity(codeword.len().ilog2());
-        let mut offset = P::BaseFelt::GENERATOR;
+        let mut omega = P::Fp::get_root_of_unity(codeword.len() as u64).unwrap();
+        let mut offset = P::Fp::GENERATOR;
 
         let mut codewords = Vec::new();
         let mut trees = Vec::new();
@@ -119,13 +123,19 @@ impl<P: Config> Fri<P> {
             codewords.push(codeword.clone());
 
             // get challenge for split and fold
-            let alpha = P::ExtensionFelt::from(proof_stream.prover_fiat_shamir());
+            let alpha = P::Fx::from(proof_stream.prover_fiat_shamir());
             let (lhs, rhs) = codeword.split_at(codeword.len() / 2);
+            let n = codeword.len();
             codeword = zip(lhs, rhs)
                 .enumerate()
                 .map(|(i, (&l, &r))| {
-                    (one + alpha / P::ExtensionFelt::from(offset * omega.pow(&[i as u64])) * l
-                        + (one - alpha / P::ExtensionFelt::from(offset * omega.pow(&[i as u64])))
+                    (one + alpha / P::Fx::from_base_prime_field(offset * omega.pow(&[i as u64]))
+                        * l
+                        + (one
+                            - alpha
+                                / P::Fx::from_base_prime_field(
+                                    offset * omega.pow(&[(n / 2 + i) as u64]),
+                                ))
                             * r)
                         / two
                 })
@@ -144,9 +154,9 @@ impl<P: Config> Fri<P> {
 
     pub fn query(
         &self,
-        proof_stream: &mut impl ProofStream<P::ExtensionFelt>,
-        curr_tree: &Merkle<P::ExtensionFelt>,
-        next_tree: &Merkle<P::ExtensionFelt>,
+        proof_stream: &mut impl ProofStream<P::Fx>,
+        curr_tree: &Merkle<P::Fx>,
+        next_tree: &Merkle<P::Fx>,
         indices: &[usize],
     ) {
         let lhs_indices = indices.to_vec();
@@ -179,9 +189,9 @@ impl<P: Config> Fri<P> {
 
     pub fn query_last(
         &self,
-        proof_stream: &mut impl ProofStream<P::ExtensionFelt>,
-        curr_tree: &Merkle<P::ExtensionFelt>,
-        last_codeword: &[P::ExtensionFelt],
+        proof_stream: &mut impl ProofStream<P::Fx>,
+        curr_tree: &Merkle<P::Fx>,
+        last_codeword: &[P::Fx],
         indices: &[usize],
     ) {
         let lhs_indices = indices.to_vec();
@@ -212,8 +222,8 @@ impl<P: Config> Fri<P> {
 
     pub fn prove(
         &self,
-        proof_stream: &mut impl ProofStream<P::ExtensionFelt>,
-        codeword: &[P::ExtensionFelt],
+        proof_stream: &mut impl ProofStream<P::Fx>,
+        codeword: &[P::Fx],
     ) -> Vec<usize> {
         // commit phase
         let (codewords, trees) = self.commit(proof_stream, codeword);

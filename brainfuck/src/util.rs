@@ -1,17 +1,15 @@
 use crate::OpCode;
-use legacy_algebra::ExtensionOf;
-use legacy_algebra::Felt;
+use ark_ff::FftField;
+use ark_ff::Field;
+use legacy_algebra::number_theory_transform::fast_interpolate;
+use legacy_algebra::number_theory_transform::inverse_number_theory_transform;
 use legacy_algebra::Multivariate;
-use legacy_algebra::StarkFelt;
-use mini_stark::number_theory_transform::fast_interpolate;
-use mini_stark::number_theory_transform::inverse_number_theory_transform;
-use mini_stark::polynomial::Polynomial;
-use rand::Rng;
+use legacy_algebra::Univariate;
 
-pub fn instr_zerofier<E: Felt>(curr_instr: &Multivariate<E>) -> Multivariate<E> {
+pub fn instr_zerofier<F: Field>(curr_instr: &Multivariate<F>) -> Multivariate<F> {
     let mut accumulator = Multivariate::one();
     for opcode in OpCode::iterator() {
-        let factor = curr_instr.clone() - E::from(Into::<usize>::into(opcode.clone()));
+        let factor = curr_instr.clone() - F::from(Into::<usize>::into(opcode.clone()) as u64);
         accumulator = accumulator * factor;
     }
     accumulator
@@ -19,52 +17,55 @@ pub fn instr_zerofier<E: Felt>(curr_instr: &Multivariate<E>) -> Multivariate<E> 
 
 /// returns a polynomial in X that evaluates to 0 in all instructions except
 /// for one provided
-pub(crate) fn if_not_instr<E: Felt>(
+pub(crate) fn if_not_instr<F: Field>(
     instr: &OpCode,
-    indeterminate: &Multivariate<E>,
-) -> Multivariate<E> {
+    indeterminate: &Multivariate<F>,
+) -> Multivariate<F> {
     let mut accumulator = Multivariate::one();
     for opcode in OpCode::iterator() {
         if opcode != instr {
-            let factor = indeterminate.clone() - E::from(Into::<usize>::into(opcode.clone()));
+            let opcode: u64 = opcode.clone().into();
+            let factor = indeterminate.clone() - F::from(opcode);
             accumulator = accumulator * factor;
         }
     }
     accumulator
 }
 
-pub(crate) fn if_instr<E: Felt>(
+pub(crate) fn if_instr<F: Field>(
     instr: &OpCode,
-    indeterminate: &Multivariate<E>,
-) -> Multivariate<E> {
-    Multivariate::constant(Into::<usize>::into(instr.clone()).into()) - indeterminate.clone()
+    indeterminate: &Multivariate<F>,
+) -> Multivariate<F> {
+    Multivariate::constant(Into::<u64>::into(instr.clone()).into()) - indeterminate.clone()
 }
 
 // Lifts a vector of field elements into array of extension field elements
-pub(crate) fn lift<F: Felt, E: Felt + ExtensionOf<F>>(v: Vec<F>) -> Vec<E> {
-    v.into_iter().map(|v| E::from(v)).collect()
+pub(crate) fn lift<F: Field>(v: Vec<F::BasePrimeField>) -> Vec<F> {
+    v.into_iter().map(F::from_base_prime_field).collect()
 }
 
 pub(crate) fn interpolate_columns<F, const WIDTH: usize>(
     matrix: &[[F; WIDTH]],
     num_randomizers: usize,
-) -> Vec<Polynomial<F>>
+) -> Vec<Univariate<F>>
 where
-    F: Felt,
-    F::BaseFelt: StarkFelt,
+    F: Field,
+    F::BasePrimeField: FftField,
 {
     assert!(matrix.len().is_power_of_two());
     let mut rng = rand::thread_rng();
-    let n = matrix.len();
-    let omicron = F::BaseFelt::get_root_of_unity(n.ilog2());
-    let omega = F::BaseFelt::get_root_of_unity(n.ilog2() + 1);
+    let n = matrix.len() as u64;
+    let omicron = F::BasePrimeField::get_root_of_unity(n).unwrap();
+    let omega = F::BasePrimeField::get_root_of_unity(n * 2).unwrap();
 
     let matrix_domain = (0..n)
-        .map(|i| omicron.pow(&[i as u64]).into())
+        .map(|i| omicron.pow([i]))
+        .map(F::from_base_prime_field)
         .collect::<Vec<F>>();
     // Odd indices to avoid collision with `matrix_domain`
     let randomizer_domain = (0..num_randomizers)
-        .map(|i| omega.pow(&[1 + 2 * i as u64]).into())
+        .map(|i| omega.pow([1 + 2 * i as u64]))
+        .map(F::from_base_prime_field)
         .collect::<Vec<F>>();
     let domain = vec![matrix_domain, randomizer_domain].concat();
 
@@ -78,7 +79,7 @@ where
         let values = vec![trace_column, randomizers].concat();
         assert_eq!(values.len(), domain.len());
         if num_randomizers == 0 {
-            polynomials.push(Polynomial::new(inverse_number_theory_transform(&values)));
+            polynomials.push(Univariate::new(inverse_number_theory_transform(&values)));
         } else {
             polynomials.push(fast_interpolate(&domain, &values))
         }

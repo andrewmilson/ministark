@@ -14,3 +14,11 @@ rand = "0.8.5"
 rand_pcg = "0.3.1"
 fast-poly = { path = "../fast-poly" }
 legacy-algebra = { path = "../legacy-algebra" }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
+
+[dev-dependencies]
+ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
+
+[patch.crates-io]
+ark-ff = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
+ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }

@@ -1,5 +1,9 @@
 #![feature(generic_const_exprs, int_log)]
 
+use ark_ff::FftField;
+use ark_ff::Field;
+use ark_ff::PrimeField;
+use ark_ff::UniformRand;
 use brainfuck::permutation_argument;
 use brainfuck::InputTable;
 use brainfuck::InstructionTable;
@@ -8,13 +12,8 @@ use brainfuck::OutputTable;
 use brainfuck::ProcessorTable;
 use brainfuck::Table;
 use fri::Fri;
-use legacy_algebra::ExtensionOf;
-use legacy_algebra::Felt;
-use legacy_algebra::PrimeFelt;
-use legacy_algebra::StarkFelt;
-use legacy_algebra::UniformRand;
+use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::Univariate;
-use mini_stark::number_theory_transform::number_theory_transform;
 use num_traits::Zero;
 use protocol::ProofStream;
 use salted_merkle::SaltedMerkle;
@@ -32,8 +31,10 @@ mod salted_merkle;
 // struct FeltMTConfig
 
 pub trait Config {
-    type BaseFelt: PrimeFelt + StarkFelt;
-    type ExtensionFelt: Felt<BaseFelt = Self::BaseFelt> + ExtensionOf<Self::BaseFelt>;
+    /// Base prime field
+    type Fp: PrimeField + FftField;
+    /// Extension field element
+    type Fx: Field<BasePrimeField = Self::Fp>;
 
     // type MTParams: ark_crypto_primitives::merkle_tree::Config;
     // type SaltedMTParams: ark_crypto_primitives::merkle_tree::Config;
@@ -45,9 +46,8 @@ pub trait Config {
 
 // Generate fri config from stark config
 impl<P: Config> fri::Config for P {
-    type BaseFelt = P::BaseFelt;
-    type ExtensionFelt = P::ExtensionFelt;
-    // type MerkleParams = P::MerkleParams;
+    type Fp = P::Fp;
+    type Fx = P::Fx;
 
     const EXPANSION_FACTOR: usize = P::EXPANSION_FACTOR;
     const SECURITY_LEVEL: usize = P::SECURITY_LEVEL;
@@ -58,11 +58,11 @@ impl<P: Config> fri::Config for P {
 
 pub struct BrainFuckStark<P: Config> {
     fri: Fri<P>,
-    processor_table: ProcessorTable<P::BaseFelt, P::ExtensionFelt>,
-    memory_table: MemoryTable<P::BaseFelt, P::ExtensionFelt>,
-    instruction_table: InstructionTable<P::BaseFelt, P::ExtensionFelt>,
-    input_table: InputTable<P::BaseFelt, P::ExtensionFelt>,
-    output_table: OutputTable<P::BaseFelt, P::ExtensionFelt>,
+    processor_table: ProcessorTable<P::Fx>,
+    memory_table: MemoryTable<P::Fx>,
+    instruction_table: InstructionTable<P::Fx>,
+    input_table: InputTable<P::Fx>,
+    output_table: OutputTable<P::Fx>,
 }
 
 impl<P: Config> BrainFuckStark<P> {
@@ -95,12 +95,12 @@ impl<P: Config> BrainFuckStark<P> {
         (self.max_degree() + 1) * P::EXPANSION_FACTOR
     }
 
-    fn sample_weights(&self, n: usize, randomness: u64) -> Vec<P::ExtensionFelt> {
+    fn sample_weights(&self, n: usize, randomness: u64) -> Vec<P::Fx> {
         (0..n)
             .map(|i| {
                 let mut hash = DefaultHasher::new();
                 (randomness as u128 + i as u128).hash(&mut hash);
-                P::ExtensionFelt::from(hash.finish())
+                P::Fx::from(hash.finish())
             })
             .collect()
     }
@@ -115,17 +115,13 @@ impl<P: Config> BrainFuckStark<P> {
         indices
     }
 
-    pub fn prove<T: ProofStream<P::ExtensionFelt>>(
+    pub fn prove<T: ProofStream<P::Fx>>(
         &mut self,
-        processor_matrix: Vec<
-            [P::BaseFelt; ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH],
-        >,
-        memory_matrix: Vec<[P::BaseFelt; MemoryTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH]>,
-        instruction_matrix: Vec<
-            [P::BaseFelt; InstructionTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH],
-        >,
-        input_matrix: Vec<[P::BaseFelt; InputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH]>,
-        output_matrix: Vec<[P::BaseFelt; OutputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH]>,
+        processor_matrix: Vec<[P::Fp; ProcessorTable::<P::Fx>::BASE_WIDTH]>,
+        memory_matrix: Vec<[P::Fp; MemoryTable::<P::Fx>::BASE_WIDTH]>,
+        instruction_matrix: Vec<[P::Fp; InstructionTable::<P::Fx>::BASE_WIDTH]>,
+        input_matrix: Vec<[P::Fp; InputTable::<P::Fx>::BASE_WIDTH]>,
+        output_matrix: Vec<[P::Fp; OutputTable::<P::Fx>::BASE_WIDTH]>,
         proof_stream: &mut T,
     ) -> Vec<u8> {
         let mut rng = rand::thread_rng();
@@ -154,16 +150,16 @@ impl<P: Config> BrainFuckStark<P> {
         self.output_table.pad(padding_length);
 
         let codeword_len = self.fri_codeword_length();
-        let offset = P::BaseFelt::GENERATOR;
-        let omega = P::BaseFelt::get_root_of_unity(codeword_len.ilog2());
+        let offset = P::Fp::GENERATOR;
+        let omega = P::Fp::get_root_of_unity(codeword_len as u64).unwrap();
 
         let randomizer_codewords = {
             let n = ceil_power_of_two(self.max_degree());
-            let coefficients = (0..n).map(|_| P::ExtensionFelt::rand(&mut rng)).collect();
+            let coefficients = (0..n).map(|_| P::Fx::rand(&mut rng)).collect();
             let polynomial = Univariate::new(coefficients);
-            polynomial.scale(offset.into());
+            polynomial.scale(P::Fx::from_base_prime_field(offset));
             let mut coefficients = polynomial.coefficients;
-            coefficients.resize(codeword_len, P::ExtensionFelt::zero());
+            coefficients.resize(codeword_len, P::Fx::zero());
             vec![number_theory_transform(&coefficients)]
         };
 
@@ -183,42 +179,27 @@ impl<P: Config> BrainFuckStark<P> {
         .concat();
 
         let base_degree_bounds = vec![
-            vec![
-                self.processor_table.interpolant_degree();
-                ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
-            ],
-            vec![
-                self.memory_table.interpolant_degree();
-                MemoryTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
-            ],
+            vec![self.processor_table.interpolant_degree(); ProcessorTable::<P::Fx>::BASE_WIDTH],
+            vec![self.memory_table.interpolant_degree(); MemoryTable::<P::Fx>::BASE_WIDTH],
             vec![
                 self.instruction_table.interpolant_degree();
-                InstructionTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+                InstructionTable::<P::Fx>::BASE_WIDTH
             ],
-            vec![
-                self.input_table.interpolant_degree();
-                InputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
-            ],
-            vec![
-                self.output_table.interpolant_degree();
-                OutputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
-            ],
+            vec![self.input_table.interpolant_degree(); InputTable::<P::Fx>::BASE_WIDTH],
+            vec![self.output_table.interpolant_degree(); OutputTable::<P::Fx>::BASE_WIDTH],
         ]
         .concat();
 
         let base_zipped_codeword = (0..codeword_len)
             .map(|i| base_codewords.iter().map(|codeword| codeword[i]).collect())
-            .collect::<Vec<Vec<P::ExtensionFelt>>>();
+            .collect::<Vec<Vec<P::Fx>>>();
         let base_tree = SaltedMerkle::new(&base_zipped_codeword);
         proof_stream.push(protocol::ProofObject::MerkleRoot(base_tree.root()));
         // TODO: base degree bounds
 
         // get coefficients for table extensions
         let challenges = self.sample_weights(11, proof_stream.prover_fiat_shamir());
-        let initials = vec![
-            P::ExtensionFelt::rand(&mut rng),
-            P::ExtensionFelt::rand(&mut rng),
-        ];
+        let initials = vec![P::Fx::rand(&mut rng), P::Fx::rand(&mut rng)];
 
         self.processor_table.extend(&challenges, &initials);
         self.memory_table.extend(&challenges, &initials);
@@ -252,28 +233,23 @@ impl<P: Config> BrainFuckStark<P> {
         let extension_degree_bounds = vec![
             vec![
                 self.processor_table.interpolant_degree();
-                ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                    - ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+                ProcessorTable::<P::Fx>::EXTENSION_WIDTH - ProcessorTable::<P::Fx>::BASE_WIDTH
             ],
             vec![
                 self.memory_table.interpolant_degree();
-                MemoryTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                    - MemoryTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+                MemoryTable::<P::Fx>::EXTENSION_WIDTH - MemoryTable::<P::Fx>::BASE_WIDTH
             ],
             vec![
                 self.instruction_table.interpolant_degree();
-                InstructionTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                    - InstructionTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+                InstructionTable::<P::Fx>::EXTENSION_WIDTH - InstructionTable::<P::Fx>::BASE_WIDTH
             ],
             vec![
                 self.input_table.interpolant_degree();
-                InputTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                    - InputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+                InputTable::<P::Fx>::EXTENSION_WIDTH - InputTable::<P::Fx>::BASE_WIDTH
             ],
             vec![
                 self.output_table.interpolant_degree();
-                OutputTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                    - OutputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
+                OutputTable::<P::Fx>::EXTENSION_WIDTH - OutputTable::<P::Fx>::BASE_WIDTH
             ],
         ]
         .concat();
@@ -285,7 +261,7 @@ impl<P: Config> BrainFuckStark<P> {
                     .map(|codeword| codeword[i])
                     .collect()
             })
-            .collect::<Vec<Vec<P::ExtensionFelt>>>();
+            .collect::<Vec<Vec<P::Fx>>>();
         let extension_tree = SaltedMerkle::new(&ext_zipped_codeword);
         proof_stream.push(protocol::ProofObject::MerkleRoot(extension_tree.root()));
         // TODO: extension degree bounds
@@ -342,10 +318,8 @@ impl<P: Config> BrainFuckStark<P> {
 
         // Instruction permutation
         quotient_codewords.push(permutation_argument::quotient(
-            &processor_codewords
-                [ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::INSTRUCTION_PERMUTATION],
-            &instruction_codewords
-                [InstructionTable::<P::BaseFelt, P::ExtensionFelt>::PROCESSOR_PERMUTATION],
+            &processor_codewords[ProcessorTable::<P::Fx>::INSTRUCTION_PERMUTATION],
+            &instruction_codewords[InstructionTable::<P::Fx>::PROCESSOR_PERMUTATION],
         ));
         quotient_degree_bounds.push(
             usize::max(
@@ -356,9 +330,8 @@ impl<P: Config> BrainFuckStark<P> {
 
         // Memory permutation
         quotient_codewords.push(permutation_argument::quotient(
-            &processor_codewords
-                [ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::MEMORY_PERMUTATION],
-            &memory_codewords[MemoryTable::<P::BaseFelt, P::ExtensionFelt>::PERMUTATION],
+            &processor_codewords[ProcessorTable::<P::Fx>::MEMORY_PERMUTATION],
+            &memory_codewords[MemoryTable::<P::Fx>::PERMUTATION],
         ));
         quotient_degree_bounds.push(
             usize::max(
@@ -374,18 +347,17 @@ impl<P: Config> BrainFuckStark<P> {
         // get weights for non-linear combination
         // - 1 for randomizer polynomial
         // - 2 for every other polynomial (base, extension, quotients)
-        let num_base_polynomials = ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
-            + MemoryTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
-            + InstructionTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
-            + InputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH
-            + OutputTable::<P::BaseFelt, P::ExtensionFelt>::BASE_WIDTH;
-        let num_extension_polynomials =
-            ProcessorTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                + MemoryTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                + InstructionTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                + InputTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                + OutputTable::<P::BaseFelt, P::ExtensionFelt>::EXTENSION_WIDTH
-                - num_base_polynomials;
+        let num_base_polynomials = ProcessorTable::<P::Fx>::BASE_WIDTH
+            + MemoryTable::<P::Fx>::BASE_WIDTH
+            + InstructionTable::<P::Fx>::BASE_WIDTH
+            + InputTable::<P::Fx>::BASE_WIDTH
+            + OutputTable::<P::Fx>::BASE_WIDTH;
+        let num_extension_polynomials = ProcessorTable::<P::Fx>::EXTENSION_WIDTH
+            + MemoryTable::<P::Fx>::EXTENSION_WIDTH
+            + InstructionTable::<P::Fx>::EXTENSION_WIDTH
+            + InputTable::<P::Fx>::EXTENSION_WIDTH
+            + OutputTable::<P::Fx>::EXTENSION_WIDTH
+            - num_base_polynomials;
         let num_randomizer_polynomials = randomizer_codewords.len();
         let num_quotient_polynomials = quotient_degree_bounds.len();
         let weights_seed = proof_stream.prover_fiat_shamir();
@@ -410,10 +382,10 @@ impl<P: Config> BrainFuckStark<P> {
             // dot product of codeword and evaluation of the polynomial `x^shift`
             let shifted_codeword = (0..codeword_len)
                 .map(|i| {
-                    P::ExtensionFelt::from(offset * omega.pow(&[i as u64])).pow(&[shift])
+                    P::Fx::from_base_prime_field(offset * omega.pow(&[i as u64])).pow(&[shift])
                         * codeword[i]
                 })
-                .collect::<Vec<P::ExtensionFelt>>();
+                .collect::<Vec<P::Fx>>();
             terms.push(codeword);
             terms.push(shifted_codeword);
         }
@@ -423,7 +395,7 @@ impl<P: Config> BrainFuckStark<P> {
             .into_iter()
             .zip(weights)
             .map(|(term, weight)| term.into_iter().map(|v| v * weight).collect())
-            .fold(vec![P::ExtensionFelt::zero(); codeword_len], sum);
+            .fold(vec![P::Fx::zero(); codeword_len], sum);
         let combination_tree = SaltedMerkle::new(&combination_codeword);
         proof_stream.push(protocol::ProofObject::MerkleRoot(combination_tree.root()));
 
@@ -492,7 +464,7 @@ pub(crate) fn ceil_power_of_two(value: usize) -> usize {
     }
 }
 
-fn sum<E: Felt>(a: Vec<E>, b: Vec<E>) -> Vec<E> {
+fn sum<F: Field>(a: Vec<F>, b: Vec<F>) -> Vec<F> {
     assert_eq!(a.len(), b.len());
     let n = a.len();
     (0..n).map(|i| a[i] + b[i]).collect()

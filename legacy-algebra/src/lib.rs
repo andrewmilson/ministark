@@ -29,12 +29,14 @@ pub use multivariate::Multivariate;
 mod univariate;
 pub use univariate::Univariate;
 
+pub mod number_theory_transform;
+
 mod bigint;
 
 pub mod fp_u1;
 pub mod fp_u128;
 pub mod fp_u256;
-pub mod fp_u64;
+// pub mod fp_u64;
 
 pub trait Felt:
     Copy

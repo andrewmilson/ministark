@@ -5,31 +5,40 @@ use crate::util::instr_zerofier;
 use crate::util::interpolate_columns;
 use crate::util::lift;
 use crate::OpCode;
+use ark_ff::FftField;
+use ark_ff::Field;
+use ark_ff::One;
+use ark_ff::PrimeField;
+use ark_ff::Zero;
 use legacy_algebra::fp_u128::BaseFelt;
+use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::ExtensionOf;
 use legacy_algebra::Felt;
 use legacy_algebra::Multivariate;
 use legacy_algebra::PrimeFelt;
 use legacy_algebra::StarkFelt;
-use mini_stark::number_theory_transform::number_theory_transform;
 use num_bigint::BigUint;
 use std::convert::From;
 
 const BASE_WIDTH: usize = 7;
 const EXTENSION_WIDTH: usize = 11;
 
-pub struct ProcessorTable<F, E> {
+pub struct ProcessorTable<F: Field> {
     num_padded_rows: usize,
     num_randomizers: usize,
-    matrix: Vec<[F; BASE_WIDTH]>,
-    extended_matrix: Option<Vec<[E; EXTENSION_WIDTH]>>,
-    pub instr_permutation_terminal: Option<E>,
-    pub memory_permutation_terminal: Option<E>,
-    pub input_evaluation_terminal: Option<E>,
-    pub output_evaluation_terminal: Option<E>,
+    matrix: Vec<[F::BasePrimeField; BASE_WIDTH]>,
+    extended_matrix: Option<Vec<[F; EXTENSION_WIDTH]>>,
+    pub instr_permutation_terminal: Option<F>,
+    pub memory_permutation_terminal: Option<F>,
+    pub input_evaluation_terminal: Option<F>,
+    pub output_evaluation_terminal: Option<F>,
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> ProcessorTable<F, E> {
+impl<F> ProcessorTable<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+{
     // base columns
     pub const CYCLE: usize = 0;
     pub const IP: usize = 1;
@@ -58,23 +67,23 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Processor
     }
 
     fn transition_constraints(
-        cycle: &Multivariate<E>,
-        ip: &Multivariate<E>,
-        curr_instr: &Multivariate<E>,
-        next_instr: &Multivariate<E>,
-        mp: &Multivariate<E>,
-        mem_val: &Multivariate<E>,
-        mem_val_inv: &Multivariate<E>,
-        cycle_next: &Multivariate<E>,
-        ip_next: &Multivariate<E>,
-        curr_instr_next: &Multivariate<E>,
-        next_instr_next: &Multivariate<E>,
-        mp_next: &Multivariate<E>,
-        mem_val_next: &Multivariate<E>,
-        mem_val_inv_next: &Multivariate<E>,
-    ) -> Vec<Multivariate<E>> {
-        let zero = E::zero();
-        let one = E::one();
+        cycle: &Multivariate<F>,
+        ip: &Multivariate<F>,
+        curr_instr: &Multivariate<F>,
+        next_instr: &Multivariate<F>,
+        mp: &Multivariate<F>,
+        mem_val: &Multivariate<F>,
+        mem_val_inv: &Multivariate<F>,
+        cycle_next: &Multivariate<F>,
+        ip_next: &Multivariate<F>,
+        curr_instr_next: &Multivariate<F>,
+        next_instr_next: &Multivariate<F>,
+        mp_next: &Multivariate<F>,
+        mem_val_next: &Multivariate<F>,
+        mem_val_inv_next: &Multivariate<F>,
+    ) -> Vec<Multivariate<F>> {
+        let zero = F::zero();
+        let one = F::one();
         let two = one + one;
         let mem_val_is_zero = mem_val.clone() * mem_val_inv.clone() - one;
         let mut polynomials = vec![
@@ -136,7 +145,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Processor
             }
 
             // max degree: 7
-            let deselector = if_not_instr(instr, &curr_instr);
+            let deselector = if_not_instr(&instr, &curr_instr);
 
             for (polynomial, instr_polynomial) in polynomials.iter_mut().zip(instr_polynomials) {
                 // max degree: 7 + 4 = 11
@@ -153,8 +162,10 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Processor
     }
 }
 
-impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, E>
-    for ProcessorTable<F, E>
+impl<F> Table<F> for ProcessorTable<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
 {
     const BASE_WIDTH: usize = BASE_WIDTH;
     const EXTENSION_WIDTH: usize = EXTENSION_WIDTH;
@@ -170,13 +181,13 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
     fn pad(&mut self, n: usize) {
         while self.matrix.len() < n {
             let last_row = self.matrix.last().unwrap();
-            let mut new_row = [F::zero(); BASE_WIDTH];
-            new_row[Self::CYCLE] = last_row[Self::CYCLE] + F::one();
+            let mut new_row = [F::BasePrimeField::zero(); BASE_WIDTH];
+            new_row[Self::CYCLE] = last_row[Self::CYCLE] + F::BasePrimeField::one();
             new_row[Self::IP] = last_row[Self::IP];
             // TODO: nit. may be too verbose. remove
-            new_row[Self::CURR_INSTR] = F::zero();
+            new_row[Self::CURR_INSTR] = F::BasePrimeField::zero();
             // TODO: nit. may be too verbose. remove
-            new_row[Self::NEXT_INSTR] = F::zero();
+            new_row[Self::NEXT_INSTR] = F::BasePrimeField::zero();
             new_row[Self::MP] = last_row[Self::MP];
             new_row[Self::MEM_VAL] = last_row[Self::MEM_VAL];
             new_row[Self::MEM_VAL_INV] = last_row[Self::MEM_VAL_INV];
@@ -185,8 +196,8 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         }
     }
 
-    fn base_boundary_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(BASE_WIDTH);
+    fn base_boundary_constraints() -> Vec<Multivariate<F>> {
+        let variables = Multivariate::<F>::variables(BASE_WIDTH);
         // All registers except CURR_INSTR and NEXT_INSTR should be zero
         vec![
             variables[Self::CYCLE].clone(),
@@ -197,8 +208,8 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         ]
     }
 
-    fn base_transition_constraints() -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(BASE_WIDTH * 2);
+    fn base_transition_constraints() -> Vec<Multivariate<F>> {
+        let variables = Multivariate::<F>::variables(BASE_WIDTH * 2);
         // current cycle
         let cycle = variables[Self::CYCLE].clone();
         let ip = variables[Self::IP].clone();
@@ -234,8 +245,8 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         )
     }
 
-    fn extension_boundary_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
-        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH);
+    fn extension_boundary_constraints(challenges: &[F]) -> Vec<Multivariate<F>> {
+        let variables = Multivariate::<F>::variables(EXTENSION_WIDTH);
         vec![
             variables[Self::CYCLE].clone(),
             variables[Self::IP].clone(),
@@ -247,7 +258,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         ]
     }
 
-    fn extension_transition_constraints(challenges: &[E]) -> Vec<Multivariate<E>> {
+    fn extension_transition_constraints(challenges: &[F]) -> Vec<Multivariate<F>> {
         let mut challenges_iter = challenges.iter().copied();
         let a = challenges_iter.next().unwrap();
         let b = challenges_iter.next().unwrap();
@@ -261,7 +272,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         let delta = challenges_iter.next().unwrap();
         let eta = challenges_iter.next().unwrap();
 
-        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH * 2);
+        let variables = Multivariate::<F>::variables(EXTENSION_WIDTH * 2);
         // current cycle
         let cycle = variables[Self::CYCLE].clone();
         let ip = variables[Self::IP].clone();
@@ -352,9 +363,9 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
 
     fn extension_terminal_constraints(
         &self,
-        challenges: &[E],
-        terminals: &[E],
-    ) -> Vec<Multivariate<E>> {
+        challenges: &[F],
+        terminals: &[F],
+    ) -> Vec<Multivariate<F>> {
         let mut challenges_iter = challenges.iter().copied();
         let _a = challenges_iter.next().unwrap();
         let _b = challenges_iter.next().unwrap();
@@ -375,7 +386,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         let processor_output_evaluation_terminal = terminal_iter.next().unwrap();
         let instruction_evaluation_terminal = terminal_iter.next().unwrap();
 
-        let variables = Multivariate::<E>::variables(EXTENSION_WIDTH);
+        let variables = Multivariate::<F>::variables(EXTENSION_WIDTH);
         let cycle = variables[Self::CYCLE].clone();
         let mp = variables[Self::MP].clone();
         let mem_val = variables[Self::MEM_VAL].clone();
@@ -412,12 +423,12 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         self.height() + self.num_randomizers
     }
 
-    fn set_matrix(&mut self, matrix: Vec<[F; BASE_WIDTH]>) {
+    fn set_matrix(&mut self, matrix: Vec<[F::BasePrimeField; BASE_WIDTH]>) {
         self.num_padded_rows = 0;
         self.matrix = matrix;
     }
 
-    fn extend(&mut self, challenges: &[E], initials: &[E]) {
+    fn extend(&mut self, challenges: &[F], initials: &[F]) {
         let mut challenges_iter = challenges.iter().copied();
         let a = challenges_iter.next().unwrap();
         let b = challenges_iter.next().unwrap();
@@ -437,15 +448,16 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         // prepare
         let mut instr_permutation_running_product = instr_permutation_initial;
         let mut mem_permutation_running_product = mem_permutation_initial;
-        let mut input_running_evaluation = E::zero();
-        let mut output_running_evaluation = E::zero();
+        let mut input_running_evaluation = F::zero();
+        let mut output_running_evaluation = F::zero();
 
         // loop over all rows
         let mut extended_matrix = Vec::new();
         for i in 0..self.matrix.len() {
             let base_row = self.matrix[i];
-            let mut extension_row = [E::zero(); EXTENSION_WIDTH];
-            extension_row[..BASE_WIDTH].copy_from_slice(&base_row.map(|v| v.into()));
+            let mut extension_row = [F::zero(); EXTENSION_WIDTH];
+            extension_row[..BASE_WIDTH]
+                .copy_from_slice(&base_row.map(|v| F::from_base_prime_field(v)));
 
             // Permutations columns
             extension_row[Self::INSTRUCTION_PERMUTATION] = instr_permutation_running_product;
@@ -470,11 +482,11 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
             let write_instr = BigUint::from(Into::<usize>::into(OpCode::Write));
             if curr_instr == read_instr {
                 let next_row = self.matrix[i + 1];
-                let input_val: E = next_row[Self::MEM_VAL].into();
+                let input_val = F::from_base_prime_field(next_row[Self::MEM_VAL]);
                 input_running_evaluation = input_running_evaluation * gamma + input_val;
             } else if curr_instr == write_instr {
                 let next_row = self.matrix[i + 1];
-                let output_val: E = next_row[Self::MEM_VAL].into();
+                let output_val = F::from_base_prime_field(next_row[Self::MEM_VAL]);
                 output_running_evaluation = output_running_evaluation * delta + output_val;
             }
 
@@ -488,7 +500,7 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
         self.output_evaluation_terminal = Some(output_running_evaluation);
     }
 
-    fn base_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+    fn base_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
         println!("proc_lde");
         let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
         // return the codewords
@@ -496,14 +508,14 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
             .into_iter()
             .map(|poly| {
                 let mut coefficients = poly.scale(offset).coefficients;
-                coefficients.resize(codeword_len, F::zero());
+                coefficients.resize(codeword_len, F::BasePrimeField::zero());
                 let coef = number_theory_transform(&coefficients);
                 lift(coef)
             })
             .collect()
     }
 
-    fn extension_lde(&mut self, offset: F, codeword_len: usize) -> Vec<Vec<E>> {
+    fn extension_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
         println!("proc_lde_ext");
         let extension_rows = self
             .extended_matrix
@@ -518,16 +530,15 @@ impl<F: StarkFelt + PrimeFelt, E: Felt<BaseFelt = F> + ExtensionOf<F>> Table<F, 
                     row[Self::OUTPUT_EVALUATION],
                 ]
             })
-            .collect::<Vec<[E; 4]>>();
+            .collect::<Vec<[F; 4]>>();
         let polynomials = interpolate_columns(&extension_rows, self.num_randomizers);
         // return the codewords
         polynomials
             .into_iter()
             .map(|poly| {
-                let mut coefficients = poly.scale(offset.into()).coefficients;
-                coefficients.resize(codeword_len, E::zero());
-                let coef = number_theory_transform(&coefficients);
-                lift(coef)
+                let mut coefficients = poly.scale(F::from_base_prime_field(offset)).coefficients;
+                coefficients.resize(codeword_len, F::zero());
+                number_theory_transform(&coefficients)
             })
             .collect()
     }
