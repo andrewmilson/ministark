@@ -1,5 +1,5 @@
 use ark_ff::Field;
-use legacy_algebra::Univariate;
+use ark_poly::univariate::DensePolynomial;
 use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
@@ -25,26 +25,26 @@ pub struct CompressedChecked<T>(T);
 // UncompressedUnchecked<T> { 	// always invoke
 // `CanonicalDeserialize::deserialize_uncompressed_unchecked()` }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub enum ProofObject<E> {
-    Polynomial(Univariate<E>),
+// #[derive(Serialize, Deserialize, Clone)]
+pub enum ProofObject<F: Field> {
+    Polynomial(DensePolynomial<F>),
     MerkleRoot(u64),
-    Codeword(Vec<E>),
+    Codeword(Vec<F>),
     MerklePath(Vec<u64>),
-    YValue(E),
-    YValues((E, E, E)),
+    YValue(F),
+    YValues((F, F, F)),
 
     // new vals
-    Terminal(E),
-    LeafItems(Vec<E>),
-    LeafItem(E),
+    Terminal(F),
+    LeafItems(Vec<F>),
+    LeafItem(F),
     MerklePathWithSalt((u64, Vec<u64>)),
-    FriLeafs((E, E, E)),
+    FriLeafs((F, F, F)),
 }
 
-pub trait ProofStream<E> {
-    fn push(&mut self, object: ProofObject<E>);
-    fn pull(&mut self) -> ProofObject<E>;
+pub trait ProofStream<F: Field> {
+    fn push(&mut self, object: ProofObject<F>);
+    fn pull(&mut self) -> ProofObject<F>;
     fn serialize(&self) -> Vec<u8>;
     fn deserialize(&self, bytes: &[u8]) -> Self;
     fn prover_fiat_shamir(&self) -> u64;
@@ -52,8 +52,8 @@ pub trait ProofStream<E> {
 }
 
 // #[derive(Serialize, Deserialize)]
-pub struct StandardProofStream<E> {
-    pub objects: Vec<ProofObject<E>>,
+pub struct StandardProofStream<F: Field> {
+    pub objects: Vec<ProofObject<F>>,
     pub read_index: usize,
 }
 

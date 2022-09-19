@@ -4,6 +4,7 @@ use crate::util::lift;
 use ark_ff::FftField;
 use ark_ff::Field;
 use legacy_algebra::number_theory_transform::number_theory_transform;
+use legacy_algebra::scale_poly;
 use legacy_algebra::Multivariate;
 use num_traits::Zero;
 
@@ -122,7 +123,7 @@ where
         polynomials
             .into_iter()
             .map(|poly| {
-                let mut coefficients = poly.scale(offset).coefficients;
+                let mut coefficients = scale_poly(&poly, offset).coeffs;
                 coefficients.resize(codeword_len, F::BasePrimeField::zero());
                 lift(number_theory_transform(&coefficients))
             })
@@ -142,7 +143,7 @@ where
         polynomials
             .into_iter()
             .map(|poly| {
-                let mut coefficients = poly.scale(F::from_base_prime_field(offset)).coefficients;
+                let mut coefficients = scale_poly(&poly, F::from_base_prime_field(offset)).coeffs;
                 coefficients.resize(codeword_len, F::zero());
                 number_theory_transform(&coefficients)
             })

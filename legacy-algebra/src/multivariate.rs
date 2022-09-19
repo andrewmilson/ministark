@@ -1,6 +1,9 @@
 use super::Felt;
-use super::Univariate;
+// use super::Univariate;
 use ark_ff::Field;
+use ark_ff::Zero;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
 // use ark_ff::Zero;
 use num_traits::NumAssign;
 use serde::Deserialize;
@@ -103,7 +106,7 @@ impl<F: Field> Multivariate<F> {
             .collect()
     }
 
-    pub fn lift(polynomial: Univariate<F>, lift_index: usize) -> Self {
+    pub fn lift(polynomial: DensePolynomial<F>, lift_index: usize) -> Self {
         if polynomial.is_zero() {
             return Self::zero();
         }
@@ -112,7 +115,7 @@ impl<F: Field> Multivariate<F> {
         let x = variables.last().unwrap();
         let mut accumulator = Self::zero();
 
-        for (i, coefficient) in polynomial.coefficients.into_iter().enumerate() {
+        for (i, coefficient) in polynomial.coeffs.into_iter().enumerate() {
             accumulator =
                 accumulator + Self::constant(coefficient) * (x.clone() ^ i.try_into().unwrap());
         }
@@ -133,13 +136,13 @@ impl<F: Field> Multivariate<F> {
         accumulator
     }
 
-    pub fn evaluate_symbolic(&self, point: &[Univariate<F>]) -> Univariate<F> {
-        let mut accumulator = Univariate::new(vec![]);
+    pub fn evaluate_symbolic(&self, point: &[DensePolynomial<F>]) -> DensePolynomial<F> {
+        let mut accumulator = DensePolynomial::zero();
         for (pad, coefficient) in self.powers.iter().zip(self.coefficients.iter()) {
-            let mut product = Univariate::new(vec![*coefficient]);
+            let mut product = DensePolynomial::from_coefficients_vec(vec![*coefficient]);
             for (i, power) in pad.iter().enumerate() {
                 // TODO: change all `a ^ b` to `a.pow(b)`
-                product = product * (point[i].clone() ^ *power);
+                product = product.naive_mul(&pow_poly(&point[i], *power));
             }
             accumulator = accumulator + product;
         }
@@ -390,4 +393,25 @@ impl<F: Field> fmt::Display for Multivariate<F> {
 
         write!(f, "{}", formatted_coefficients.join(" + "))
     }
+}
+
+fn pow_poly<F: Field>(p: &DensePolynomial<F>, exponent: u128) -> DensePolynomial<F> {
+    if p.is_zero() {
+        return DensePolynomial::zero();
+    }
+
+    if exponent == 0 {
+        return DensePolynomial::from_coefficients_vec(vec![F::one()]);
+    }
+
+    let mut accumulator = DensePolynomial::from_coefficients_vec(vec![F::one()]);
+    for i in (0..128).rev() {
+        accumulator = accumulator.naive_mul(&accumulator);
+        let bit = 1u128 << i;
+        if bit & exponent != 0 {
+            accumulator = accumulator.naive_mul(p);
+        }
+    }
+
+    accumulator
 }

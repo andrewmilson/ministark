@@ -1,10 +1,11 @@
 use crate::OpCode;
 use ark_ff::FftField;
 use ark_ff::Field;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
 use legacy_algebra::number_theory_transform::fast_interpolate;
 use legacy_algebra::number_theory_transform::inverse_number_theory_transform;
 use legacy_algebra::Multivariate;
-use legacy_algebra::Univariate;
 
 pub fn instr_zerofier<F: Field>(curr_instr: &Multivariate<F>) -> Multivariate<F> {
     let mut accumulator = Multivariate::one();
@@ -47,7 +48,7 @@ pub(crate) fn lift<F: Field>(v: Vec<F::BasePrimeField>) -> Vec<F> {
 pub(crate) fn interpolate_columns<F, const WIDTH: usize>(
     matrix: &[[F; WIDTH]],
     num_randomizers: usize,
-) -> Vec<Univariate<F>>
+) -> Vec<DensePolynomial<F>>
 where
     F: Field,
     F::BasePrimeField: FftField,
@@ -79,7 +80,9 @@ where
         let values = vec![trace_column, randomizers].concat();
         assert_eq!(values.len(), domain.len());
         if num_randomizers == 0 {
-            polynomials.push(Univariate::new(inverse_number_theory_transform(&values)));
+            polynomials.push(DensePolynomial::from_coefficients_vec(
+                inverse_number_theory_transform(&values),
+            ));
         } else {
             polynomials.push(fast_interpolate(&domain, &values))
         }

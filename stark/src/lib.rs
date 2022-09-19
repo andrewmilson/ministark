@@ -4,6 +4,8 @@ use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::PrimeField;
 use ark_ff::UniformRand;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
 use brainfuck::permutation_argument;
 use brainfuck::InputTable;
 use brainfuck::InstructionTable;
@@ -13,7 +15,7 @@ use brainfuck::ProcessorTable;
 use brainfuck::Table;
 use fri::Fri;
 use legacy_algebra::number_theory_transform::number_theory_transform;
-use legacy_algebra::Univariate;
+use legacy_algebra::scale_poly;
 use num_traits::Zero;
 use protocol::ProofStream;
 use salted_merkle::SaltedMerkle;
@@ -27,8 +29,6 @@ mod fri;
 mod merkle;
 pub mod protocol;
 mod salted_merkle;
-
-// struct FeltMTConfig
 
 pub trait Config {
     /// Base prime field
@@ -155,10 +155,10 @@ impl<P: Config> BrainFuckStark<P> {
 
         let randomizer_codewords = {
             let n = ceil_power_of_two(self.max_degree());
-            let coefficients = (0..n).map(|_| P::Fx::rand(&mut rng)).collect();
-            let polynomial = Univariate::new(coefficients);
-            polynomial.scale(P::Fx::from_base_prime_field(offset));
-            let mut coefficients = polynomial.coefficients;
+            let coefficients = (0..n).map(|_| P::Fx::rand(&mut rng)).collect::<Vec<_>>();
+            let polynomial = DensePolynomial::from_coefficients_vec(coefficients);
+            let polynomial = scale_poly(&polynomial, P::Fx::from_base_prime_field(offset));
+            let mut coefficients = polynomial.coeffs;
             coefficients.resize(codeword_len, P::Fx::zero());
             vec![number_theory_transform(&coefficients)]
         };

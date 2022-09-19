@@ -1,11 +1,14 @@
 extern crate test;
 
 use super::Multivariate;
-use super::Univariate;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
+use ark_poly::univariate::DenseOrSparsePolynomial;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
+use ark_poly::Polynomial;
 
 // TODO: fix types. E might have to have the same BaseField as F.
 pub fn ntt<F>(primitive_root: F::BasePrimeField, values: &[F]) -> Vec<F>
@@ -73,19 +76,19 @@ where
         .collect()
 }
 
-pub fn fast_multiply<F>(lhs: &Univariate<F>, rhs: &Univariate<F>) -> Univariate<F>
+pub fn fast_multiply<F>(lhs: &DensePolynomial<F>, rhs: &DensePolynomial<F>) -> DensePolynomial<F>
 where
     F: Field,
     F::BasePrimeField: FftField,
 {
     if lhs.is_zero() || rhs.is_zero() {
-        return Univariate::new(vec![]);
+        return Default::default();
     }
 
-    let degree = (lhs.degree() + rhs.degree()) as usize;
+    let degree = lhs.degree() + rhs.degree();
 
     if degree < 8 {
-        return lhs.clone() * rhs.clone();
+        return lhs.naive_mul(rhs);
     }
 
     let n = degree.next_power_of_two();
@@ -94,14 +97,14 @@ where
     // assert_ne!(root.pow([(order / 2) as u64]), E::one());
 
     let mut lhs_coefficients = vec![F::zero(); n];
-    lhs_coefficients[..lhs.coefficients.len()].copy_from_slice(&lhs.coefficients);
+    lhs_coefficients[..lhs.coeffs.len()].copy_from_slice(&lhs.coeffs);
     // lhs.coefficients[..(lhs.degree() as usize + 1)].to_vec();
     // while lhs_coefficients.len() < n {
     //     lhs_coefficients.push(E::zero());
     // }
 
     let mut rhs_coefficients = vec![F::zero(); n];
-    rhs_coefficients[..rhs.coefficients.len()].copy_from_slice(&rhs.coefficients);
+    rhs_coefficients[..rhs.coeffs.len()].copy_from_slice(&rhs.coeffs);
     // rhs.coefficients[..(rhs.degree() as usize + 1)].to_vec();
     // while rhs_coefficients.len() < n {
     //     rhs_coefficients.push(E::zero());
@@ -117,11 +120,11 @@ where
         .collect::<Vec<F>>();
     let product_coefficients = inverse_number_theory_transform(&hadamard_product);
 
-    // Univariate::new(product_coefficients[..(degree + 1)].to_vec())
-    Univariate::new(product_coefficients)
+    // DensePolynomial::new(product_coefficients[..(degree + 1)].to_vec())
+    DensePolynomial::from_coefficients_vec(product_coefficients)
 }
 
-pub fn fast_zerofier<F>(domain: &[F]) -> Univariate<F>
+pub fn fast_zerofier<F>(domain: &[F]) -> DensePolynomial<F>
 where
     F: Field,
     F::BasePrimeField: FftField,
@@ -138,11 +141,11 @@ where
     // );
 
     if domain.is_empty() {
-        return Univariate::new(vec![F::zero()]);
+        return DensePolynomial::zero();
     }
 
     if domain.len() == 1 {
-        return Univariate::new(vec![-domain[0], F::one()]);
+        return DensePolynomial::from_coefficients_vec(vec![-domain[0], F::one()]);
     }
 
     let half = domain.len() / 2;
@@ -151,27 +154,7 @@ where
     fast_multiply(&left, &right)
 }
 
-pub fn fast_evaluate_symbolic<F>(
-    polynomial: &Multivariate<F>,
-    point: &[Univariate<F>],
-) -> Univariate<F>
-where
-    F: Field,
-    F::BasePrimeField: FftField,
-{
-    let mut accumulator = Univariate::new(vec![]);
-    for (pad, coefficient) in polynomial.powers.iter().zip(polynomial.coefficients.iter()) {
-        let mut product = Univariate::new(vec![*coefficient]);
-        for (i, power) in pad.iter().enumerate() {
-            product = fast_multiply(&product, &(point[i].clone() ^ *power));
-            // product = product * (point[i].clone() ^ *power);
-        }
-        accumulator = accumulator + product;
-    }
-    accumulator
-}
-
-fn fast_evaluate_domain<F>(polynomial: &Univariate<F>, domain: &[F]) -> Vec<F>
+fn fast_evaluate_domain<F>(polynomial: &DensePolynomial<F>, domain: &[F]) -> Vec<F>
 where
     F: Field,
     F::BasePrimeField: FftField,
@@ -181,21 +164,28 @@ where
     }
 
     if domain.len() == 1 {
-        return vec![polynomial.evaluate(domain[0])];
+        return vec![polynomial.evaluate(&domain[0])];
     }
 
     let half = domain.len() / 2;
 
-    let left_zerofier = fast_zerofier(&domain[..half]);
-    let right_zerofier = fast_zerofier(&domain[half..]);
+    let polynomial = DenseOrSparsePolynomial::from(polynomial);
+    let left_zerofier = DenseOrSparsePolynomial::from(fast_zerofier(&domain[..half]));
+    let right_zerofier = DenseOrSparsePolynomial::from(fast_zerofier(&domain[half..]));
 
-    let left = fast_evaluate_domain(&(polynomial.clone() % left_zerofier), &domain[..half]);
-    let right = fast_evaluate_domain(&(polynomial.clone() % right_zerofier), &domain[half..]);
+    let left = fast_evaluate_domain(
+        &(polynomial.divide_with_q_and_r(&left_zerofier).unwrap().1),
+        &domain[..half],
+    );
+    let right = fast_evaluate_domain(
+        &(polynomial.divide_with_q_and_r(&right_zerofier).unwrap().1),
+        &domain[half..],
+    );
 
     left.into_iter().chain(right.into_iter()).collect()
 }
 
-pub fn fast_interpolate<F>(domain: &[F], values: &[F]) -> Univariate<F>
+pub fn fast_interpolate<F>(domain: &[F], values: &[F]) -> DensePolynomial<F>
 where
     F: Field,
     F::BasePrimeField: FftField,
@@ -207,11 +197,11 @@ where
     );
 
     if domain.is_empty() {
-        return Univariate::new(vec![]);
+        return DensePolynomial::zero();
     }
 
     if domain.len() == 1 {
-        return Univariate::new(vec![values[0]]);
+        return DensePolynomial::from_coefficients_vec(vec![values[0]]);
     }
 
     let half = domain.len() / 2;
@@ -243,19 +233,19 @@ where
     let left_interpolant = fast_interpolate(&domain[..half], &left_targets);
     let right_interpolant = fast_interpolate(&domain[half..], &right_targets);
 
-    fast_multiply(&left_interpolant, &right_zerofier)
-        + fast_multiply(&right_interpolant, &left_zerofier)
+    &fast_multiply(&left_interpolant, &right_zerofier)
+        + &fast_multiply(&right_interpolant, &left_zerofier)
 
     // left_interpolant * right_zerofier + right_interpolant * left_zerofier
 }
 
-pub fn fast_coset_evaluate<F>(polynomial: &Univariate<F>, offset: F, order: usize) -> Vec<F>
+pub fn fast_coset_evaluate<F>(polynomial: &DensePolynomial<F>, offset: F, order: usize) -> Vec<F>
 where
     F: Field,
     F::BasePrimeField: FftField,
 {
-    let scaled_polynomial = polynomial.scale(offset);
-    let mut scaled_coefficients = scaled_polynomial.coefficients;
+    let scaled_polynomial = super::scale_poly(polynomial, offset);
+    let mut scaled_coefficients = scaled_polynomial.coeffs;
     while scaled_coefficients.len() < order {
         scaled_coefficients.push(F::zero());
     }
@@ -264,12 +254,12 @@ where
 
 // Clean division only
 pub fn fast_coset_divide<F>(
-    lhs: &Univariate<F>,
-    rhs: &Univariate<F>,
+    lhs: &DensePolynomial<F>,
+    rhs: &DensePolynomial<F>,
     offset: F,
     primitive_root: F,
     root_order: usize,
-) -> Univariate<F>
+) -> DensePolynomial<F>
 where
     F: Field,
     F::BasePrimeField: FftField,
@@ -287,7 +277,7 @@ where
     assert!(!rhs.is_zero(), "cannot divide by zero polynomial");
 
     if lhs.is_zero() {
-        return Univariate::new(vec![]);
+        return DensePolynomial::zero();
     }
 
     assert!(
@@ -300,23 +290,23 @@ where
     let degree = lhs.degree().max(rhs.degree());
 
     if degree < 8 {
-        return lhs.clone() / rhs.clone();
+        return lhs / rhs;
     }
 
-    while degree < (order / 2) as isize {
+    while degree < order / 2 {
         root.square_in_place();
         order /= 2;
     }
 
-    let scaled_lhs = lhs.clone().scale(offset);
-    let scaled_rhs = rhs.clone().scale(offset);
+    let scaled_lhs = super::scale_poly(lhs, offset);
+    let scaled_rhs = super::scale_poly(rhs, offset);
 
-    let mut lhs_coefficients = scaled_lhs.coefficients[..((lhs.degree() + 1) as usize)].to_vec();
+    let mut lhs_coefficients = scaled_lhs.coeffs[..((lhs.degree() + 1) as usize)].to_vec();
     while lhs_coefficients.len() < order {
         lhs_coefficients.push(F::zero());
     }
 
-    let mut rhs_coefficients = scaled_rhs.coefficients[..((rhs.degree() + 1) as usize)].to_vec();
+    let mut rhs_coefficients = scaled_rhs.coeffs[..((rhs.degree() + 1) as usize)].to_vec();
     while rhs_coefficients.len() < order {
         rhs_coefficients.push(F::zero());
     }
@@ -332,9 +322,9 @@ where
         .collect::<Vec<F>>();
 
     let scaled_quotient_coefficients = inverse_number_theory_transform(&quotient_codeword);
-    let scaled_quotient = Univariate::new(scaled_quotient_coefficients);
+    let scaled_quotient = DensePolynomial::from_coefficients_vec(scaled_quotient_coefficients);
 
-    scaled_quotient.scale(offset.inverse().unwrap())
+    super::scale_poly(&scaled_quotient, offset.inverse().unwrap())
 }
 
 #[cfg(test)]

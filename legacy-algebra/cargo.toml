@@ -12,6 +12,7 @@ serde = { version = "1.0", features = ["derive"] }
 num-bigint = { version = "0.4", default-features = false }
 rand = "0.8.5"
 ark-ff = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
+ark-poly = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
 
 [dev-dependencies]
 rand_pcg = "0.3.1"
@@ -20,3 +21,4 @@ ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
 [patch.crates-io]
 ark-ff = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
 ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
+ark-poly = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }

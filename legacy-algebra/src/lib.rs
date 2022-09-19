@@ -1,5 +1,8 @@
 #![feature(test, bigint_helper_methods, const_bigint_helper_methods)]
 
+use ark_ff::Field;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
 use bigint::BigInteger;
 use core::iter::Sum;
 use num_bigint::BigUint;
@@ -26,8 +29,8 @@ use std::ops::SubAssign;
 mod multivariate;
 pub use multivariate::Multivariate;
 
-mod univariate;
-pub use univariate::Univariate;
+// mod univariate;
+// pub use univariate::Univariate;
 
 pub mod number_theory_transform;
 
@@ -318,4 +321,14 @@ where
     fn rand<R: Rng + ?Sized>(rng: &mut R) -> Self {
         rng.sample(Standard)
     }
+}
+
+pub fn scale_poly<F: Field>(p: &DensePolynomial<F>, factor: F) -> DensePolynomial<F> {
+    let mut accumulator = F::one();
+    let mut res = p.coeffs.clone();
+    for coefficient in &mut res {
+        *coefficient *= accumulator;
+        accumulator *= factor;
+    }
+    DensePolynomial::from_coefficients_vec(res)
 }

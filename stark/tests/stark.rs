@@ -6,7 +6,6 @@ use brainfuck::stark::SimulationMatrices;
 use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::Felt;
 use legacy_algebra::StarkFelt;
-use legacy_algebra::Univariate;
 use num_traits::One;
 use num_traits::Zero;
 use stark::protocol::StandardProofStream;
