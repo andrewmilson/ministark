@@ -1,24 +1,13 @@
 use crate::memory_table::MemoryTable;
 use crate::OpCode;
 use ark_ff::FftField;
-use ark_ff::Field;
 use ark_ff::PrimeField;
-use legacy_algebra::PrimeFelt;
-use legacy_algebra::StarkFelt;
-
-// trait TableCollection<E: Felt> {
-//     fn pad(&mut self);
-
-//     fn max_degree(&self) -> usize;
-
-//     fn tables(&self) -> Vec<Box<dyn Table<E>>>;
-// }
 
 pub fn compile(source: &str) -> Vec<usize> {
     let opcodes = super::lex(source);
     let mut program = Vec::new();
     let mut stack = Vec::new();
-    for (i, opcode) in opcodes.into_iter().enumerate() {
+    for opcode in opcodes.into_iter() {
         program.push(opcode.clone().into());
         match opcode {
             OpCode::LoopBegin => {

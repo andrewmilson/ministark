@@ -19,11 +19,11 @@ where
 
     assert!(values.len().is_power_of_two());
     assert_eq!(
-        primitive_root.pow(&[values.len() as u64]),
+        primitive_root.pow([values.len() as u64]),
         F::BasePrimeField::one()
     );
     let half = values.len() / 2;
-    assert_ne!(primitive_root.pow(&[half as u64]), F::BasePrimeField::one());
+    assert_ne!(primitive_root.pow([half as u64]), F::BasePrimeField::one());
 
     let odd_values = values
         .iter()
@@ -90,8 +90,8 @@ where
 
     let n = degree.next_power_of_two();
     // let root = E::get_root_of_unity(degree.ilog2() + 1);
-    // assert_eq!(root.pow(&[order as u64]), E::one());
-    // assert_ne!(root.pow(&[(order / 2) as u64]), E::one());
+    // assert_eq!(root.pow([order as u64]), E::one());
+    // assert_ne!(root.pow([(order / 2) as u64]), E::one());
 
     let mut lhs_coefficients = vec![F::zero(); n];
     lhs_coefficients[..lhs.coefficients.len()].copy_from_slice(&lhs.coefficients);
@@ -127,12 +127,12 @@ where
     F::BasePrimeField: FftField,
 {
     // assert_eq!(
-    //     primitive_root.pow(&[root_order as u64]),
+    //     primitive_root.pow([root_order as u64]),
     //     E::one(),
     //     "supplied root does not have supplied order"
     // );
     // assert_ne!(
-    //     primitive_root.pow(&[(root_order / 2) as u64]),
+    //     primitive_root.pow([(root_order / 2) as u64]),
     //     E::one(),
     //     "supplied root is not primitive root of supplied order"
     // );
@@ -365,7 +365,7 @@ mod tests {
     fn bench_interpolate_100_points(b: &mut Bencher) {
         let points = 100;
         let domain = (0u64..points)
-            .map(|i| Fp::GENERATOR.pow(&[i]))
+            .map(|i| Fp::GENERATOR.pow([i]))
             .collect::<Vec<_>>();
         let values = (0u64..points).map(Fp::from).collect::<Vec<_>>();
         let root_order = (domain.len() + 1).next_power_of_two();

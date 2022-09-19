@@ -4,18 +4,11 @@ use crate::protocol::ProofStream;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::PrimeField;
-use legacy_algebra::fp_u128::BaseFelt;
-use legacy_algebra::ExtensionOf;
-use legacy_algebra::Felt;
-use legacy_algebra::PrimeFelt;
-use legacy_algebra::StarkFelt;
 use num_traits::One;
 use std::collections::hash_map::DefaultHasher;
-use std::hash;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::iter::zip;
-use std::marker::PhantomData;
 
 pub trait Config {
     /// Base prime field
@@ -28,28 +21,6 @@ pub trait Config {
     const NUM_COLINEARITY_CHECKS: usize =
         Self::SECURITY_LEVEL / Self::EXPANSION_FACTOR.ilog2() as usize;
 }
-
-// pub struct FriParams {
-//     EXPANSION_FACTOR: usize,
-//     num_colinearity_tests: usize,
-// }
-
-// impl FriParams {
-//     pub fn new(EXPANSION_FACTOR: usize, num_colinearity_tests: usize) ->
-// FriParams {         Self {
-//             EXPANSION_FACTOR,
-//             num_colinearity_tests,
-//         }
-//     }
-
-//     pub fn EXPANSION_FACTOR(&self) -> usize {
-//         self.EXPANSION_FACTOR
-//     }
-
-//     pub fn num_colinearity_tests(&self) -> usize {
-//         self.num_colinearity_tests
-//     }
-// }
 
 pub struct Fri<P: Config> {
     params: P,
@@ -109,7 +80,7 @@ impl<P: Config> Fri<P> {
             let root = tree.root();
 
             // Skip the first round
-            if trees.len() != 0 {
+            if !trees.is_empty() {
                 // TODO: HELP: is this needed on the last round?
                 proof_stream.push(crate::protocol::ProofObject::MerkleRoot(root));
             }
@@ -129,12 +100,11 @@ impl<P: Config> Fri<P> {
             codeword = zip(lhs, rhs)
                 .enumerate()
                 .map(|(i, (&l, &r))| {
-                    (one + alpha / P::Fx::from_base_prime_field(offset * omega.pow(&[i as u64]))
-                        * l
+                    (one + alpha / P::Fx::from_base_prime_field(offset * omega.pow([i as u64])) * l
                         + (one
                             - alpha
                                 / P::Fx::from_base_prime_field(
-                                    offset * omega.pow(&[(n / 2 + i) as u64]),
+                                    offset * omega.pow([(n / 2 + i) as u64]),
                                 ))
                             * r)
                         / two

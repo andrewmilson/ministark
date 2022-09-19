@@ -8,15 +8,9 @@ use crate::OpCode;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
-use ark_ff::PrimeField;
 use ark_ff::Zero;
-use legacy_algebra::fp_u128::BaseFelt;
 use legacy_algebra::number_theory_transform::number_theory_transform;
-use legacy_algebra::ExtensionOf;
-use legacy_algebra::Felt;
 use legacy_algebra::Multivariate;
-use legacy_algebra::PrimeFelt;
-use legacy_algebra::StarkFelt;
 use num_bigint::BigUint;
 use std::convert::From;
 

@@ -120,7 +120,7 @@ fn hello_world() {
 
 //     let eval1 = number_theory_transform(&coefficients);
 //     let eval2 = (0..n)
-//         .map(|i| offset * root.pow(&[i as u64]) - Fp::one())
+//         .map(|i| offset * root.pow([i as u64]) - Fp::one())
 //         .collect::<Vec<Fp>>();
 
 //     assert_eq!(eval1, eval2);

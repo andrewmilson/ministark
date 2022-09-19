@@ -29,7 +29,7 @@ fn ntt_control<E: StarkFelt>(values: &[E]) -> Vec<E> {
         let odds = ntt_control(&odd_values);
         let evens = ntt_control(&even_values);
         (0..values.len())
-            .map(|i| evens[i % half] + twiddle.pow(&[i as u64]) * odds[i % half])
+            .map(|i| evens[i % half] + twiddle.pow([i as u64]) * odds[i % half])
             .collect()
     }
 }

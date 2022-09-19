@@ -125,8 +125,8 @@ impl<F: Field> Multivariate<F> {
         for (pad, coefficient) in self.powers.iter().zip(self.coefficients.iter()) {
             let mut product = *coefficient;
             for (i, &power) in pad.iter().enumerate() {
-                product *= point[i].pow(&[power as u64]); // , (power >> 64) as
-                                                          // u64]);
+                product *= point[i].pow([power as u64]); // , (power >> 64) as
+                                                         // u64]);
             }
             accumulator += product;
         }

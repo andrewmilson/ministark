@@ -8,7 +8,6 @@ use ark_ff::One;
 use ark_ff::Zero;
 use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::Multivariate;
-use legacy_algebra::PrimeFelt;
 
 const BASE_WIDTH: usize = 4;
 const EXTENSION_WIDTH: usize = 5;

@@ -1,15 +1,7 @@
-use crate::OpCode;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
-use ark_ff::PrimeField;
-use legacy_algebra::batch_inverse;
-use legacy_algebra::ExtensionOf;
-use legacy_algebra::Felt;
 use legacy_algebra::Multivariate;
-use legacy_algebra::PrimeFelt;
-use legacy_algebra::StarkFelt;
-use std::marker::PhantomData;
 
 pub trait Table<F>
 where
@@ -130,7 +122,7 @@ where
                     - F::BasePrimeField::one()
             })
             .collect::<Vec<F::BasePrimeField>>();
-        let mut subgroup_zerofier_inv = subgroup_zerofier.clone();
+        let mut subgroup_zerofier_inv = subgroup_zerofier;
         ark_ff::batch_inversion(&mut subgroup_zerofier_inv);
 
         // Transition constraints apply to all rows of execution trace except the last
@@ -201,9 +193,7 @@ where
         // evaluations of the polynomial (x - o^(n-1)). Note that o^(n-1) is the
         // inverse of `o`.
         let zerofier = (0..codeword_len)
-            .map(|i| {
-                F::BasePrimeField::GENERATOR * omega.pow(&[i as u64]) - F::BasePrimeField::one()
-            })
+            .map(|i| F::BasePrimeField::GENERATOR * omega.pow([i as u64]) - last_omicron)
             .collect::<Vec<F::BasePrimeField>>();
         let mut zerofier_inv = zerofier;
         ark_ff::batch_inversion(&mut zerofier_inv);

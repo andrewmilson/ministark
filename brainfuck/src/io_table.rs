@@ -4,7 +4,6 @@ use crate::util::lift;
 use ark_ff::FftField;
 use ark_ff::Field;
 use legacy_algebra::number_theory_transform::number_theory_transform;
-use legacy_algebra::Felt;
 use legacy_algebra::Multivariate;
 use num_traits::Zero;
 
@@ -75,7 +74,7 @@ where
 
     fn extension_terminal_constraints(&self, challenge: F, terminal: F) -> Vec<Multivariate<F>> {
         let variables = Multivariate::<F>::variables(EXTENSION_WIDTH);
-        let offset = challenge.pow(&[self.num_padded_rows as u64]);
+        let offset = challenge.pow([self.num_padded_rows as u64]);
         // In every padded row the running evaluation variable is multiplied by another
         // factor `challenge`. We need to multiply `challenge ^ padding_length` to get
         // the value of the evaluation terminal after all `2^k` rows.

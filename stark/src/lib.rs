@@ -368,7 +368,7 @@ impl<P: Config> BrainFuckStark<P> {
         );
 
         // compute terms of non-linear combination polynomial
-        let mut terms = randomizer_codewords.clone();
+        let mut terms = randomizer_codewords;
         assert_eq!(base_codewords.len(), num_base_polynomials);
         assert_eq!(extension_codewords.len(), num_extension_polynomials);
         assert_eq!(quotient_codewords.len(), num_quotient_polynomials);
@@ -382,7 +382,7 @@ impl<P: Config> BrainFuckStark<P> {
             // dot product of codeword and evaluation of the polynomial `x^shift`
             let shifted_codeword = (0..codeword_len)
                 .map(|i| {
-                    P::Fx::from_base_prime_field(offset * omega.pow(&[i as u64])).pow(&[shift])
+                    P::Fx::from_base_prime_field(offset * omega.pow([i as u64])).pow([shift])
                         * codeword[i]
                 })
                 .collect::<Vec<P::Fx>>();

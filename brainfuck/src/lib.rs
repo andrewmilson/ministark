@@ -219,7 +219,6 @@ mod tests {
     use super::*;
     use crate::stark::SimulationMatrices;
     use ark_ff_optimized::fp64::Fp;
-    use legacy_algebra::PrimeFelt;
 
     const HELLO_WORLD_SOURCE: &str = "
         +++++ +++++             initialize counter (cell #0) to 10

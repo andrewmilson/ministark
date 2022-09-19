@@ -231,7 +231,7 @@ impl StarkFelt for BaseFelt {
             Self::TWO_ADICITY
         );
         let power = 1u128 << (Self::TWO_ADICITY - n);
-        Self::TWO_ADIC_ROOT_OF_UNITY.pow(&[power as u64, (power >> 64) as u64])
+        Self::TWO_ADIC_ROOT_OF_UNITY.pow([power as u64, (power >> 64) as u64])
     }
 }
 
