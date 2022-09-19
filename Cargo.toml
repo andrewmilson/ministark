@@ -2,7 +2,6 @@
 members = [
     "legacy-algebra",
     "fast-poly",
-    "mini-stark",
     "brainfuck",
     "fri",
     "stark"

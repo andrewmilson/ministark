@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 legacy-algebra = { path = "../legacy-algebra" }
-mini-stark = { path = "../mini-stark" }
 num-bigint = { version = "0.4", default-features = false }
 rand = "0.8.5"
 num-traits = "0.2.14"
