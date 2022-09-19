@@ -3,6 +3,5 @@ members = [
     "legacy-algebra",
     "fast-poly",
     "brainfuck",
-    "fri",
     "stark"
 ]

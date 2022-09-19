@@ -23,12 +23,12 @@ pub trait Config {
 }
 
 pub struct Fri<P: Config> {
-    params: P,
+    _params: P,
 }
 
 impl<P: Config> Fri<P> {
-    pub fn new(params: P) -> Self {
-        Fri { params }
+    pub fn new(_params: P) -> Self {
+        Fri { _params }
     }
 
     fn sample_indices(
