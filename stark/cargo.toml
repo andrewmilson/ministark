@@ -14,9 +14,10 @@ ark-ff = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-de
 ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
 num-traits = "0.2.14"
 ark-poly = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
-ark-serialize = { version = "^0.3.0", default-features = false, features = [ "derive" ] }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
 
 [patch.crates-io]
 ark-ff = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
 ark-poly = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
 ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }

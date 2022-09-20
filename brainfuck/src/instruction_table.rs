@@ -16,6 +16,7 @@ const EXTENSION_WIDTH: usize = 5;
 pub struct InstructionTable<F: Field> {
     num_padded_rows: usize,
     num_randomizers: usize,
+    height: Option<usize>,
     matrix: Vec<[F::BasePrimeField; BASE_WIDTH]>,
     extended_matrix: Option<Vec<[F; EXTENSION_WIDTH]>>,
     pub permutation_terminal: Option<F>,
@@ -39,6 +40,7 @@ where
         InstructionTable {
             num_padded_rows: 0,
             num_randomizers,
+            height: None,
             matrix: Vec::new(),
             extended_matrix: None,
             permutation_terminal: None,
@@ -82,7 +84,11 @@ where
     }
 
     fn height(&self) -> usize {
-        self.matrix.len()
+        self.height.unwrap_or(self.matrix.len())
+    }
+
+    fn set_height(&mut self, height: usize) {
+        self.height = Some(height)
     }
 
     fn pad(&mut self, n: usize) {
@@ -250,7 +256,7 @@ where
     }
 
     fn interpolant_degree(&self) -> usize {
-        self.matrix.len() - self.num_padded_rows
+        self.height() + self.num_padded_rows - 1
     }
 
     fn set_matrix(&mut self, matrix: Vec<[F::BasePrimeField; Self::BASE_WIDTH]>) {

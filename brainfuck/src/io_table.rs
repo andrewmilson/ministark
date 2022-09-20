@@ -13,6 +13,7 @@ const EXTENSION_WIDTH: usize = 2;
 
 struct IoTable<F: Field> {
     num_padded_rows: usize,
+    height: Option<usize>,
     matrix: Vec<[F::BasePrimeField; BASE_WIDTH]>,
     extended_matrix: Option<Vec<[F; EXTENSION_WIDTH]>>,
 }
@@ -31,6 +32,7 @@ where
         IoTable {
             num_padded_rows: 0,
             matrix: Vec::new(),
+            height: None,
             extended_matrix: None,
         }
     }
@@ -40,7 +42,11 @@ where
     }
 
     fn height(&self) -> usize {
-        self.matrix.len()
+        self.height.unwrap_or(self.matrix.len())
+    }
+
+    fn set_height(&mut self, height: usize) {
+        self.height = Some(height);
     }
 
     pub fn pad(&mut self, n: usize) {
@@ -179,6 +185,10 @@ where
         self.0.height()
     }
 
+    fn set_height(&mut self, height: usize) {
+        self.0.set_height(height)
+    }
+
     fn pad(&mut self, n: usize) {
         self.0.pad(n)
     }
@@ -302,6 +312,10 @@ where
 
     fn height(&self) -> usize {
         self.0.height()
+    }
+
+    fn set_height(&mut self, height: usize) {
+        self.0.set_height(height)
     }
 
     fn pad(&mut self, n: usize) {

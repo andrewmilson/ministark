@@ -87,7 +87,7 @@ fn hello_world() {
     // let memory_length = memory_matrix.len();
 
     let mut proof_stream = StandardProofStream::<Fp>::new();
-    let mut bfs = BrainFuckStark::<StarkConfig>::new(StarkConfig);
+    let mut bfs = BrainFuckStark::new(StarkConfig);
     let res = bfs.prove(
         processor_matrix,
         memory_matrix,
@@ -103,7 +103,16 @@ fn hello_world() {
         // output.iter().map(|v| v as char).collect::<Vec<char>>()
     );
     println!("Size: {}", res.len());
-    fs::write("./proof.json", res).unwrap();
+    fs::write("./proof.json", &res).unwrap();
+}
+
+#[test]
+fn verify() {
+    let proof = fs::read("./proof.json").unwrap();
+    let mut proof_stream = StandardProofStream::<Fp>::new();
+    let mut bfs = BrainFuckStark::new(StarkConfig);
+    let verdict = bfs.verify(&proof, &mut proof_stream);
+    assert!(verdict.is_ok());
 }
 
 // #[test]

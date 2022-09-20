@@ -20,6 +20,10 @@ where
     /// Returns the power of two height of the execution trace
     fn height(&self) -> usize;
 
+    // TODO: remove this is not the place. Should have a proof struct with trace
+    // length
+    fn set_height(&mut self, height: usize);
+
     /// Returns true if the table has no rows in it, otherwise false
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -57,8 +61,11 @@ where
         let mut max_degree = 1;
         println!("{}, {}", Self::BASE_WIDTH, Self::EXTENSION_WIDTH);
         for air in transition_constraints {
+            println!("H:{} L:{}", self.height(), self.len());
             let degree_bounds = vec![self.interpolant_degree(); Self::EXTENSION_WIDTH * 2];
-            let degree = air.symbolic_degree_bound(&degree_bounds) - (self.len().saturating_sub(1));
+            let degree =
+                air.symbolic_degree_bound(&degree_bounds) - (self.height().saturating_sub(1));
+            println!("D: {}", degree);
             max_degree = max_degree.max(degree);
         }
         max_degree

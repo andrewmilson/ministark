@@ -21,6 +21,8 @@ const EXTENSION_WIDTH: usize = 11;
 pub struct ProcessorTable<F: Field> {
     num_padded_rows: usize,
     num_randomizers: usize,
+    // TODO: remove
+    height: Option<usize>,
     matrix: Vec<[F::BasePrimeField; BASE_WIDTH]>,
     extended_matrix: Option<Vec<[F; EXTENSION_WIDTH]>>,
     pub instr_permutation_terminal: Option<F>,
@@ -52,6 +54,7 @@ where
         ProcessorTable {
             num_padded_rows: 0,
             num_randomizers,
+            height: None,
             matrix: Vec::new(),
             extended_matrix: None,
             instr_permutation_terminal: None,
@@ -170,7 +173,11 @@ where
     }
 
     fn height(&self) -> usize {
-        self.matrix.len()
+        self.height.unwrap_or(self.matrix.len())
+    }
+
+    fn set_height(&mut self, height: usize) {
+        self.height = Some(height);
     }
 
     fn pad(&mut self, n: usize) {

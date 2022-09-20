@@ -17,6 +17,7 @@ use fri::Fri;
 use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::scale_poly;
 use num_traits::Zero;
+use protocol::ProofObject;
 use protocol::ProofStream;
 use salted_merkle::SaltedMerkle;
 use std::collections::hash_map::DefaultHasher;
@@ -93,6 +94,15 @@ impl<P: Config> BrainFuckStark<P> {
         .into_iter()
         .max()
         .unwrap();
+
+        println!(
+            "{} {} {} {} {}",
+            self.processor_table.max_degree(),
+            self.memory_table.max_degree(),
+            self.instruction_table.max_degree(),
+            self.input_table.max_degree(),
+            self.output_table.max_degree(),
+        );
         ceil_power_of_two(max_degree) - 1
     }
 
@@ -120,14 +130,14 @@ impl<P: Config> BrainFuckStark<P> {
         indices
     }
 
-    pub fn prove<T: ProofStream<P::Fx>>(
+    pub fn prove(
         &mut self,
         processor_matrix: Vec<[P::Fp; ProcessorTable::<P::Fx>::BASE_WIDTH]>,
         memory_matrix: Vec<[P::Fp; MemoryTable::<P::Fx>::BASE_WIDTH]>,
         instruction_matrix: Vec<[P::Fp; InstructionTable::<P::Fx>::BASE_WIDTH]>,
         input_matrix: Vec<[P::Fp; InputTable::<P::Fx>::BASE_WIDTH]>,
         output_matrix: Vec<[P::Fp; OutputTable::<P::Fx>::BASE_WIDTH]>,
-        proof_stream: &mut T,
+        proof_stream: &mut impl ProofStream<P::Fx>,
     ) -> Vec<u8> {
         let mut rng = rand::thread_rng();
 
@@ -145,6 +155,8 @@ impl<P: Config> BrainFuckStark<P> {
             ceil_power_of_two(max_length)
         };
 
+        println!("padding len: {padding_length}");
+
         self.processor_table.set_matrix(processor_matrix);
         self.memory_table.set_matrix(memory_matrix);
         self.instruction_table.set_matrix(instruction_matrix);
@@ -158,7 +170,10 @@ impl<P: Config> BrainFuckStark<P> {
         self.input_table.pad(padding_length);
         self.output_table.pad(padding_length);
 
+        proof_stream.push(ProofObject::TraceLen(padding_length as u64));
+
         let codeword_len = self.fri_codeword_length();
+        println!("Codeword len {}", codeword_len);
         let offset = P::Fp::GENERATOR;
         let omega = P::Fp::get_root_of_unity(codeword_len as u64).unwrap();
 
@@ -203,7 +218,7 @@ impl<P: Config> BrainFuckStark<P> {
             .map(|i| base_codewords.iter().map(|codeword| codeword[i]).collect())
             .collect::<Vec<Vec<P::Fx>>>();
         let base_tree = SaltedMerkle::new(&base_zipped_codeword);
-        proof_stream.push(protocol::ProofObject::MerkleRoot(base_tree.root()));
+        proof_stream.push(ProofObject::MerkleRoot(base_tree.root()));
         // TODO: base degree bounds
 
         // get coefficients for table extensions
@@ -272,7 +287,7 @@ impl<P: Config> BrainFuckStark<P> {
             })
             .collect::<Vec<Vec<P::Fx>>>();
         let extension_tree = SaltedMerkle::new(&ext_zipped_codeword);
-        proof_stream.push(protocol::ProofObject::MerkleRoot(extension_tree.root()));
+        proof_stream.push(ProofObject::MerkleRoot(extension_tree.root()));
         // TODO: extension degree bounds
 
         let processor_codewords = vec![base_processor_lde, ext_processor_lde].concat();
@@ -350,7 +365,7 @@ impl<P: Config> BrainFuckStark<P> {
         );
 
         for &terminal in &terminals {
-            proof_stream.push(protocol::ProofObject::Terminal(terminal));
+            proof_stream.push(ProofObject::Terminal(terminal));
         }
 
         // get weights for non-linear combination
@@ -406,7 +421,7 @@ impl<P: Config> BrainFuckStark<P> {
             .map(|(term, weight)| term.into_iter().map(|v| v * weight).collect())
             .fold(vec![P::Fx::zero(); codeword_len], sum);
         let combination_tree = SaltedMerkle::new(&combination_codeword);
-        proof_stream.push(protocol::ProofObject::MerkleRoot(combination_tree.root()));
+        proof_stream.push(ProofObject::MerkleRoot(combination_tree.root()));
 
         // get indices of leafs to prove non-linear combination
         let indices_seed = proof_stream.prover_fiat_shamir();
@@ -426,8 +441,8 @@ impl<P: Config> BrainFuckStark<P> {
                 &path,
                 &element
             ));
-            proof_stream.push(protocol::ProofObject::LeafItems(element));
-            proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
+            proof_stream.push(ProofObject::LeafItems(element));
+            proof_stream.push(ProofObject::MerklePathWithSalt((salt, path)));
             let (element, salt, path) = extension_tree.open(idx);
             assert!(SaltedMerkle::verify(
                 extension_tree.root(),
@@ -436,8 +451,8 @@ impl<P: Config> BrainFuckStark<P> {
                 &path,
                 &element
             ));
-            proof_stream.push(protocol::ProofObject::LeafItems(element));
-            proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
+            proof_stream.push(ProofObject::LeafItems(element));
+            proof_stream.push(ProofObject::MerklePathWithSalt((salt, path)));
         }
 
         // TODO: merge these arrays
@@ -452,8 +467,8 @@ impl<P: Config> BrainFuckStark<P> {
                 &path,
                 &element
             ));
-            proof_stream.push(protocol::ProofObject::LeafItem(element));
-            proof_stream.push(protocol::ProofObject::MerklePathWithSalt((salt, path)));
+            proof_stream.push(ProofObject::LeafItem(element));
+            proof_stream.push(ProofObject::MerklePathWithSalt((salt, path)));
         }
 
         // prove low degree of combination polynomial and collect indices
@@ -461,6 +476,119 @@ impl<P: Config> BrainFuckStark<P> {
 
         // the final proof is just the serialized stream
         proof_stream.serialize()
+    }
+
+    pub fn verify(
+        &mut self,
+        proof: &[u8],
+        proof_stream: &mut impl ProofStream<P::Fx>,
+    ) -> Result<(), &str> {
+        let mut proof_stream = proof_stream.deserialize(proof);
+
+        // Get the trace length
+        let trace_len = match proof_stream.pull() {
+            ProofObject::TraceLen(len) => len as usize,
+            _ => return Err("Expected the trace length"),
+        };
+
+        self.processor_table.set_height(trace_len);
+        self.memory_table.set_height(trace_len);
+        self.instruction_table.set_height(trace_len);
+        self.input_table.set_height(trace_len);
+        self.output_table.set_height(trace_len);
+
+        // get the merkle root of the base tables
+        let base_root = match proof_stream.pull() {
+            ProofObject::MerkleRoot(root) => root,
+            _ => return Err("Expected to recieve base columns merkle root"),
+        };
+
+        // Get coefficients for table extension
+        let challenges = self.sample_weights(11, proof_stream.verifier_fiat_shamir());
+
+        // get root of table extensions
+        let extension_root = match proof_stream.pull() {
+            ProofObject::MerkleRoot(root) => root,
+            _ => return Err("Expected to recieve extension columns root"),
+        };
+
+        // get terminals
+        let mut terminals = Vec::new();
+        for i in 0..5 {
+            match proof_stream.pull() {
+                ProofObject::Terminal(terminal) => terminals.push(terminal),
+                _ => return Err("Expected to receive terminal"),
+            }
+        }
+
+        let base_degree_bounds = vec![
+            vec![self.processor_table.interpolant_degree(); ProcessorTable::<P::Fx>::BASE_WIDTH],
+            vec![self.memory_table.interpolant_degree(); MemoryTable::<P::Fx>::BASE_WIDTH],
+            vec![
+                self.instruction_table.interpolant_degree();
+                InstructionTable::<P::Fx>::BASE_WIDTH
+            ],
+            vec![self.input_table.interpolant_degree(); InputTable::<P::Fx>::BASE_WIDTH],
+            vec![self.output_table.interpolant_degree(); OutputTable::<P::Fx>::BASE_WIDTH],
+        ]
+        .concat();
+
+        let extension_degree_bounds = vec![
+            vec![
+                self.processor_table.interpolant_degree();
+                ProcessorTable::<P::Fx>::EXTENSION_WIDTH - ProcessorTable::<P::Fx>::BASE_WIDTH
+            ],
+            vec![
+                self.memory_table.interpolant_degree();
+                MemoryTable::<P::Fx>::EXTENSION_WIDTH - MemoryTable::<P::Fx>::BASE_WIDTH
+            ],
+            vec![
+                self.instruction_table.interpolant_degree();
+                InstructionTable::<P::Fx>::EXTENSION_WIDTH - InstructionTable::<P::Fx>::BASE_WIDTH
+            ],
+            vec![
+                self.input_table.interpolant_degree();
+                InputTable::<P::Fx>::EXTENSION_WIDTH - InputTable::<P::Fx>::BASE_WIDTH
+            ],
+            vec![
+                self.output_table.interpolant_degree();
+                OutputTable::<P::Fx>::EXTENSION_WIDTH - OutputTable::<P::Fx>::BASE_WIDTH
+            ],
+        ]
+        .concat();
+
+        let mut quotient_degree_bounds = vec![
+            self.processor_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+            self.memory_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+            self.instruction_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+            self.input_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+            self.output_table
+                .all_quotient_degree_bounds(&challenges, &terminals),
+        ]
+        .concat();
+
+        // get weights for nonlinear combination
+        // - 1 randomizer
+        // - 2 for every other polynomial
+        let num_base_polynomials = ProcessorTable::<P::Fx>::BASE_WIDTH
+            + MemoryTable::<P::Fx>::BASE_WIDTH
+            + InstructionTable::<P::Fx>::BASE_WIDTH
+            + InputTable::<P::Fx>::BASE_WIDTH
+            + OutputTable::<P::Fx>::BASE_WIDTH;
+        let num_extension_polynomials = ProcessorTable::<P::Fx>::EXTENSION_WIDTH
+            + MemoryTable::<P::Fx>::EXTENSION_WIDTH
+            + InstructionTable::<P::Fx>::EXTENSION_WIDTH
+            + InputTable::<P::Fx>::EXTENSION_WIDTH
+            + OutputTable::<P::Fx>::EXTENSION_WIDTH
+            - num_base_polynomials;
+        let num_randomizer_polynomials = 1;
+        let num_quotient_polynomials = quotient_degree_bounds.len();
+
+        Ok(())
     }
 }
 
