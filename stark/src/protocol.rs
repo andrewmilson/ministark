@@ -1,16 +1,12 @@
 use ark_ff::Field;
 use ark_poly::univariate::DensePolynomial;
+use ark_serialize::CanonicalSerialize;
 use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
-
-pub struct UncompressedUnchecked<T>(T);
-pub struct UncompressedChecked<T>(T);
-pub struct CompressedUnchecked<T>(T);
-pub struct CompressedChecked<T>(T);
 
 // impl<T: CanonicalSerialize> CanonicalSerialize for UncompressedUnchecked<T> {
 // 	// always invoke `T::serialize_uncompressed()`
@@ -27,7 +23,6 @@ pub struct CompressedChecked<T>(T);
 
 // #[derive(Serialize, Deserialize, Clone)]
 pub enum ProofObject<F: Field> {
-    Polynomial(DensePolynomial<F>),
     MerkleRoot(u64),
     Codeword(Vec<F>),
     MerklePath(Vec<u64>),

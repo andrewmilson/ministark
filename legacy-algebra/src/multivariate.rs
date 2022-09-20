@@ -162,7 +162,7 @@ impl<F: Field> Multivariate<F> {
             for (&exponent, &max_degree) in pad.iter().zip(max_degrees) {
                 term_degree_bound += exponent as usize * max_degree;
             }
-            total_degree_bound = usize::max(total_degree_bound, term_degree_bound);
+            total_degree_bound = std::cmp::max(total_degree_bound, term_degree_bound);
         }
         total_degree_bound as usize
     }

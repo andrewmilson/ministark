@@ -22,13 +22,15 @@ use salted_merkle::SaltedMerkle;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::iter::empty;
 use std::vec;
 
 mod fri;
 mod merkle;
 pub mod protocol;
 mod salted_merkle;
+
+/// The domain separator, used when proving statements on gemini.
+pub(crate) const PROTOCOL_NAME: &[u8] = b"ZK-WASM-v0";
 
 pub trait Config {
     /// Base prime field
@@ -81,13 +83,16 @@ impl<P: Config> BrainFuckStark<P> {
         assert!(!self.processor_table.is_empty(), "tables not populated");
         // TODO: could be a bug here... Instead of rounding up to the power of two it
         // should be the next power of two.
-        let max_degree = self
-            .processor_table
-            .max_degree()
-            .max(self.memory_table.max_degree())
-            .max(self.instruction_table.max_degree())
-            .max(self.input_table.max_degree())
-            .max(self.output_table.max_degree());
+        let max_degree = [
+            self.processor_table.max_degree(),
+            self.memory_table.max_degree(),
+            self.instruction_table.max_degree(),
+            self.input_table.max_degree(),
+            self.output_table.max_degree(),
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
         ceil_power_of_two(max_degree) - 1
     }
 
@@ -127,12 +132,16 @@ impl<P: Config> BrainFuckStark<P> {
         let mut rng = rand::thread_rng();
 
         let padding_length = {
-            let max_length = processor_matrix
-                .len()
-                .max(memory_matrix.len())
-                .max(instruction_matrix.len())
-                .max(input_matrix.len())
-                .max(output_matrix.len());
+            let max_length = [
+                processor_matrix.len(),
+                memory_matrix.len(),
+                instruction_matrix.len(),
+                input_matrix.len(),
+                output_matrix.len(),
+            ]
+            .into_iter()
+            .max()
+            .unwrap();
             ceil_power_of_two(max_length)
         };
 
@@ -322,7 +331,7 @@ impl<P: Config> BrainFuckStark<P> {
             &instruction_codewords[InstructionTable::<P::Fx>::PROCESSOR_PERMUTATION],
         ));
         quotient_degree_bounds.push(
-            usize::max(
+            std::cmp::max(
                 self.processor_table.interpolant_degree(),
                 self.instruction_table.interpolant_degree(),
             ) - 1,
@@ -334,7 +343,7 @@ impl<P: Config> BrainFuckStark<P> {
             &memory_codewords[MemoryTable::<P::Fx>::PERMUTATION],
         ));
         quotient_degree_bounds.push(
-            usize::max(
+            std::cmp::max(
                 self.processor_table.interpolant_degree(),
                 self.memory_table.interpolant_degree(),
             ) - 1,
@@ -373,7 +382,7 @@ impl<P: Config> BrainFuckStark<P> {
         assert_eq!(extension_codewords.len(), num_extension_polynomials);
         assert_eq!(quotient_codewords.len(), num_quotient_polynomials);
 
-        for (codeword, degree_bound) in empty()
+        for (codeword, degree_bound) in std::iter::empty()
             .chain(base_codewords.into_iter().zip(base_degree_bounds))
             .chain(extension_codewords.into_iter().zip(extension_degree_bounds))
             .chain(quotient_codewords.into_iter().zip(quotient_degree_bounds))
