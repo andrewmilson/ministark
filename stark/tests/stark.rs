@@ -111,8 +111,7 @@ fn verify() {
     let proof = fs::read("./proof.json").unwrap();
     let mut proof_stream = StandardProofStream::<Fp>::new();
     let mut bfs = BrainFuckStark::new(StarkConfig);
-    let verdict = bfs.verify(&proof, &mut proof_stream);
-    assert!(verdict.is_ok());
+    bfs.verify(&proof, &mut proof_stream).unwrap();
 }
 
 // #[test]

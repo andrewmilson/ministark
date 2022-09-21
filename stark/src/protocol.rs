@@ -21,7 +21,7 @@ use std::hash::Hasher;
 // UncompressedUnchecked<T> { 	// always invoke
 // `CanonicalDeserialize::deserialize_uncompressed_unchecked()` }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum ProofObject<F: Field> {
     MerkleRoot(u64),
     Codeword(Vec<F>),

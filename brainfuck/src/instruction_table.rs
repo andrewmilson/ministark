@@ -256,7 +256,7 @@ where
     }
 
     fn interpolant_degree(&self) -> usize {
-        self.height() + self.num_padded_rows - 1
+        self.height() + self.num_randomizers - 1
     }
 
     fn set_matrix(&mut self, matrix: Vec<[F::BasePrimeField; Self::BASE_WIDTH]>) {

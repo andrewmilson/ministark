@@ -21,8 +21,10 @@ use protocol::ProofObject;
 use protocol::ProofStream;
 use salted_merkle::SaltedMerkle;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::ops::Add;
 use std::vec;
 
 mod fri;
@@ -81,7 +83,7 @@ impl<P: Config> BrainFuckStark<P> {
     }
 
     fn max_degree(&self) -> usize {
-        assert!(!self.processor_table.is_empty(), "tables not populated");
+        // assert!(!self.processor_table.is_empty(), "tables not populated");
         // TODO: could be a bug here... Instead of rounding up to the power of two it
         // should be the next power of two.
         let max_degree = [
@@ -121,6 +123,7 @@ impl<P: Config> BrainFuckStark<P> {
     }
 
     fn sample_indices(n: usize, randomness: u64, bound: usize) -> Vec<usize> {
+        println!("N:{n}, randomness:{randomness}, bound:{bound}");
         let mut indices = vec![];
         let mut hasher = DefaultHasher::new();
         for _ in 0..n {
@@ -432,27 +435,29 @@ impl<P: Config> BrainFuckStark<P> {
 
         // open leafs of zipped codewords at indicated positions
         for &index in &indices {
-            let idx = (index + row_step) % codeword_len;
-            let (element, salt, path) = base_tree.open(idx);
-            assert!(SaltedMerkle::verify(
-                base_tree.root(),
-                idx,
-                salt,
-                &path,
-                &element
-            ));
-            proof_stream.push(ProofObject::LeafItems(element));
-            proof_stream.push(ProofObject::MerklePathWithSalt((salt, path)));
-            let (element, salt, path) = extension_tree.open(idx);
-            assert!(SaltedMerkle::verify(
-                extension_tree.root(),
-                idx,
-                salt,
-                &path,
-                &element
-            ));
-            proof_stream.push(ProofObject::LeafItems(element));
-            proof_stream.push(ProofObject::MerklePathWithSalt((salt, path)));
+            for distance in [0, row_step] {
+                let idx = (index + distance) % codeword_len;
+                let (element, salt, path) = base_tree.open(idx);
+                assert!(SaltedMerkle::verify(
+                    base_tree.root(),
+                    idx,
+                    salt,
+                    &path,
+                    &element
+                ));
+                proof_stream.push(ProofObject::LeafItems(element));
+                proof_stream.push(ProofObject::MerklePathWithSalt((salt, path)));
+                let (element, salt, path) = extension_tree.open(idx);
+                assert!(SaltedMerkle::verify(
+                    extension_tree.root(),
+                    idx,
+                    salt,
+                    &path,
+                    &element
+                ));
+                proof_stream.push(ProofObject::LeafItems(element));
+                proof_stream.push(ProofObject::MerklePathWithSalt((salt, path)));
+            }
         }
 
         // TODO: merge these arrays
@@ -496,6 +501,8 @@ impl<P: Config> BrainFuckStark<P> {
         self.instruction_table.set_height(trace_len);
         self.input_table.set_height(trace_len);
         self.output_table.set_height(trace_len);
+
+        let codeword_len = self.fri_codeword_length();
 
         // get the merkle root of the base tables
         let base_root = match proof_stream.pull() {
@@ -586,7 +593,64 @@ impl<P: Config> BrainFuckStark<P> {
             + OutputTable::<P::Fx>::EXTENSION_WIDTH
             - num_base_polynomials;
         let num_randomizer_polynomials = 1;
-        let num_quotient_polynomials = quotient_degree_bounds.len();
+        // +2 for instr and memory permutations
+        let num_quotient_polynomials = quotient_degree_bounds.iter().sum::<usize>() + 2;
+
+        let weights_seed = proof_stream.verifier_fiat_shamir();
+        let weights = self.sample_weights(
+            num_randomizer_polynomials
+                + 2 * (num_base_polynomials + num_extension_polynomials + num_quotient_polynomials),
+            weights_seed,
+        );
+
+        // pull Merkle root of combination codeword
+        let combination_root = match proof_stream.pull() {
+            ProofObject::MerkleRoot(root) => root,
+            _ => return Err("Expected to receive combination codeword root"),
+        };
+
+        // get indices of leafs to verify non-linear combination
+        let indices_seed = proof_stream.verifier_fiat_shamir();
+        let indices = Self::sample_indices(P::SECURITY_LEVEL, indices_seed, codeword_len);
+
+        let row_step = P::EXPANSION_FACTOR;
+        let mut values: HashMap<usize, Vec<P::Fx>> = HashMap::new();
+        // open leafs of zipped codewords at indicated positions
+        for &index in &indices {
+            for distance in [0, row_step] {
+                let idx = (index + distance) % codeword_len;
+                let entry = values.entry(idx).or_default();
+                assert!(entry.is_empty());
+
+                // base codewords
+                let elements = match proof_stream.pull() {
+                    ProofObject::LeafItems(elements) => elements,
+                    _ => return Err("Expected to receive leaf items"),
+                };
+                let (salt, path) = match proof_stream.pull() {
+                    ProofObject::MerklePathWithSalt(v) => v,
+                    _ => return Err("Expected to receive a merkle path with a salt"),
+                };
+                if !SaltedMerkle::verify(base_root, idx, salt, &path, &elements) {
+                    return Err("Invalid base codeword path");
+                }
+                entry.extend_from_slice(&elements);
+
+                // extension codewords
+                let elements = match proof_stream.pull() {
+                    ProofObject::LeafItems(elements) => elements,
+                    _ => return Err("Expected to receive leaf items"),
+                };
+                let (salt, path) = match proof_stream.pull() {
+                    ProofObject::MerklePathWithSalt(v) => v,
+                    _ => return Err("Expected to receive a merkle path with a salt"),
+                };
+                if !SaltedMerkle::verify(extension_root, idx, salt, &path, &elements) {
+                    return Err("Invalid extension codeword path");
+                }
+                entry.extend_from_slice(&elements);
+            }
+        }
 
         Ok(())
     }
@@ -606,3 +670,29 @@ fn sum<F: Field>(a: Vec<F>, b: Vec<F>) -> Vec<F> {
     let n = a.len();
     (0..n).map(|i| a[i] + b[i]).collect()
 }
+
+// N:128, randomness:18379656959775521745, bound:65536
+
+// [41632, 4154, 32355, 58925, 35723, 11523, 50548, 10183, 55426, 30236, 9332,
+// 57351, 55176, 7459, 6162, 45442, 17456, 49953, 57238, 5900, 60643, 64444,
+// 8760, 25804, 16733, 23567, 47786, 36823, 15199, 45294, 32288, 10850, 54885,
+// 54791, 32419, 29928, 52087, 10145, 11106, 10331, 26702, 15512, 54250, 13846,
+// 18270, 11058, 54121, 14267, 22768, 45353, 20153, 26066, 42700, 53711, 47453,
+// 43590, 17467, 32822, 49982, 27828, 42153, 6915, 39507, 2672, 12254, 37317,
+// 25340, 22264, 36643, 60181, 42489, 47171, 37530, 30558, 65430, 3833, 6941,
+// 55384, 24549, 21018, 1506, 24639, 6026, 25051, 50825, 44697, 27220, 23299,
+// 13208, 7293, 56223, 60358, 20707, 53506, 54058, 63002, 35065, 34235, 18013,
+// 36328, 51715, 12971, 43149, 44677, 62391, 49205, 18746, 15327, 52197, 19130,
+// 23144, 16484, 65084, 27609, 3764, 27627, 18376, 25400, 17676, 18728, 13350,
+// 15083, 10647, 11866, 31200, 43080, 8611, 15518]
+
+// [672, 58, 3683, 1581, 2955, 3331, 1396, 1991, 2178, 1564, 1140, 7, 1928,
+// 3363, 2066, 386, 1072, 801, 3990, 1804, 3299, 3004, 568, 1228, 349, 3087,
+// 2730, 4055, 2911, 238, 3616, 2658, 1637, 1543, 3747, 1256, 2935, 1953, 2914,
+// 2139, 2126, 3224, 1002, 1558, 1886, 2866, 873, 1979, 2288, 297, 3769, 1490,
+// 1740, 463, 2397, 2630, 1083, 54, 830, 3252, 1193, 2819, 2643, 2672, 4062,
+// 453, 764, 1784, 3875, 2837, 1529, 2115, 666, 1886, 3990, 3833, 2845, 2136,
+// 4069, 538, 1506, 63, 1930, 475, 1673, 3737, 2644, 2819, 920, 3197, 2975,
+// 3014, 227, 258, 810, 1562, 2297, 1467, 1629, 3560, 2563, 683, 2189, 3717,
+// 951, 53, 2362, 3039, 3045, 2746, 2664, 100, 3644, 3033, 3764, 3051, 1992,
+// 824, 1292, 2344, 1062, 2795, 2455, 3674, 2528, 2120, 419, 3230]

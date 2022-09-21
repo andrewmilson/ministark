@@ -95,7 +95,7 @@ where
     }
 
     fn interpolant_degree(&self) -> usize {
-        self.matrix.len()
+        self.height() - 1
     }
 
     fn extend(&mut self, challenge: F) {
