@@ -2,6 +2,7 @@
 
 use ark_ff::FftField;
 use ark_ff::Field;
+use ark_ff::One;
 use ark_ff::PrimeField;
 use ark_ff::UniformRand;
 use ark_poly::univariate::DensePolynomial;
@@ -24,6 +25,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::iter::zip;
 use std::ops::Add;
 use std::vec;
 
@@ -97,14 +99,6 @@ impl<P: Config> BrainFuckStark<P> {
         .max()
         .unwrap();
 
-        println!(
-            "{} {} {} {} {}",
-            self.processor_table.max_degree(),
-            self.memory_table.max_degree(),
-            self.instruction_table.max_degree(),
-            self.input_table.max_degree(),
-            self.output_table.max_degree(),
-        );
         ceil_power_of_two(max_degree) - 1
     }
 
@@ -205,6 +199,9 @@ impl<P: Config> BrainFuckStark<P> {
         ]
         .concat();
 
+        let all_base_codewords =
+            vec![randomizer_codewords.clone(), base_codewords.clone()].concat();
+
         let base_degree_bounds = vec![
             vec![self.processor_table.interpolant_degree(); ProcessorTable::<P::Fx>::BASE_WIDTH],
             vec![self.memory_table.interpolant_degree(); MemoryTable::<P::Fx>::BASE_WIDTH],
@@ -218,7 +215,12 @@ impl<P: Config> BrainFuckStark<P> {
         .concat();
 
         let base_zipped_codeword = (0..codeword_len)
-            .map(|i| base_codewords.iter().map(|codeword| codeword[i]).collect())
+            .map(|i| {
+                all_base_codewords
+                    .iter()
+                    .map(|codeword| codeword[i])
+                    .collect()
+            })
             .collect::<Vec<Vec<P::Fx>>>();
         let base_tree = SaltedMerkle::new(&base_zipped_codeword);
         proof_stream.push(ProofObject::MerkleRoot(base_tree.root()));
@@ -650,6 +652,262 @@ impl<P: Config> BrainFuckStark<P> {
                 }
                 entry.extend_from_slice(&elements);
             }
+        }
+
+        assert_eq!(num_base_polynomials, base_degree_bounds.len());
+
+        let offset = P::Fp::GENERATOR;
+        let omega = P::Fp::get_root_of_unity(codeword_len as u64).unwrap();
+        let omicron = P::Fp::get_root_of_unity(trace_len as u64).unwrap();
+
+        let base_widths = vec![
+            ProcessorTable::<P::Fx>::BASE_WIDTH,
+            MemoryTable::<P::Fx>::BASE_WIDTH,
+            InstructionTable::<P::Fx>::BASE_WIDTH,
+            InputTable::<P::Fx>::BASE_WIDTH,
+            OutputTable::<P::Fx>::BASE_WIDTH,
+        ];
+
+        // verify non-linear combination
+        for index in &indices {
+            let entry = values.remove(index).unwrap();
+
+            assert_eq!(
+                entry.len(),
+                num_base_polynomials + num_extension_polynomials + 1
+            );
+
+            // collect terms: randomizer
+            let mut terms = entry[0..num_randomizer_polynomials].to_vec();
+
+            // collect terms: base
+            for i in num_randomizer_polynomials..num_randomizer_polynomials + num_base_polynomials {
+                terms.push(entry[i]);
+                let shift = self.max_degree() - base_degree_bounds[i - num_randomizer_polynomials];
+                terms.push(
+                    entry[i] * P::Fx::from_base_prime_field((offset * omega).pow([shift as u64])),
+                );
+            }
+
+            // collect terms: extension
+            let extension_offset = num_randomizer_polynomials + num_base_polynomials;
+
+            assert_eq!(
+                terms.len(),
+                2 * extension_offset - num_randomizer_polynomials
+            );
+
+            assert_eq!(
+                extension_offset,
+                base_widths.iter().sum::<usize>() + num_randomizer_polynomials
+            );
+
+            for i in 0..num_extension_polynomials {
+                terms.push(entry[extension_offset + i]);
+                let shift = self.max_degree() - extension_degree_bounds[i];
+                terms.push(
+                    entry[extension_offset + i]
+                        * P::Fx::from_base_prime_field((offset * omega).pow([shift as u64])),
+                );
+            }
+
+            // collect terms: quotients
+            // quotients need to be computed
+            // skip randomizers
+            let mut entry_iter = entry.into_iter().skip(num_randomizer_polynomials);
+            let mut points: Vec<Vec<P::Fx>> = vec![
+                (0..ProcessorTable::<P::Fx>::BASE_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect(),
+                (0..MemoryTable::<P::Fx>::BASE_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect(),
+                (0..InstructionTable::<P::Fx>::BASE_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect(),
+                (0..InputTable::<P::Fx>::BASE_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect(),
+                (0..OutputTable::<P::Fx>::BASE_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect(),
+            ];
+
+            points[0].extend_from_slice(
+                &(ProcessorTable::<P::Fx>::BASE_WIDTH..ProcessorTable::<P::Fx>::EXTENSION_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect::<Vec<P::Fx>>(),
+            );
+
+            points[1].extend_from_slice(
+                &(MemoryTable::<P::Fx>::BASE_WIDTH..MemoryTable::<P::Fx>::EXTENSION_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect::<Vec<P::Fx>>(),
+            );
+
+            points[2].extend_from_slice(
+                &(InstructionTable::<P::Fx>::BASE_WIDTH
+                    ..InstructionTable::<P::Fx>::EXTENSION_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect::<Vec<P::Fx>>(),
+            );
+
+            points[3].extend_from_slice(
+                &(InputTable::<P::Fx>::BASE_WIDTH..InputTable::<P::Fx>::EXTENSION_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect::<Vec<P::Fx>>(),
+            );
+
+            points[4].extend_from_slice(
+                &(OutputTable::<P::Fx>::BASE_WIDTH..OutputTable::<P::Fx>::EXTENSION_WIDTH)
+                    .map(|_| entry_iter.next().unwrap())
+                    .collect::<Vec<P::Fx>>(),
+            );
+
+            let boundary_constraints = vec![
+                ProcessorTable::<P::Fx>::extension_boundary_constraints(&challenges),
+                MemoryTable::<P::Fx>::extension_boundary_constraints(&challenges),
+                InstructionTable::<P::Fx>::extension_boundary_constraints(&challenges),
+                InputTable::<P::Fx>::extension_boundary_constraints(&challenges),
+                OutputTable::<P::Fx>::extension_boundary_constraints(&challenges),
+            ];
+
+            let boundary_quotient_degree_bounds = vec![
+                self.processor_table
+                    .boundary_quotient_degree_bounds(&challenges),
+                self.memory_table
+                    .boundary_quotient_degree_bounds(&challenges),
+                self.instruction_table
+                    .boundary_quotient_degree_bounds(&challenges),
+                self.input_table
+                    .boundary_quotient_degree_bounds(&challenges),
+                self.output_table
+                    .boundary_quotient_degree_bounds(&challenges),
+            ];
+
+            let transition_constraints = vec![
+                ProcessorTable::<P::Fx>::extension_transition_constraints(&challenges),
+                MemoryTable::<P::Fx>::extension_transition_constraints(&challenges),
+                InstructionTable::<P::Fx>::extension_transition_constraints(&challenges),
+                InputTable::<P::Fx>::extension_transition_constraints(&challenges),
+                OutputTable::<P::Fx>::extension_transition_constraints(&challenges),
+            ];
+
+            let transition_quotient_degree_bounds = vec![
+                self.processor_table
+                    .transition_quotient_degree_bounds(&challenges),
+                self.memory_table
+                    .transition_quotient_degree_bounds(&challenges),
+                self.instruction_table
+                    .transition_quotient_degree_bounds(&challenges),
+                self.input_table
+                    .transition_quotient_degree_bounds(&challenges),
+                self.output_table
+                    .transition_quotient_degree_bounds(&challenges),
+            ];
+
+            let extension_widths = vec![
+                ProcessorTable::<P::Fx>::EXTENSION_WIDTH,
+                MemoryTable::<P::Fx>::EXTENSION_WIDTH,
+                InstructionTable::<P::Fx>::EXTENSION_WIDTH,
+                InputTable::<P::Fx>::EXTENSION_WIDTH,
+                OutputTable::<P::Fx>::EXTENSION_WIDTH,
+            ];
+
+            let mut base_acc_index = num_randomizer_polynomials;
+            let mut ext_acc_index = extension_offset;
+            for (
+                (
+                    (
+                        (
+                            ((point, boundary_constraints), boundary_quotient_degree_bounds),
+                            transition_constraints,
+                        ),
+                        transition_quotient_degree_bounds,
+                    ),
+                    base_width,
+                ),
+                extension_width,
+            ) in points
+                .iter()
+                .zip(&boundary_constraints)
+                .zip(&boundary_quotient_degree_bounds)
+                .zip(&transition_constraints)
+                .zip(&transition_quotient_degree_bounds)
+                .zip(&base_widths)
+                .zip(&extension_widths)
+            {
+                for (constraint, bound) in
+                    zip(boundary_constraints, boundary_quotient_degree_bounds)
+                {
+                    let eval = constraint.evaluate(point);
+                    let quotient = eval
+                        / P::Fx::from_base_prime_field(offset * omega.pow([*index as u64]))
+                        - P::Fx::one();
+                    terms.push(quotient);
+                    let shift = self.max_degree() - bound;
+                    terms.push(
+                        quotient
+                            * P::Fx::from_base_prime_field(
+                                (offset * omega.pow([*index as u64])).pow([shift as u64]),
+                            ),
+                    )
+                }
+
+                // transition
+                let next_index = (index + row_step) % codeword_len;
+                let mut next_point = values.get(&next_index).unwrap()
+                    [base_acc_index..base_acc_index + base_width]
+                    .to_vec();
+                next_point.extend_from_slice(
+                    &values.get(&next_index).unwrap()
+                        [ext_acc_index..ext_acc_index + extension_width - base_width],
+                );
+                base_acc_index += base_width;
+                ext_acc_index += extension_width - base_width;
+                for (constraint, bound) in
+                    zip(transition_constraints, transition_quotient_degree_bounds)
+                {
+                    let eval =
+                        constraint.evaluate(&vec![point.clone(), next_point.clone()].concat());
+                    // If the trace length is 0 then there is no subgroup where the transition
+                    // polynomials should be zero. The fast zerofier (based on
+                    // group theory) needs a non-empty group. Forcing it on an
+                    // empty group generates a division by zero error.
+                    let quotient = if trace_len == 0 {
+                        P::Fx::zero()
+                    } else {
+                        // transition quotients apply to all
+                        let omicron_inv = omicron.inverse().unwrap();
+                        let evaluation_domain = offset * omega.pow([*index as u64]);
+                        // TODO: get a grasp on codomain intricacies
+                        // To get the quotient we evaluate the transition constraints at the point
+                        // and divide out the zerofier i.e. = eval_result /
+                        // ((ω^i - 1)(ω^i - o)(ω^i - o^2)...(ω^i - o^(n - 2)))
+                        // Observe the group theory based zerofier gives us:
+                        // ((ω^i - o^0)...(ω^i - o^(n - 1))) = (ω^i)^n - 1
+                        // using this the formula is now much easier to compute
+                        // = eval_result * (ω^i - o^(n - 1)) / ((ω^i)^n - 1)
+                        // = eval_result * (ω^i - 1/o)) / ((ω^i)^n - 1)
+                        eval * P::Fx::from_base_prime_field(evaluation_domain - omicron_inv)
+                            / P::Fx::from_base_prime_field(
+                                evaluation_domain.pow([trace_len as u64]),
+                            )
+                    };
+                    terms.push(quotient);
+                    let shift = self.max_degree() - bound;
+                    terms.push(
+                        quotient
+                            * P::Fx::from_base_prime_field(
+                                (offset * omega.pow([*index as u64])).pow([shift as u64]),
+                            ),
+                    )
+                }
+            }
+
+            //             points
+            // boundary_constraints
+            // transition_constraints.zip(&transition_quotient_degree_bounds)
         }
 
         Ok(())

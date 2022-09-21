@@ -59,13 +59,10 @@ where
         // TODO: This NEEDS to be improved...
         let transition_constraints = Self::extension_transition_constraints(&[F::one(); 30]);
         let mut max_degree = 1;
-        println!("{}, {}", Self::BASE_WIDTH, Self::EXTENSION_WIDTH);
         for air in transition_constraints {
-            println!("H:{} L:{}", self.height(), self.len());
             let degree_bounds = vec![self.interpolant_degree(); Self::EXTENSION_WIDTH * 2];
             let degree =
                 air.symbolic_degree_bound(&degree_bounds) - (self.height().saturating_sub(1));
-            println!("D: {}", degree);
             max_degree = max_degree.max(degree);
         }
         max_degree
