@@ -1,8 +1,11 @@
+use ark_ff::FftField;
 use ark_ff::Field;
 use ark_poly::univariate::DensePolynomial;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use ark_serialize::Valid;
+use brainfuck::InputTable;
+use brainfuck::Table;
 use rand::Rng;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
@@ -22,7 +25,12 @@ use std::hash::Hasher;
 // `CanonicalDeserialize::deserialize_uncompressed_unchecked()` }
 
 #[derive(Debug, Clone)]
-pub enum ProofObject<F: Field> {
+pub enum ProofObject<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     MerkleRoot(u64),
     Codeword(Vec<F>),
     MerklePath(Vec<u64>),
@@ -30,6 +38,8 @@ pub enum ProofObject<F: Field> {
     YValues((F, F, F)),
 
     // new vals
+    PublicInputs(Vec<[F::BasePrimeField; InputTable::<F>::BASE_WIDTH]>),
+    PublicOutputs(Vec<[F::BasePrimeField; InputTable::<F>::BASE_WIDTH]>),
     TraceLen(u64),
     Terminal(F),
     LeafItems(Vec<F>),
@@ -38,7 +48,12 @@ pub enum ProofObject<F: Field> {
     FriLeafs((F, F, F)),
 }
 
-impl<F: Field> CanonicalSerialize for ProofObject<F> {
+impl<F> CanonicalSerialize for ProofObject<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     fn serialize_with_mode<W: ark_serialize::Write>(
         &self,
         mut writer: W,
@@ -65,28 +80,36 @@ impl<F: Field> CanonicalSerialize for ProofObject<F> {
                 4u8.serialize_compressed(&mut writer)?;
                 v.serialize_compressed(&mut writer)?;
             }
+            Self::PublicInputs(v) => {
+                5u8.serialize_compressed(&mut writer);
+                v.serialize_compressed(&mut writer);
+            }
+            Self::PublicOutputs(v) => {
+                6u8.serialize_compressed(&mut writer);
+                v.serialize_compressed(&mut writer);
+            }
             Self::TraceLen(v) => {
-                5u8.serialize_compressed(&mut writer)?;
-                v.serialize_compressed(&mut writer)?;
-            }
-            Self::Terminal(v) => {
-                6u8.serialize_compressed(&mut writer)?;
-                v.serialize_compressed(&mut writer)?;
-            }
-            Self::LeafItems(v) => {
                 7u8.serialize_compressed(&mut writer)?;
                 v.serialize_compressed(&mut writer)?;
             }
-            Self::LeafItem(v) => {
+            Self::Terminal(v) => {
                 8u8.serialize_compressed(&mut writer)?;
                 v.serialize_compressed(&mut writer)?;
             }
-            Self::MerklePathWithSalt(v) => {
+            Self::LeafItems(v) => {
                 9u8.serialize_compressed(&mut writer)?;
                 v.serialize_compressed(&mut writer)?;
             }
-            Self::FriLeafs(v) => {
+            Self::LeafItem(v) => {
                 10u8.serialize_compressed(&mut writer)?;
+                v.serialize_compressed(&mut writer)?;
+            }
+            Self::MerklePathWithSalt(v) => {
+                11u8.serialize_compressed(&mut writer)?;
+                v.serialize_compressed(&mut writer)?;
+            }
+            Self::FriLeafs(v) => {
+                12u8.serialize_compressed(&mut writer)?;
                 v.serialize_compressed(&mut writer)?;
             }
         }
@@ -100,6 +123,8 @@ impl<F: Field> CanonicalSerialize for ProofObject<F> {
             Self::MerklePath(v) => v.serialized_size(compress),
             Self::YValue(v) => v.serialized_size(compress),
             Self::YValues(v) => v.serialized_size(compress),
+            Self::PublicInputs(v) => v.serialized_size(compress),
+            Self::PublicOutputs(v) => v.serialized_size(compress),
             Self::TraceLen(v) => v.serialized_size(compress),
             Self::Terminal(v) => v.serialized_size(compress),
             Self::LeafItems(v) => v.serialized_size(compress),
@@ -110,13 +135,23 @@ impl<F: Field> CanonicalSerialize for ProofObject<F> {
     }
 }
 
-impl<F: Field> Valid for ProofObject<F> {
+impl<F> Valid for ProofObject<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         Ok(())
     }
 }
 
-impl<F: Field> CanonicalDeserialize for ProofObject<F> {
+impl<F> CanonicalDeserialize for ProofObject<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     fn deserialize_with_mode<R: ark_serialize::Read>(
         mut reader: R,
         compress: ark_serialize::Compress,
@@ -135,14 +170,20 @@ impl<F: Field> CanonicalDeserialize for ProofObject<F> {
             4 => Self::YValues(<(F, F, F)>::deserialize_with_mode(
                 reader, compress, validate,
             )?),
-            5 => Self::TraceLen(u64::deserialize_with_mode(reader, compress, validate)?),
-            6 => Self::Terminal(F::deserialize_with_mode(reader, compress, validate)?),
-            7 => Self::LeafItems(Vec::<F>::deserialize_with_mode(reader, compress, validate)?),
-            8 => Self::LeafItem(F::deserialize_with_mode(reader, compress, validate)?),
-            9 => Self::MerklePathWithSalt(<(u64, Vec<u64>)>::deserialize_with_mode(
+            5 => Self::PublicInputs(Vec::<[F::BasePrimeField; 1]>::deserialize_with_mode(
                 reader, compress, validate,
             )?),
-            10 => Self::FriLeafs(<(F, F, F)>::deserialize_with_mode(
+            6 => Self::PublicOutputs(Vec::<[F::BasePrimeField; 1]>::deserialize_with_mode(
+                reader, compress, validate,
+            )?),
+            7 => Self::TraceLen(u64::deserialize_with_mode(reader, compress, validate)?),
+            8 => Self::Terminal(F::deserialize_with_mode(reader, compress, validate)?),
+            9 => Self::LeafItems(Vec::<F>::deserialize_with_mode(reader, compress, validate)?),
+            10 => Self::LeafItem(F::deserialize_with_mode(reader, compress, validate)?),
+            11 => Self::MerklePathWithSalt(<(u64, Vec<u64>)>::deserialize_with_mode(
+                reader, compress, validate,
+            )?),
+            12 => Self::FriLeafs(<(F, F, F)>::deserialize_with_mode(
                 reader, compress, validate,
             )?),
             _ => return Err(ark_serialize::SerializationError::UnexpectedFlags),
@@ -150,7 +191,12 @@ impl<F: Field> CanonicalDeserialize for ProofObject<F> {
     }
 }
 
-pub trait ProofStream<F: Field> {
+pub trait ProofStream<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     fn push(&mut self, object: ProofObject<F>);
     fn pull(&mut self) -> ProofObject<F>;
     fn serialize(&self) -> Vec<u8>;
@@ -160,18 +206,33 @@ pub trait ProofStream<F: Field> {
 }
 
 // #[derive(Serialize, Deserialize)]
-pub struct StandardProofStream<F: Field> {
+pub struct StandardProofStream<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     pub objects: Vec<ProofObject<F>>,
     pub read_index: usize,
 }
 
-impl<F: Field> StandardProofStream<F> {
+impl<F> StandardProofStream<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl<F: Field> Default for StandardProofStream<F> {
+impl<F> Default for StandardProofStream<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     fn default() -> Self {
         StandardProofStream {
             objects: vec![],
@@ -180,7 +241,12 @@ impl<F: Field> Default for StandardProofStream<F> {
     }
 }
 
-impl<F: Field> ProofStream<F> for StandardProofStream<F> {
+impl<F> ProofStream<F> for StandardProofStream<F>
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+    [(); InputTable::<F>::BASE_WIDTH]:,
+{
     fn push(&mut self, object: ProofObject<F>) {
         self.objects.push(object);
     }

@@ -149,15 +149,16 @@ where
             .collect::<Vec<F>>();
 
         let row_step = codeword_len / self.height();
+        println!("Row step is: {}", row_step);
         let transition_constraints = Self::extension_transition_constraints(challenges);
         for constraint in transition_constraints {
             println!("constraint");
             let mut quotient_codeword = Vec::new();
             // let combination_codeword = Vec::new();
             for i in 0..codeword_len {
-                if i % 1024 == 0 {
-                    println!("pos:{i} {codeword_len}");
-                }
+                // if i % 1024 == 0 {
+                //     println!("pos:{i} {codeword_len}");
+                // }
                 let point_lhs = codewords
                     .iter()
                     .map(|codeword| codeword[i])
@@ -230,7 +231,7 @@ where
         challenges: &[F],
         terminals: &[F],
     ) -> Vec<Vec<F>> {
-        println!("pos:{codeword_len}");
+        // println!("pos:{codeword_len}");
         let boundary_quotients = self.boundary_quotients(codeword_len, codewords, challenges);
         let transition_quotients = self.transition_quotients(codeword_len, codewords, challenges);
         let terminal_quotients =

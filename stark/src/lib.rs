@@ -1,5 +1,6 @@
 #![feature(generic_const_exprs, int_log)]
 
+use crate::merkle::Merkle;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
@@ -116,7 +117,7 @@ impl<P: Config> BrainFuckStark<P> {
             .collect()
     }
 
-    fn sample_indices(n: usize, randomness: u64, bound: usize) -> Vec<usize> {
+    pub fn sample_indices(n: usize, randomness: u64, bound: usize) -> Vec<usize> {
         println!("N:{n}, randomness:{randomness}, bound:{bound}");
         let mut indices = vec![];
         let mut hasher = DefaultHasher::new();
@@ -153,6 +154,9 @@ impl<P: Config> BrainFuckStark<P> {
         };
 
         println!("padding len: {padding_length}");
+
+        proof_stream.push(ProofObject::PublicInputs(input_matrix.clone()));
+        proof_stream.push(ProofObject::PublicOutputs(output_matrix.clone()));
 
         self.processor_table.set_matrix(processor_matrix);
         self.memory_table.set_matrix(memory_matrix);
@@ -420,19 +424,30 @@ impl<P: Config> BrainFuckStark<P> {
         }
 
         assert_eq!(terms.len(), weights.len());
+        // let combination_codeword = terms
+        //     .into_iter()
+        //     .zip(weights)
+        //     .map(|(term, weight)| term.into_iter().map(|v| v * weight).collect())
+        //     .fold(vec![P::Fx::zero(); codeword_len], sum);
+        // let combination_codeword = terms
+        //     .iter()
+        //     .map(|term| P::Fx::sum_of_products(term, &weights))
+        //     .fold(vec![P::Fx::zero(); codeword_len], P::Fx::sum);
+        //     .collect::<Vec<P::Fx>>();
         let combination_codeword = terms
-            .into_iter()
+            .iter()
             .zip(weights)
-            .map(|(term, weight)| term.into_iter().map(|v| v * weight).collect())
+            .map(|(term, weight)| term.iter().copied().map(|v| v * weight).collect())
             .fold(vec![P::Fx::zero(); codeword_len], sum);
-        let combination_tree = SaltedMerkle::new(&combination_codeword);
+        let combination_tree = Merkle::new(&combination_codeword);
         proof_stream.push(ProofObject::MerkleRoot(combination_tree.root()));
 
         // get indices of leafs to prove non-linear combination
         let indices_seed = proof_stream.prover_fiat_shamir();
         let indices = Self::sample_indices(P::SECURITY_LEVEL, indices_seed, codeword_len);
 
-        let row_step = P::EXPANSION_FACTOR;
+        let row_step = codeword_len / padding_length;
+        println!("Row step is: {}", row_step);
         assert!(row_step.is_power_of_two());
 
         // open leafs of zipped codewords at indicated positions
@@ -465,17 +480,23 @@ impl<P: Config> BrainFuckStark<P> {
         // TODO: merge these arrays
 
         // open combination codewords at same positions
+        let mut is_first = true;
         for index in indices {
-            let (element, salt, path) = combination_tree.open(index);
-            assert!(SaltedMerkle::verify(
+            if is_first {
+                let individual_terms = terms.iter().map(|term| term[index]).collect::<Vec<P::Fx>>();
+                println!("{:?}", individual_terms);
+                is_first = false;
+            }
+            let (element, path) = combination_tree.open(index);
+            assert!(Merkle::verify(
                 combination_tree.root(),
                 index,
-                salt,
                 &path,
                 &element
             ));
-            proof_stream.push(ProofObject::LeafItem(element));
-            proof_stream.push(ProofObject::MerklePathWithSalt((salt, path)));
+            // Not needed. Verifier can re-compute the leaf
+            // proof_stream.push(ProofObject::LeafItem(element));
+            proof_stream.push(ProofObject::MerklePath(path));
         }
 
         // prove low degree of combination polynomial and collect indices
@@ -489,8 +510,25 @@ impl<P: Config> BrainFuckStark<P> {
         &mut self,
         proof: &[u8],
         proof_stream: &mut impl ProofStream<P::Fx>,
-    ) -> Result<(), &str> {
+    ) -> Result<(), &str>
+    where
+        [(); InputTable::<P::Fx>::BASE_WIDTH]: Sized,
+    {
         let mut proof_stream = proof_stream.deserialize(proof);
+
+        // TODO: refactor the how these get used by the verifier
+        //      makes V have to allocate so much memory defeats the point
+        // Get the public inputs
+        let public_inputs = match proof_stream.pull() {
+            ProofObject::PublicInputs(inputs) => inputs,
+            _ => return Err("Expected the trace length"),
+        };
+
+        // Get the public outputs
+        let public_outputs = match proof_stream.pull() {
+            ProofObject::PublicOutputs(outputs) => outputs,
+            _ => return Err("Expected the trace length"),
+        };
 
         // Get the trace length
         let trace_len = match proof_stream.pull() {
@@ -498,13 +536,18 @@ impl<P: Config> BrainFuckStark<P> {
             _ => return Err("Expected the trace length"),
         };
 
+        self.input_table.set_matrix(public_inputs);
+        self.input_table.pad(trace_len);
+        self.output_table.set_matrix(public_outputs);
+        self.output_table.pad(trace_len);
+
         self.processor_table.set_height(trace_len);
         self.memory_table.set_height(trace_len);
         self.instruction_table.set_height(trace_len);
-        self.input_table.set_height(trace_len);
-        self.output_table.set_height(trace_len);
 
         let codeword_len = self.fri_codeword_length();
+
+        println!("Codeword shlength: {}", codeword_len);
 
         // get the merkle root of the base tables
         let base_root = match proof_stream.pull() {
@@ -596,9 +639,11 @@ impl<P: Config> BrainFuckStark<P> {
             - num_base_polynomials;
         let num_randomizer_polynomials = 1;
         // +2 for instr and memory permutations
-        let num_quotient_polynomials = quotient_degree_bounds.iter().sum::<usize>() + 2;
+        // *difference quotients TODO learn more about these
+        let num_quotient_polynomials = quotient_degree_bounds.len() + 2;
 
         let weights_seed = proof_stream.verifier_fiat_shamir();
+        println!("{num_randomizer_polynomials} + 2 * ({num_base_polynomials} + {num_extension_polynomials} + {num_quotient_polynomials})");
         let weights = self.sample_weights(
             num_randomizer_polynomials
                 + 2 * (num_base_polynomials + num_extension_polynomials + num_quotient_polynomials),
@@ -615,14 +660,16 @@ impl<P: Config> BrainFuckStark<P> {
         let indices_seed = proof_stream.verifier_fiat_shamir();
         let indices = Self::sample_indices(P::SECURITY_LEVEL, indices_seed, codeword_len);
 
-        let row_step = P::EXPANSION_FACTOR;
+        let row_step = codeword_len / trace_len;
         let mut values: HashMap<usize, Vec<P::Fx>> = HashMap::new();
         // open leafs of zipped codewords at indicated positions
         for &index in &indices {
             for distance in [0, row_step] {
                 let idx = (index + distance) % codeword_len;
                 let entry = values.entry(idx).or_default();
-                assert!(entry.is_empty());
+                // assert!(entry.is_empty());
+                // BUG: sample indices should not sample row_step
+                let is_empty = entry.is_empty();
 
                 // base codewords
                 let elements = match proof_stream.pull() {
@@ -636,7 +683,11 @@ impl<P: Config> BrainFuckStark<P> {
                 if !SaltedMerkle::verify(base_root, idx, salt, &path, &elements) {
                     return Err("Invalid base codeword path");
                 }
-                entry.extend_from_slice(&elements);
+                if !is_empty {
+                    assert_eq!(elements[0], entry[0]);
+                } else {
+                    entry.extend_from_slice(&elements);
+                }
 
                 // extension codewords
                 let elements = match proof_stream.pull() {
@@ -650,7 +701,9 @@ impl<P: Config> BrainFuckStark<P> {
                 if !SaltedMerkle::verify(extension_root, idx, salt, &path, &elements) {
                     return Err("Invalid extension codeword path");
                 }
-                entry.extend_from_slice(&elements);
+                if is_empty {
+                    entry.extend_from_slice(&elements);
+                }
             }
         }
 
@@ -685,7 +738,10 @@ impl<P: Config> BrainFuckStark<P> {
                 terms.push(entry[i]);
                 let shift = self.max_degree() - base_degree_bounds[i - num_randomizer_polynomials];
                 terms.push(
-                    entry[i] * P::Fx::from_base_prime_field((offset * omega).pow([shift as u64])),
+                    entry[i]
+                        * P::Fx::from_base_prime_field(
+                            (offset * omega.pow([*index as u64])).pow([shift as u64]),
+                        ),
                 );
             }
 
@@ -707,7 +763,9 @@ impl<P: Config> BrainFuckStark<P> {
                 let shift = self.max_degree() - extension_degree_bounds[i];
                 terms.push(
                     entry[extension_offset + i]
-                        * P::Fx::from_base_prime_field((offset * omega).pow([shift as u64])),
+                        * P::Fx::from_base_prime_field(
+                            (offset * omega.pow([*index as u64])).pow([shift as u64]),
+                        ),
                 );
             }
 
@@ -806,6 +864,32 @@ impl<P: Config> BrainFuckStark<P> {
                     .transition_quotient_degree_bounds(&challenges),
             ];
 
+            let terminal_constraints_ext = vec![
+                self.processor_table
+                    .extension_terminal_constraints(&challenges, &terminals),
+                self.memory_table
+                    .extension_terminal_constraints(&challenges, &terminals),
+                self.instruction_table
+                    .extension_terminal_constraints(&challenges, &terminals),
+                self.input_table
+                    .extension_terminal_constraints(&challenges, &terminals),
+                self.output_table
+                    .extension_terminal_constraints(&challenges, &terminals),
+            ];
+
+            let terminal_quotient_degree_bounds = vec![
+                self.processor_table
+                    .terminal_quotient_degree_bounds(&challenges, &terminals),
+                self.memory_table
+                    .terminal_quotient_degree_bounds(&challenges, &terminals),
+                self.instruction_table
+                    .terminal_quotient_degree_bounds(&challenges, &terminals),
+                self.input_table
+                    .terminal_quotient_degree_bounds(&challenges, &terminals),
+                self.output_table
+                    .terminal_quotient_degree_bounds(&challenges, &terminals),
+            ];
+
             let extension_widths = vec![
                 ProcessorTable::<P::Fx>::EXTENSION_WIDTH,
                 MemoryTable::<P::Fx>::EXTENSION_WIDTH,
@@ -820,10 +904,19 @@ impl<P: Config> BrainFuckStark<P> {
                 (
                     (
                         (
-                            ((point, boundary_constraints), boundary_quotient_degree_bounds),
-                            transition_constraints,
+                            (
+                                (
+                                    (
+                                        (point, boundary_constraints),
+                                        boundary_quotient_degree_bounds,
+                                    ),
+                                    transition_constraints,
+                                ),
+                                transition_quotient_degree_bounds,
+                            ),
+                            terminal_constraints_ext,
                         ),
-                        transition_quotient_degree_bounds,
+                        terminal_quotient_degree_bounds,
                     ),
                     base_width,
                 ),
@@ -834,16 +927,18 @@ impl<P: Config> BrainFuckStark<P> {
                 .zip(&boundary_quotient_degree_bounds)
                 .zip(&transition_constraints)
                 .zip(&transition_quotient_degree_bounds)
+                .zip(&terminal_constraints_ext)
+                .zip(&terminal_quotient_degree_bounds)
                 .zip(&base_widths)
                 .zip(&extension_widths)
             {
-                for (constraint, bound) in
-                    zip(boundary_constraints, boundary_quotient_degree_bounds)
+                for (i, (constraint, bound)) in
+                    zip(boundary_constraints, boundary_quotient_degree_bounds).enumerate()
                 {
                     let eval = constraint.evaluate(point);
                     let quotient = eval
-                        / P::Fx::from_base_prime_field(offset * omega.pow([*index as u64]))
-                        - P::Fx::one();
+                        / (P::Fx::from_base_prime_field(offset * omega.pow([*index as u64]))
+                            - P::Fx::one());
                     terms.push(quotient);
                     let shift = self.max_degree() - bound;
                     terms.push(
@@ -851,7 +946,7 @@ impl<P: Config> BrainFuckStark<P> {
                             * P::Fx::from_base_prime_field(
                                 (offset * omega.pow([*index as u64])).pow([shift as u64]),
                             ),
-                    )
+                    );
                 }
 
                 // transition
@@ -868,8 +963,8 @@ impl<P: Config> BrainFuckStark<P> {
                 for (constraint, bound) in
                     zip(transition_constraints, transition_quotient_degree_bounds)
                 {
-                    let eval =
-                        constraint.evaluate(&vec![point.clone(), next_point.clone()].concat());
+                    let eval_point = vec![point.clone(), next_point.clone()].concat();
+                    let eval = constraint.evaluate(&eval_point);
                     // If the trace length is 0 then there is no subgroup where the transition
                     // polynomials should be zero. The fast zerofier (based on
                     // group theory) needs a non-empty group. Forcing it on an
@@ -890,9 +985,9 @@ impl<P: Config> BrainFuckStark<P> {
                         // = eval_result * (ω^i - o^(n - 1)) / ((ω^i)^n - 1)
                         // = eval_result * (ω^i - 1/o)) / ((ω^i)^n - 1)
                         eval * P::Fx::from_base_prime_field(evaluation_domain - omicron_inv)
-                            / P::Fx::from_base_prime_field(
+                            / (P::Fx::from_base_prime_field(
                                 evaluation_domain.pow([trace_len as u64]),
-                            )
+                            ) - P::Fx::one())
                     };
                     terms.push(quotient);
                     let shift = self.max_degree() - bound;
@@ -903,11 +998,82 @@ impl<P: Config> BrainFuckStark<P> {
                             ),
                     )
                 }
+
+                // terminal
+                for (constraint, bound) in
+                    zip(terminal_constraints_ext, terminal_quotient_degree_bounds)
+                {
+                    let eval = constraint.evaluate(point);
+                    let quotient = eval
+                        / (P::Fx::from_base_prime_field(
+                            offset * omega.pow([*index as u64]) - omicron.inverse().unwrap(),
+                        ));
+                    terms.push(quotient);
+                    let shift = self.max_degree() - bound;
+                    terms.push(
+                        quotient
+                            * P::Fx::from_base_prime_field(
+                                (offset * omega.pow([*index as u64])).pow([shift as u64]),
+                            ),
+                    );
+                }
             }
 
-            //             points
-            // boundary_constraints
-            // transition_constraints.zip(&transition_quotient_degree_bounds)
+            // Instruction permutation
+            let quotient = (points[0][ProcessorTable::<P::Fx>::INSTRUCTION_PERMUTATION]
+                - points[2][InstructionTable::<P::Fx>::PROCESSOR_PERMUTATION])
+                / (P::Fx::from_base_prime_field(offset * omega.pow([*index as u64]))
+                    - P::Fx::one());
+            terms.push(quotient);
+            let degree_bound = std::cmp::max(
+                self.processor_table.interpolant_degree(),
+                self.instruction_table.interpolant_degree(),
+            ) - 1;
+            let shift = self.max_degree() - degree_bound;
+            terms.push(
+                quotient
+                    * P::Fx::from_base_prime_field(
+                        (offset * omega.pow([*index as u64])).pow([shift as u64]),
+                    ),
+            );
+
+            // Memory permutation
+            let quotient = (points[0][ProcessorTable::<P::Fx>::MEMORY_PERMUTATION]
+                - points[1][MemoryTable::<P::Fx>::PERMUTATION])
+                / (P::Fx::from_base_prime_field(offset * omega.pow([*index as u64]))
+                    - P::Fx::one());
+            terms.push(quotient);
+            let degree_bound = std::cmp::max(
+                self.processor_table.interpolant_degree(),
+                self.memory_table.interpolant_degree(),
+            ) - 1;
+            let shift = self.max_degree() - degree_bound;
+            terms.push(
+                quotient
+                    * P::Fx::from_base_prime_field(
+                        (offset * omega.pow([*index as u64])).pow([shift as u64]),
+                    ),
+            );
+
+            assert_eq!(terms.len(), weights.len());
+
+            // compute inner product of weights and terms
+            let inner_product = P::Fx::sum_of_products(&weights, &terms);
+
+            // compare inner product against the combination codeword value
+            // Not needed. Verifier can re-compute the leaf
+            // let combination_leaf = match proof_stream.pull() {
+            //     ProofObject::LeafItem(leaf) => leaf,
+            //     _ => return Err("Expected to receive combination codeword leaf"),
+            // };
+            let combination_path = match proof_stream.pull() {
+                ProofObject::MerklePath(path) => path,
+                _ => return Err("Expected to receive combination codeword path"),
+            };
+
+            if !Merkle::verify(combination_root, *index, &combination_path, &inner_product) {
+                return Err("Failed combination codeword verification");
+            }
         }
 
         Ok(())
@@ -928,6 +1094,77 @@ fn sum<F: Field>(a: Vec<F>, b: Vec<F>) -> Vec<F> {
     let n = a.len();
     (0..n).map(|i| a[i] + b[i]).collect()
 }
+
+// [BigInt([1710208584245725303]), BigInt([11995710872436709201]),
+// BigInt([3642278357444674404]), BigInt([5718235080515768762]),
+// BigInt([16120465234081670515]), BigInt([4350305334917748855]),
+// BigInt([1396296136842525125]), BigInt([2149838862079072449]),
+// BigInt([10059728140718715797]), BigInt([13869987211284709351]),
+// BigInt([3727230997185995113]), BigInt([16268027961919268577]),
+// BigInt([1597061628288366273]), BigInt([2240819524435381052]),
+// BigInt([2016353603280941239]), BigInt([16315275598172811876]),
+// BigInt([16754693856445897453]), BigInt([12814642417202300725]),
+// BigInt([9366688308150631863]), BigInt([7400628902309218917]),
+// BigInt([2737682129997225616]), BigInt([8375933265635500298]),
+// BigInt([9303962396706230906]), BigInt([12345045431217919735]),
+// BigInt([8425698123806320982]), BigInt([6846679244494067675]),
+// BigInt([5592509528404915912]), BigInt([11226314602453372546]),
+// BigInt([497544971403244068]), BigInt([0]), BigInt([0]),
+// BigInt([3280548347098493060]), BigInt([12509987043256019821]),
+// BigInt([9466527737685047328]), BigInt([9012706435055531418]),
+// BigInt([7475083097440792140]), BigInt([8151672685675886499]), BigInt([0]),
+// BigInt([0]), BigInt([10640633416052728901]), BigInt([6996866218914121122]),
+// BigInt([12924144274136461242]), BigInt([1602825945942201732]),
+// BigInt([9597249846809980849]), BigInt([5764423896951069356]),
+// BigInt([17183195101609036813]), BigInt([15920665176633506566]), BigInt([0]),
+// BigInt([0]), BigInt([14443043237080869125]), BigInt([9848374718738224822]),
+// BigInt([7011391330220927815]), BigInt([7534909639887279839]),
+// BigInt([5085190328583366626]), BigInt([3243417051774621093]),
+// BigInt([10348543080471628493]), BigInt([7613771117111109820]),
+// BigInt([2802884323112409286]), BigInt([16731277597241051887]),
+// BigInt([17666186227303930884]), BigInt([8963618216159038969]), BigInt([0]),
+// BigInt([0]), BigInt([9204411745211657212]), BigInt([2845517255227551010]),
+// BigInt([9437583806969634179]), BigInt([6077705699630001715]),
+// BigInt([454603151151794800]), BigInt([4863859905585004564]),
+// BigInt([6937395329577254165]), BigInt([16450004969743293546]),
+// BigInt([2821375935619751771]), BigInt([7980776240910173904]),
+// BigInt([5617301305572854514]), BigInt([5458542154407053128]),
+// BigInt([14347623651831726015]), BigInt([11085405513344808833]),
+// BigInt([5485751483481465086]), BigInt([5116482568265605883]),
+// BigInt([10418059749299386821]), BigInt([7729676090561039393]),
+// BigInt([12221764153799526795]), BigInt([16294180334621195176]),
+// BigInt([10093207849545042022]), BigInt([5231984416677243569]),
+// BigInt([6585496079534854154]), BigInt([13931884391888328161]),
+// BigInt([13354491715021406611]), BigInt([17902854936819063142]), BigInt([0]),
+// BigInt([0]), BigInt([321912157814361308]), BigInt([5475926185078628988]),
+// BigInt([3149027527712383442]), BigInt([4140777979006195941]),
+// BigInt([8176199622016035285]), BigInt([3423958877715784922]),
+// BigInt([11504477913274736610]), BigInt([16650315352711428780]),
+// BigInt([11145346473702292571]), BigInt([951161182199483842]),
+// BigInt([2569702684407255847]), BigInt([13259834532598280171]),
+// BigInt([10077434001263680715]), BigInt([1897506655594860188]),
+// BigInt([10600281609783299922]), BigInt([4692120575306702520]),
+// BigInt([12102095527140462953]), BigInt([6878267098526014103]),
+// BigInt([3489767136207914912]), BigInt([13350285776898780276]),
+// BigInt([5995804826738251189]), BigInt([8199190131831677969]),
+// BigInt([5281594740881785515]), BigInt([4761980536487682048]),
+// BigInt([17504393472595519331]), BigInt([2569046061236978293]),
+// BigInt([3760534704125986648]), BigInt([2765410543501754041]),
+// BigInt([5108021754847703901]), BigInt([18431705916747292622]),
+// BigInt([7016947923379912543]), BigInt([4043436114833914104]),
+// BigInt([9073962641981053895]), BigInt([4966163412638084757]),
+// BigInt([2477037037554942897]), BigInt([16973230500013866936]),
+// BigInt([7421975304303492664]), BigInt([11928963156767684333]),
+// BigInt([8000931646211673151]), BigInt([4858034445723420588]),
+// BigInt([3144938485098379635]), BigInt([14208227357971715466]),
+// BigInt([10892131689466627520]), BigInt([16053984839842914155]), BigInt([0]),
+// BigInt([0]), BigInt([0]), BigInt([0]), BigInt([0]), BigInt([0]),
+// BigInt([17664275971369249910]), BigInt([1052956216941163967]),
+// BigInt([14694166576112912455]), BigInt([10396205247186246561]),
+// BigInt([15863990086762651920]), BigInt([9542070068377318560]),
+
+// BigInt([13744469832406052788]), BigInt([16138844855899697225]),
+// BigInt([13318900265215930294]), BigInt([813708465436210029])]
 
 // N:128, randomness:18379656959775521745, bound:65536
 

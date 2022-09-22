@@ -111,6 +111,13 @@ fn verify() {
     let proof = fs::read("./proof.json").unwrap();
     let mut proof_stream = StandardProofStream::<Fp>::new();
     let mut bfs = BrainFuckStark::new(StarkConfig);
+    // let indices_seed = 5; // proof_stream.prover_fiat_shamir();
+    // let indices = BrainFuckStark::<StarkConfig>::sample_indices(
+    //     StarkConfig::SECURITY_LEVEL,
+    //     indices_seed,
+    //     65536,
+    // );
+    // assert_eq!(indices[0], 10);
     bfs.verify(&proof, &mut proof_stream).unwrap();
 }
 

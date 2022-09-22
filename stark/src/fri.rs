@@ -4,6 +4,8 @@ use crate::protocol::ProofStream;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::PrimeField;
+use brainfuck::InputTable;
+use brainfuck::Table;
 use num_traits::One;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
@@ -62,7 +64,10 @@ impl<P: Config> Fri<P> {
         &self,
         proof_stream: &mut impl ProofStream<P::Fx>,
         codeword: &[P::Fx],
-    ) -> (Vec<Vec<P::Fx>>, Vec<Merkle<P::Fx>>) {
+    ) -> (Vec<Vec<P::Fx>>, Vec<Merkle<P::Fx>>)
+    where
+        [(); InputTable::<P::Fx>::BASE_WIDTH]: Sized,
+    {
         let one = P::Fx::one();
         let two = one + one;
 
@@ -128,7 +133,9 @@ impl<P: Config> Fri<P> {
         curr_tree: &Merkle<P::Fx>,
         next_tree: &Merkle<P::Fx>,
         indices: &[usize],
-    ) {
+    ) where
+        [(); InputTable::<P::Fx>::BASE_WIDTH]: Sized,
+    {
         let lhs_indices = indices.to_vec();
         let rhs_indices = indices
             .iter()
@@ -163,7 +170,9 @@ impl<P: Config> Fri<P> {
         curr_tree: &Merkle<P::Fx>,
         last_codeword: &[P::Fx],
         indices: &[usize],
-    ) {
+    ) where
+        [(); InputTable::<P::Fx>::BASE_WIDTH]: Sized,
+    {
         let lhs_indices = indices.to_vec();
         let rhs_indices = indices
             .iter()
@@ -194,7 +203,10 @@ impl<P: Config> Fri<P> {
         &self,
         proof_stream: &mut impl ProofStream<P::Fx>,
         codeword: &[P::Fx],
-    ) -> Vec<usize> {
+    ) -> Vec<usize>
+    where
+        [(); InputTable::<P::Fx>::BASE_WIDTH]: Sized,
+    {
         // commit phase
         let (codewords, trees) = self.commit(proof_stream, codeword);
 
