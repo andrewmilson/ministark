@@ -8,6 +8,7 @@ use ark_ff::PrimeField;
 use ark_ff::UniformRand;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
+use ark_poly::Polynomial;
 use brainfuck::permutation_argument;
 use brainfuck::InputTable;
 use brainfuck::InstructionTable;
@@ -16,6 +17,7 @@ use brainfuck::OutputTable;
 use brainfuck::ProcessorTable;
 use brainfuck::Table;
 use fri::Fri;
+use legacy_algebra::number_theory_transform::inverse_number_theory_transform;
 use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::scale_poly;
 use num_traits::Zero;
@@ -439,6 +441,15 @@ impl<P: Config> BrainFuckStark<P> {
             .zip(weights)
             .map(|(term, weight)| term.iter().copied().map(|v| v * weight).collect())
             .fold(vec![P::Fx::zero(); codeword_len], sum);
+
+        {
+            println!("TRYING TO INTERPOLATE");
+            let coefficients = inverse_number_theory_transform(&combination_codeword);
+            let my_poly = DensePolynomial::from_coefficients_vec(coefficients);
+            println!("MY POLY DEGREE {}", my_poly.degree());
+            println!("CODEWORD LEN {}", codeword_len);
+        }
+
         let combination_tree = Merkle::new(&combination_codeword);
         proof_stream.push(ProofObject::MerkleRoot(combination_tree.root()));
 
@@ -1075,6 +1086,10 @@ impl<P: Config> BrainFuckStark<P> {
                 return Err("Failed combination codeword verification");
             }
         }
+
+        // verify low degree of combination polynomial
+        self.fri
+            .verify(&mut proof_stream, codeword_len, combination_root);
 
         Ok(())
     }

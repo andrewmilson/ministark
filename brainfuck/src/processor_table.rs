@@ -102,11 +102,11 @@ where
             match instr {
                 IncrementPointer => {
                     instr_polynomials[0] = ip_next.clone() - ip.clone() - one;
-                    instr_polynomials[1] = mp_next.clone() - mp.clone() + one;
+                    instr_polynomials[1] = mp_next.clone() - mp.clone() - one;
                 }
                 DecrementPointer => {
                     instr_polynomials[0] = ip_next.clone() - ip.clone() - one;
-                    instr_polynomials[1] = mp_next.clone() - mp.clone() - one;
+                    instr_polynomials[1] = mp_next.clone() - mp.clone() + one;
                 }
                 Increment => {
                     instr_polynomials[0] = ip_next.clone() - ip.clone() - one;
@@ -144,6 +144,12 @@ where
 
             // max degree: 7
             let deselector = if_not_instr(&instr, &curr_instr);
+
+            // account for padding
+            // deactivate all polynomials if current instruction is zero
+            for poly in &mut instr_polynomials {
+                *poly = poly.clone() * curr_instr.clone();
+            }
 
             for (polynomial, instr_polynomial) in polynomials.iter_mut().zip(instr_polynomials) {
                 // max degree: 7 + 4 = 11
@@ -322,20 +328,25 @@ where
         // running product for instruction table permutation
         let instruction_permutation_constraint = curr_instr.clone()
             * (instruction_permutation.clone()
-                * (Multivariate::constant(alpha) - ip.clone() * a
-                    + curr_instr.clone() * b
-                    + next_instr.clone() * c)
+                * (Multivariate::constant(alpha)
+                    - ip.clone() * a
+                    - curr_instr.clone() * b
+                    - next_instr.clone() * c)
                 - instruction_permutation_next.clone())
             + instr_zerofier(&curr_instr)
-                * (instruction_permutation_next.clone() - instruction_permutation.clone());
+                * (instruction_permutation.clone() - instruction_permutation_next.clone());
         polynomials.push(instruction_permutation_constraint);
 
         // running product for memory table permutation
-        let memory_permutation_constraint = memory_permutation.clone()
-            * (Multivariate::constant(beta) - cycle.clone() * d
-                + mp.clone() * e
-                + mem_val.clone() * f)
-            - memory_permutation_next.clone();
+        let memory_permutation_constraint = curr_instr.clone()
+            * (memory_permutation.clone()
+                * (Multivariate::constant(beta)
+                    - cycle.clone() * d
+                    - mp.clone() * e
+                    - mem_val.clone() * f)
+                - memory_permutation_next.clone())
+            * instr_zerofier(&curr_instr)
+            * (memory_permutation.clone() - memory_permutation_next.clone());
         polynomials.push(memory_permutation_constraint);
 
         // running evaluation for input tape

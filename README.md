@@ -6,3 +6,7 @@ Fast stark proover for Apple Silicon.
 
 - remembering what the longest table is
 - all terminal and challence and column you have to remember the numerical index. Could implement trait and enums to mitigate this.
+
+# TODO
+
+- debugging memory table. Remove constraint for memory stay the same clock cycle increase

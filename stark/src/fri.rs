@@ -1,11 +1,17 @@
 use crate::ceil_power_of_two;
 use crate::merkle::Merkle;
+use crate::protocol::ProofObject;
 use crate::protocol::ProofStream;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::PrimeField;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
+use ark_poly::Polynomial;
 use brainfuck::InputTable;
 use brainfuck::Table;
+use legacy_algebra::number_theory_transform::inverse_number_theory_transform;
+use legacy_algebra::number_theory_transform::number_theory_transform;
 use num_traits::One;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
@@ -91,7 +97,9 @@ impl<P: Config> Fri<P> {
             }
 
             // only prepare next round if necessary
-            if codeword.len() == P::EXPANSION_FACTOR {
+            if codeword.len() == ceil_power_of_two(P::NUM_COLINEARITY_CHECKS)
+                || codeword.len() == P::EXPANSION_FACTOR
+            {
                 break;
             }
 
@@ -236,4 +244,132 @@ impl<P: Config> Fri<P> {
 
         top_level_indices
     }
+
+    pub fn verify(
+        &self,
+        proof_stream: &mut impl ProofStream<P::Fx>,
+        codeword_len: usize,
+        combination_root: u64,
+    ) -> Result<(), &str>
+    where
+        [(); InputTable::<P::Fx>::BASE_WIDTH]: Sized,
+    {
+        let mut offset = P::Fp::GENERATOR;
+        let mut omega = P::Fp::get_root_of_unity(codeword_len as u64).unwrap();
+
+        // extract all roots and alphas
+        let mut roots = vec![combination_root];
+        let mut alphas = Vec::new();
+        let mut round_len = codeword_len;
+        while round_len >= ceil_power_of_two(P::NUM_COLINEARITY_CHECKS)
+            && round_len >= P::EXPANSION_FACTOR
+        {
+            if round_len != codeword_len {
+                roots.push(match proof_stream.pull() {
+                    ProofObject::MerkleRoot(root) => root,
+                    _ => return Err("Expected root"),
+                })
+            }
+            let alpha = P::Fx::from(proof_stream.prover_fiat_shamir());
+            alphas.push(alpha);
+            round_len /= 2;
+        }
+
+        // extract the last codeword
+        let last_codeword = match proof_stream.pull() {
+            ProofObject::Codeword(codeword) => codeword,
+            _ => return Err("Expected last codeword"),
+        };
+        let last_root = roots.last().unwrap();
+
+        // check if it matches the given root
+        // TODO: why check? no point
+        assert_eq!(
+            *last_root,
+            Merkle::new(&last_codeword).root(),
+            "last codeword is not well formed"
+        );
+
+        // check if the last codeword is low degree
+        let degree = last_codeword.len() / P::EXPANSION_FACTOR;
+        let last_omega = P::Fp::get_root_of_unity(last_codeword.len() as u64).unwrap();
+
+        // compute interpolant
+        // let
+        let last_domain = (0..last_codeword.len())
+            .map(|i| P::Fx::from_base_prime_field(offset * last_omega.pow([i as u64])))
+            .collect::<Vec<P::Fx>>();
+        let poly = interpolate(&last_domain, &last_codeword);
+        //inverse_number_theory_transform(&last_codeword);
+        println!("POLY IS HERE: {:?}", poly);
+        println!("Degree should be less than {degree}");
+        println!("Actual degree is {}", poly.degree());
+
+        assert_eq!(
+            last_domain
+                .iter()
+                .map(|v| poly.evaluate(v))
+                .collect::<Vec<P::Fx>>(),
+            last_codeword,
+            "re-evaluated codeword does not match original!"
+        );
+
+        // let poly =
+
+        Ok(())
+    }
+}
+
+pub fn interpolate<E: Field>(domain: &[E], values: &[E]) -> DensePolynomial<E> {
+    assert_eq!(
+        domain.len(),
+        values.len(),
+        "number of elements in domain does not match number of values -- cannot interpolate"
+    );
+    // Generate master numerator polynomial: (x - domain[0]) * (x - domain[1]) *
+    // ....
+    let root = zerofier_domain(domain);
+
+    // Generate the numerator for each item in the domain
+    let numerators = domain
+        .iter()
+        .copied()
+        // root / (x - domain[i])
+        .map(|d| &root / &DensePolynomial::from_coefficients_vec(vec![-d, E::one()]))
+        .collect::<Vec<DensePolynomial<E>>>();
+
+    // Generate denominators by evaluating numerator polys at each x
+    let mut inverse_denominators = numerators
+        .iter()
+        .zip(domain)
+        .map(|(numerator, d)| numerator.evaluate(d))
+        .collect::<Vec<E>>();
+    ark_ff::batch_inversion(&mut inverse_denominators);
+
+    // Generate output polynomial
+    let mut output_coefficients = vec![E::zero(); values.len()];
+
+    for ((y, numerator), inverse_denominator) in values
+        .iter()
+        .copied()
+        .zip(numerators)
+        .zip(inverse_denominators)
+    {
+        let y_slice = y * inverse_denominator;
+        for (j, coefficient) in numerator.coeffs.into_iter().enumerate() {
+            output_coefficients[j] += coefficient * y_slice;
+        }
+    }
+
+    DensePolynomial::from_coefficients_vec(output_coefficients)
+}
+
+fn zerofier_domain<E: Field>(domain: &[E]) -> DensePolynomial<E> {
+    let x = DensePolynomial::from_coefficients_vec(vec![E::zero(), E::one()]);
+    let mut accumulator = DensePolynomial::from_coefficients_vec(vec![E::one()]);
+    for element in domain.iter() {
+        let subtraction = &x - &DensePolynomial::from_coefficients_vec(vec![*element]);
+        accumulator = accumulator.naive_mul(&subtraction);
+    }
+    accumulator
 }

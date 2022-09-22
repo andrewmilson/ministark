@@ -233,9 +233,21 @@ where
     ) -> Vec<Vec<F>> {
         // println!("pos:{codeword_len}");
         let boundary_quotients = self.boundary_quotients(codeword_len, codewords, challenges);
+        println!("BOUNDARY");
+        for codeword in &boundary_quotients {
+            determine_codeword_degree(codeword);
+        }
         let transition_quotients = self.transition_quotients(codeword_len, codewords, challenges);
+        println!("TRANSITION");
+        for codeword in &transition_quotients {
+            determine_codeword_degree(codeword);
+        }
         let terminal_quotients =
             self.terminal_quotients(codeword_len, codewords, challenges, terminals);
+        println!("TERMINALS");
+        for codeword in &transition_quotients {
+            determine_codeword_degree(codeword);
+        }
         vec![boundary_quotients, transition_quotients, terminal_quotients].concat()
     }
 
@@ -254,6 +266,7 @@ where
         Self::extension_transition_constraints(challenges)
             .into_iter()
             // TODO: improve this comment. It's late. Can't think
+            // TODO: can cause overflow
             // divide out all 0 roots. +1 at the end since the last point is not checked
             .map(|constraint| constraint.symbolic_degree_bound(&max_degrees) - self.height() + 1)
             .collect()
@@ -296,4 +309,24 @@ where
 
     /// Computes the low degree extension of all columns
     fn extension_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>>;
+}
+
+fn determine_codeword_degree<F>(evaluations: &[F])
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+{
+    let mut coeffs =
+        legacy_algebra::number_theory_transform::inverse_number_theory_transform(evaluations);
+    while coeffs.last().map_or(false, |v| v.is_zero()) {
+        coeffs.pop();
+    }
+
+    let mut degree = if coeffs.is_empty() {
+        0
+    } else {
+        coeffs.len() - 1
+    };
+
+    println!("Degree is {}", degree);
 }

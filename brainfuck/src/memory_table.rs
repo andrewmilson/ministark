@@ -104,6 +104,12 @@ where
         for i in 0..matrix.len() - 1 {
             let curr_row = &matrix[i];
             let next_row = &matrix[i + 1];
+
+            // // check sorted by memory address then cycle
+            // if curr_row[ProcessorTable::<F>::MP] == next_row[ProcessorTable::<F>::MP] {
+            //     assert!(curr_row[ProcessorTable::<F>::CYCLE] ==
+            // next_row[ProcessorTable::<F>::CYCLE] - i) }
+
             if curr_row[Self::MP] == next_row[Self::MP]
                 && curr_row[Self::CYCLE] + F::BasePrimeField::one() != next_row[Self::CYCLE]
             {
