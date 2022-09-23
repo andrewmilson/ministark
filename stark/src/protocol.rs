@@ -81,12 +81,12 @@ where
                 v.serialize_compressed(&mut writer)?;
             }
             Self::PublicInputs(v) => {
-                5u8.serialize_compressed(&mut writer);
-                v.serialize_compressed(&mut writer);
+                5u8.serialize_compressed(&mut writer)?;
+                v.serialize_compressed(&mut writer)?;
             }
             Self::PublicOutputs(v) => {
-                6u8.serialize_compressed(&mut writer);
-                v.serialize_compressed(&mut writer);
+                6u8.serialize_compressed(&mut writer)?;
+                v.serialize_compressed(&mut writer)?;
             }
             Self::TraceLen(v) => {
                 7u8.serialize_compressed(&mut writer)?;
