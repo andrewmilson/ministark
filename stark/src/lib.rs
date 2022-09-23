@@ -67,6 +67,7 @@ impl<P: Config> fri::Config for P {
 }
 
 pub struct BrainFuckStark<P: Config> {
+    program: Vec<usize>,
     fri: Fri<P>,
     processor_table: ProcessorTable<P::Fx>,
     memory_table: MemoryTable<P::Fx>,
@@ -76,8 +77,9 @@ pub struct BrainFuckStark<P: Config> {
 }
 
 impl<P: Config> BrainFuckStark<P> {
-    pub fn new(params: P) -> Self {
+    pub fn new(params: P, program: Vec<usize>) -> Self {
         BrainFuckStark {
+            program,
             fri: Fri::new(params),
             processor_table: ProcessorTable::new(P::NUM_RANDOMIZERS),
             memory_table: MemoryTable::new(P::NUM_RANDOMIZERS),
@@ -521,6 +523,8 @@ impl<P: Config> BrainFuckStark<P> {
         &mut self,
         proof: &[u8],
         proof_stream: &mut impl ProofStream<P::Fx>,
+        input: &[usize],
+        output: &[usize],
     ) -> Result<(), &str>
     where
         [(); InputTable::<P::Fx>::BASE_WIDTH]: Sized,
@@ -1089,7 +1093,39 @@ impl<P: Config> BrainFuckStark<P> {
 
         // verify low degree of combination polynomial
         self.fri
-            .verify(&mut proof_stream, codeword_len, combination_root)
+            .verify(&mut proof_stream, codeword_len, combination_root)?;
+
+        // verify external terminals:
+        // for ea in self.evaluation_arguments:
+        // ea.select_terminal(terminals) == ea.compute_terminal(challenges)
+
+        // verifier the external terminals
+        let mut terminals = terminals.into_iter();
+        let _processor_instruction_permutation_terminal = terminals.next().unwrap();
+        let _processor_memory_permutation_terminal = terminals.next().unwrap();
+        let processor_input_evaluation_terminal = terminals.next().unwrap();
+        let processor_output_evaluation_terminal = terminals.next().unwrap();
+        let instruction_evaluation_terminal = terminals.next().unwrap();
+
+        if processor_input_evaluation_terminal
+            != brainfuck::evaluation_argument::compute_io_terminal(input, challenges[8])
+        {
+            return Err("Failed to verify input evaluation argument");
+        }
+
+        if processor_output_evaluation_terminal
+            != brainfuck::evaluation_argument::compute_io_terminal(output, challenges[9])
+        {
+            return Err("Failed to verify output evaluation argument");
+        }
+
+        if instruction_evaluation_terminal
+            != brainfuck::evaluation_argument::compute_program_terminal(&self.program, &challenges)
+        {
+            return Err("Failed to verify program evaluation argument");
+        }
+
+        Ok(())
     }
 }
 

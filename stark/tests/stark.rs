@@ -87,7 +87,7 @@ fn hello_world() {
     // let memory_length = memory_matrix.len();
 
     let mut proof_stream = StandardProofStream::<Fp>::new();
-    let mut bfs = BrainFuckStark::new(StarkConfig);
+    let mut bfs = BrainFuckStark::new(StarkConfig, program);
     let res = bfs.prove(
         processor_matrix,
         memory_matrix,
@@ -108,9 +108,10 @@ fn hello_world() {
 
 #[test]
 fn verify() {
+    let program = compile(HELLO_WORLD_SOURCE); //TINY); //HELLO_WORLD_SOURCE);
     let proof = fs::read("./proof.json").unwrap();
     let mut proof_stream = StandardProofStream::<Fp>::new();
-    let mut bfs = BrainFuckStark::new(StarkConfig);
+    let mut bfs = BrainFuckStark::new(StarkConfig, program);
     // let indices_seed = 5; // proof_stream.prover_fiat_shamir();
     // let indices = BrainFuckStark::<StarkConfig>::sample_indices(
     //     StarkConfig::SECURITY_LEVEL,
@@ -118,7 +119,14 @@ fn verify() {
     //     65536,
     // );
     // assert_eq!(indices[0], 10);
-    bfs.verify(&proof, &mut proof_stream).unwrap();
+    let input = Vec::new();
+    let output = "Hello World!\n"
+        .as_bytes()
+        .iter()
+        .map(|&v| v as usize)
+        .collect::<Vec<usize>>();
+    bfs.verify(&proof, &mut proof_stream, &input, &output)
+        .unwrap();
 }
 
 // #[test]
