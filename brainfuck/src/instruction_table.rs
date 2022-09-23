@@ -193,7 +193,7 @@ where
         // - processor permutation doesn't change if `curr_instr=0` i.e. padding
         // - processor permutation doesn't change if `ip` stays the same
         let processor_permutation_constraint = curr_instr.clone()
-            * (ip.clone() - ip_next.clone() - one)
+            * (ip.clone() - ip_next.clone() + one)
             * (processor_permutation_next.clone()
                 - processor_permutation.clone()
                     * (Multivariate::constant(alpha)

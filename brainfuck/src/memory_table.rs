@@ -5,6 +5,7 @@ use crate::util::lift;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
+use ark_ff::PrimeField;
 use ark_ff::Zero;
 use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::scale_poly;
@@ -80,6 +81,9 @@ where
     pub fn derive_matrix(
         processor_matrix: &[[F::BasePrimeField; 7]],
     ) -> Vec<[F::BasePrimeField; BASE_WIDTH]> {
+        println!("Start1:{:?}", processor_matrix[0]);
+        println!("Start2:{:?}", processor_matrix[1]);
+
         // copy unpadded rows and sort
         // TODO: sorted by IP and then CYCLE. Check to see if processor table sorts by
         // cycle.
@@ -98,17 +102,31 @@ where
                 }
             })
             .collect::<Vec<[F::BasePrimeField; 4]>>();
-        matrix.sort_by_key(|row| row[Self::MP]);
+
+        // matrix.sort_by_key(|row| );
+        matrix.sort_by_key(|row| (row[Self::MP], row[Self::CYCLE]));
+        // matrix.sort_by(
+        //     |a, b| match a[Self::MP].into_bigint().cmp(&b[Self::MP].into_bigint()) {
+        //         std::cmp::Ordering::Equal => a[Self::CYCLE]
+        //             .into_bigint()
+        //             .cmp(&b[Self::CYCLE].into_bigint()),
+        //         order => order,
+        //     },
+        // );
+
+        // println!("{:?}", matrix);
 
         // insert dummy rows for smooth clk jumps
-        for i in 0..matrix.len() - 1 {
+        let mut i = 0;
+        while i < matrix.len() - 1 {
             let curr_row = &matrix[i];
             let next_row = &matrix[i + 1];
 
-            // // check sorted by memory address then cycle
-            // if curr_row[ProcessorTable::<F>::MP] == next_row[ProcessorTable::<F>::MP] {
-            //     assert!(curr_row[ProcessorTable::<F>::CYCLE] ==
-            // next_row[ProcessorTable::<F>::CYCLE] - i) }
+            // check sorted by memory address then cycle
+            if curr_row[Self::MP] == next_row[Self::MP] {
+                // assert!(curr_row[Self::CYCLE] == next_row[Self::CYCLE] -
+                // F::BasePrimeField::one())
+            }
 
             if curr_row[Self::MP] == next_row[Self::MP]
                 && curr_row[Self::CYCLE] + F::BasePrimeField::one() != next_row[Self::CYCLE]
@@ -123,6 +141,8 @@ where
                     ],
                 )
             }
+
+            i += 1;
         }
 
         matrix

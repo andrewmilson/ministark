@@ -74,14 +74,15 @@ where
         let variables = Multivariate::<F>::variables(EXTENSION_WIDTH * 2);
         let value = variables[Self::VALUE].clone();
         let evaluation = variables[Self::EVALUATION].clone();
-        let value_next = variables[Self::VALUE].clone();
-        let evaluation_next = variables[Self::EVALUATION].clone();
+        let value_next = variables[EXTENSION_WIDTH + Self::VALUE].clone();
+        let evaluation_next = variables[EXTENSION_WIDTH + Self::EVALUATION].clone();
         vec![evaluation.clone() * challenge + value_next.clone() - evaluation_next.clone()]
     }
 
     fn extension_terminal_constraints(&self, challenge: F, terminal: F) -> Vec<Multivariate<F>> {
         let variables = Multivariate::<F>::variables(EXTENSION_WIDTH);
         let offset = challenge.pow([self.num_padded_rows as u64]);
+        assert_eq!(self.num_padded_rows, self.height() - self.len());
         // In every padded row the running evaluation variable is multiplied by another
         // factor `challenge`. We need to multiply `challenge ^ padding_length` to get
         // the value of the evaluation terminal after all `2^k` rows.

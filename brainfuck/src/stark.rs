@@ -1,6 +1,7 @@
 use crate::memory_table::MemoryTable;
 use crate::OpCode;
 use ark_ff::FftField;
+use ark_ff::Field;
 use ark_ff::PrimeField;
 
 pub fn compile(source: &str) -> Vec<usize> {
@@ -142,6 +143,8 @@ pub fn simulate<F: FftField + PrimeField>(
     // main loop
     while register.ip < program.len() {
         let mem_val = F::from(register.mem_val as u64);
+
+        println!("Cycle: {}", register.cycle);
 
         matrices.processor.push([
             F::from(register.cycle as u64),

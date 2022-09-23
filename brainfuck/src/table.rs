@@ -234,20 +234,20 @@ where
         // println!("pos:{codeword_len}");
         let boundary_quotients = self.boundary_quotients(codeword_len, codewords, challenges);
         println!("BOUNDARY");
-        for codeword in &boundary_quotients {
-            determine_codeword_degree(codeword);
-        }
+        // for codeword in &boundary_quotients {
+        //     determine_codeword_degree(codeword);
+        // }
         let transition_quotients = self.transition_quotients(codeword_len, codewords, challenges);
-        println!("TRANSITION");
-        for codeword in &transition_quotients {
-            determine_codeword_degree(codeword);
-        }
+        println!("TRANSITION {}-{}", Self::BASE_WIDTH, Self::EXTENSION_WIDTH);
+        // for codeword in &transition_quotients {
+        //     determine_codeword_degree(codeword);
+        // }
         let terminal_quotients =
             self.terminal_quotients(codeword_len, codewords, challenges, terminals);
         println!("TERMINALS");
-        for codeword in &transition_quotients {
-            determine_codeword_degree(codeword);
-        }
+        // for codeword in &transition_quotients {
+        //     determine_codeword_degree(codeword);
+        // }
         vec![boundary_quotients, transition_quotients, terminal_quotients].concat()
     }
 
@@ -311,22 +311,22 @@ where
     fn extension_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>>;
 }
 
-fn determine_codeword_degree<F>(evaluations: &[F])
-where
-    F: Field,
-    F::BasePrimeField: FftField,
-{
-    let mut coeffs =
-        legacy_algebra::number_theory_transform::inverse_number_theory_transform(evaluations);
-    while coeffs.last().map_or(false, |v| v.is_zero()) {
-        coeffs.pop();
-    }
+// fn determine_codeword_degree<F>(evaluations: &[F])
+// where
+//     F: Field,
+//     F::BasePrimeField: FftField,
+// {
+//     let mut coeffs =
+//         legacy_algebra::number_theory_transform::inverse_number_theory_transform(evaluations);
+//     while coeffs.last().map_or(false, |v| v.is_zero()) {
+//         coeffs.pop();
+//     }
 
-    let mut degree = if coeffs.is_empty() {
-        0
-    } else {
-        coeffs.len() - 1
-    };
+//     let mut degree = if coeffs.is_empty() {
+//         0
+//     } else {
+//         coeffs.len() - 1
+//     };
 
-    println!("Degree is {}", degree);
-}
+//     println!("Degree is {}", degree);
+// }

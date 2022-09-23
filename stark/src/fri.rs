@@ -75,6 +75,7 @@ impl<P: Config> Fri<P> {
         [(); InputTable::<P::Fx>::BASE_WIDTH]: Sized,
     {
         let one = P::Fx::one();
+        assert_ne!(P::Fx::characteristic(), [2]);
         let two = one + one;
 
         let mut codeword = codeword.to_vec();
@@ -83,6 +84,9 @@ impl<P: Config> Fri<P> {
 
         let mut codewords = Vec::new();
         let mut trees = Vec::new();
+
+        println!("ORIGINAL CODEWORD DEGREE");
+        determine_codeword_degree(&codeword);
 
         while codeword.len() >= ceil_power_of_two(P::NUM_COLINEARITY_CHECKS)
             && codeword.len() >= P::EXPANSION_FACTOR
@@ -113,16 +117,17 @@ impl<P: Config> Fri<P> {
             codeword = zip(lhs, rhs)
                 .enumerate()
                 .map(|(i, (&l, &r))| {
-                    (one + alpha / P::Fx::from_base_prime_field(offset * omega.pow([i as u64])) * l
+                    ((one + alpha / P::Fx::from_base_prime_field(offset * omega.pow([i as u64])))
+                        * l
                         + (one
-                            - alpha
-                                / P::Fx::from_base_prime_field(
-                                    offset * omega.pow([(n / 2 + i) as u64]),
-                                ))
+                            - alpha / P::Fx::from_base_prime_field(offset * omega.pow([i as u64])))
                             * r)
                         / two
                 })
                 .collect();
+
+            println!("NEW CODEWORD DEGREE");
+            determine_codeword_degree(&codeword);
 
             omega.square_in_place();
             offset.square_in_place();
@@ -294,25 +299,32 @@ impl<P: Config> Fri<P> {
         let degree = last_codeword.len() / P::EXPANSION_FACTOR;
         let last_omega = P::Fp::get_root_of_unity(last_codeword.len() as u64).unwrap();
 
+        let poly =
+            DensePolynomial::from_coefficients_vec(inverse_number_theory_transform(&last_codeword));
+        let poly = legacy_algebra::scale_poly(
+            &poly,
+            P::Fx::from_base_prime_field(offset.inverse().unwrap()),
+        );
+
         // compute interpolant
         // let
-        let last_domain = (0..last_codeword.len())
-            .map(|i| P::Fx::from_base_prime_field(offset * last_omega.pow([i as u64])))
-            .collect::<Vec<P::Fx>>();
-        let poly = interpolate(&last_domain, &last_codeword);
-        //inverse_number_theory_transform(&last_codeword);
-        println!("POLY IS HERE: {:?}", poly);
+        // let last_domain = (0..last_codeword.len())
+        //     .map(|i| P::Fx::from_base_prime_field(offset * last_omega.pow([i as
+        // u64])))     .collect::<Vec<P::Fx>>();
+        // let poly = interpolate(&last_domain, &last_codeword);
+
+        // println!("POLY IS HERE: {:?}", poly);
         println!("Degree should be less than {degree}");
         println!("Actual degree is {}", poly.degree());
 
-        assert_eq!(
-            last_domain
-                .iter()
-                .map(|v| poly.evaluate(v))
-                .collect::<Vec<P::Fx>>(),
-            last_codeword,
-            "re-evaluated codeword does not match original!"
-        );
+        // assert_eq!(
+        //     last_domain
+        //         .iter()
+        //         .map(|v| poly.evaluate(v))
+        //         .collect::<Vec<P::Fx>>(),
+        //     last_codeword,
+        //     "re-evaluated codeword does not match original!"
+        // );
 
         // let poly =
 
@@ -372,4 +384,15 @@ fn zerofier_domain<E: Field>(domain: &[E]) -> DensePolynomial<E> {
         accumulator = accumulator.naive_mul(&subtraction);
     }
     accumulator
+}
+
+fn determine_codeword_degree<F>(evaluations: &[F])
+where
+    F: Field,
+    F::BasePrimeField: FftField,
+{
+    let mut poly = DensePolynomial::from_coefficients_vec(
+        legacy_algebra::number_theory_transform::inverse_number_theory_transform(evaluations),
+    );
+    println!("Degree is {}", poly.degree());
 }
