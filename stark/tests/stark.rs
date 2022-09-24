@@ -112,13 +112,6 @@ fn verify() {
     let proof = fs::read("./proof.json").unwrap();
     let mut proof_stream = StandardProofStream::<Fp>::new();
     let mut bfs = BrainFuckStark::new(StarkConfig, program);
-    // let indices_seed = 5; // proof_stream.prover_fiat_shamir();
-    // let indices = BrainFuckStark::<StarkConfig>::sample_indices(
-    //     StarkConfig::SECURITY_LEVEL,
-    //     indices_seed,
-    //     65536,
-    // );
-    // assert_eq!(indices[0], 10);
     let input = Vec::new();
     let output = "Hello World!\n"
         .as_bytes()
@@ -128,22 +121,3 @@ fn verify() {
     bfs.verify(&proof, &mut proof_stream, &input, &output)
         .unwrap();
 }
-
-// #[test]
-// fn zerofier() {
-//     let n = 1usize << 4;
-//     let offset = Fp::GENERATOR;
-//     let root = Fp::get_root_of_unity(n as u64);
-
-//     // x - 1
-//     let poly = Univariate::new(vec![-Fp::one(), Fp::one()]);
-//     let mut coefficients = poly.scale(offset).coefficients;
-//     coefficients.resize(n, Fp::zero());
-
-//     let eval1 = number_theory_transform(&coefficients);
-//     let eval2 = (0..n)
-//         .map(|i| offset * root.pow([i as u64]) - Fp::one())
-//         .collect::<Vec<Fp>>();
-
-//     assert_eq!(eval1, eval2);
-// }

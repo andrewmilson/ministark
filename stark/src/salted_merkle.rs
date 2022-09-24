@@ -14,7 +14,6 @@ impl<T: Hash + Clone> SaltedMerkle<T> {
     pub fn new(values: &[T]) -> Self {
         let n = values.len();
         assert!(n.is_power_of_two());
-        let depth = n.ilog2();
         let mut rng = rand::thread_rng();
         // append salt to leafs
         let leafs = values

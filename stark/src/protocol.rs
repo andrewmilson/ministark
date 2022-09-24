@@ -1,12 +1,10 @@
 use ark_ff::FftField;
 use ark_ff::Field;
-use ark_poly::univariate::DensePolynomial;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use ark_serialize::Valid;
 use brainfuck::InputTable;
 use brainfuck::Table;
-use rand::Rng;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -57,7 +55,7 @@ where
     fn serialize_with_mode<W: ark_serialize::Write>(
         &self,
         mut writer: W,
-        compress: ark_serialize::Compress,
+        _compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
         match self {
             Self::MerkleRoot(v) => {

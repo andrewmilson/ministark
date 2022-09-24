@@ -1,5 +1,4 @@
 //! Use arkwork_rs or re make this. Just used for personal education.
-use rand::Rng;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -14,8 +13,6 @@ impl<T: Hash + Clone> Merkle<T> {
     pub fn new(values: &[T]) -> Self {
         let n = values.len();
         assert!(n.is_power_of_two());
-        let depth = n.ilog2();
-        let mut rng = rand::thread_rng();
         // append salt to leafs
         let leafs = values.to_vec();
         // make room for nodes

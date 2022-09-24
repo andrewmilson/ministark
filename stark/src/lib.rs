@@ -29,7 +29,6 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::iter::zip;
-use std::ops::Add;
 use std::vec;
 
 mod fri;
@@ -581,7 +580,7 @@ impl<P: Config> BrainFuckStark<P> {
 
         // get terminals
         let mut terminals = Vec::new();
-        for i in 0..5 {
+        for _ in 0..5 {
             match proof_stream.pull() {
                 ProofObject::Terminal(terminal) => terminals.push(terminal),
                 _ => return Err("Expected to receive terminal"),
@@ -624,7 +623,7 @@ impl<P: Config> BrainFuckStark<P> {
         ]
         .concat();
 
-        let mut quotient_degree_bounds = vec![
+        let quotient_degree_bounds = vec![
             self.processor_table
                 .all_quotient_degree_bounds(&challenges, &terminals),
             self.memory_table
@@ -947,8 +946,8 @@ impl<P: Config> BrainFuckStark<P> {
                 .zip(&base_widths)
                 .zip(&extension_widths)
             {
-                for (i, (constraint, bound)) in
-                    zip(boundary_constraints, boundary_quotient_degree_bounds).enumerate()
+                for (constraint, bound) in
+                    zip(boundary_constraints, boundary_quotient_degree_bounds)
                 {
                     let eval = constraint.evaluate(point);
                     let quotient = eval

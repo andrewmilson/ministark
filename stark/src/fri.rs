@@ -11,7 +11,6 @@ use ark_poly::Polynomial;
 use brainfuck::InputTable;
 use brainfuck::Table;
 use legacy_algebra::number_theory_transform::inverse_number_theory_transform;
-use legacy_algebra::number_theory_transform::number_theory_transform;
 use num_traits::One;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
@@ -111,7 +110,6 @@ impl<P: Config> Fri<P> {
             let alpha = P::Fx::from(proof_stream.prover_fiat_shamir());
             println!("Alpha: {}", alpha);
             let (lhs, rhs) = codeword.split_at(codeword.len() / 2);
-            let n = codeword.len();
             codeword = zip(lhs, rhs)
                 .enumerate()
                 .map(|(i, (&l, &r))| {
@@ -483,9 +481,10 @@ where
     F: Field,
     F::BasePrimeField: FftField,
 {
-    let mut poly = DensePolynomial::from_coefficients_vec(
+    let poly = DensePolynomial::from_coefficients_vec(
         legacy_algebra::number_theory_transform::inverse_number_theory_transform(evaluations),
     );
+    println!("Degree is: {}", poly.degree());
 }
 
 // Alpha: 15280113618990651205

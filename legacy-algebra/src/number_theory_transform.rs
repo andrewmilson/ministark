@@ -1,6 +1,5 @@
 extern crate test;
 
-use super::Multivariate;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
@@ -215,14 +214,14 @@ where
     // if not all(not v.is_zero() for v in left_offset):
     //     print("left_offset:", " ".join(str(v) for v in left_offset))
 
-    let mut left_offset_inverse = left_offset.clone();
+    let mut left_offset_inverse = left_offset;
     ark_ff::batch_inversion(&mut left_offset_inverse);
     let left_targets = left_offset_inverse
         .into_iter()
         .zip(values[..half].iter().copied())
         .map(|(inverse_denominator, numerator)| numerator * inverse_denominator)
         .collect::<Vec<F>>();
-    let mut right_offset_inverse = right_offset.clone();
+    let mut right_offset_inverse = right_offset;
     ark_ff::batch_inversion(&mut right_offset_inverse);
     let right_targets = right_offset_inverse
         .into_iter()
@@ -313,7 +312,7 @@ where
 
     let lhs_codeword = number_theory_transform(&lhs_coefficients);
     let rhs_codeword = number_theory_transform(&rhs_coefficients);
-    let mut rhs_codeword_inverse = rhs_codeword.clone();
+    let mut rhs_codeword_inverse = rhs_codeword;
     ark_ff::batch_inversion(&mut rhs_codeword_inverse);
     let quotient_codeword = lhs_codeword
         .into_iter()
@@ -359,7 +358,6 @@ mod tests {
             .collect::<Vec<_>>();
         let values = (0u64..points).map(Fp::from).collect::<Vec<_>>();
         let root_order = (domain.len() + 1).next_power_of_two();
-        let primitive_root = Fp::get_root_of_unity(root_order as u64);
 
         b.iter(|| fast_interpolate(&domain, &values))
     }
