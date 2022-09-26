@@ -1,9 +1,10 @@
 #![feature(int_log)]
 
+use ark_ff::FftField;
+use ark_ff::PrimeField;
 use ark_ff_optimized::fp64::Fp;
 use brainfuck::stark::compile;
 use brainfuck::stark::SimulationMatrices;
-use legacy_algebra::number_theory_transform::number_theory_transform;
 use legacy_algebra::Felt;
 use legacy_algebra::StarkFelt;
 use num_traits::One;

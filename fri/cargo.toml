@@ -1,17 +1,12 @@
 [package]
-name = "stark"
+name = "fri"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-legacy-algebra = { path = "../legacy-algebra" }
-brainfuck = { path = "../brainfuck" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-rand = "0.8.5"
 ark-crypto-primitives = "0.3.0"
 ark-ff = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
-ark-ff-optimized = { path = "../optimized-fields" }
+# ark-ff-optimized = { path = "../optimized-fileds" }
 num-traits = "0.2.14"
 ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
 ark-serialize = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
@@ -20,4 +15,4 @@ ark-serialize = { git = "https://github.com/andrewmilson/algebra", branch = "cos
 ark-ff = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
 ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
 ark-serialize = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
-ark-ff-optimized = { path = "../optimized-fields" }
+# ark-ff-optimized = { path = "../optimized-fileds" }

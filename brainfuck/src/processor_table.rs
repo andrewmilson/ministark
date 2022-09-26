@@ -3,14 +3,13 @@ use crate::util::if_instr;
 use crate::util::if_not_instr;
 use crate::util::instr_zerofier;
 use crate::util::interpolate_columns;
-use crate::util::lift;
 use crate::OpCode;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
-use legacy_algebra::number_theory_transform::number_theory_transform;
-use legacy_algebra::scale_poly;
+use ark_poly::EvaluationDomain;
+use ark_poly::Evaluations;
 use legacy_algebra::Multivariate;
 use num_bigint::BigUint;
 use std::convert::From;
@@ -33,7 +32,7 @@ pub struct ProcessorTable<F: Field> {
 
 impl<F> ProcessorTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     // base columns
@@ -168,7 +167,7 @@ where
 
 impl<F> Table<F> for ProcessorTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     const BASE_WIDTH: usize = BASE_WIDTH;
@@ -513,22 +512,19 @@ where
         self.output_evaluation_terminal = Some(output_running_evaluation);
     }
 
-    fn base_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
+    fn base_lde<D: EvaluationDomain<F::BasePrimeField>>(
+        &mut self,
+        eval_domain: D,
+    ) -> Vec<Evaluations<F::BasePrimeField, D>> {
         println!("proc_lde");
-        let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
-        // return the codewords
+        let polynomials = interpolate_columns(&self.matrix);
         polynomials
             .into_iter()
-            .map(|poly| {
-                let mut coefficients = scale_poly(&poly, offset).coeffs;
-                coefficients.resize(codeword_len, F::BasePrimeField::zero());
-                let coef = number_theory_transform(&coefficients);
-                lift(coef)
-            })
+            .map(|poly| poly.evaluate_over_domain(eval_domain))
             .collect()
     }
 
-    fn extension_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
+    fn extension_lde<D: EvaluationDomain<F>>(&mut self, eval_domain: D) -> Vec<Evaluations<F, D>> {
         println!("proc_lde_ext");
         let extension_rows = self
             .extended_matrix
@@ -544,15 +540,10 @@ where
                 ]
             })
             .collect::<Vec<[F; 4]>>();
-        let polynomials = interpolate_columns(&extension_rows, self.num_randomizers);
-        // return the codewords
+        let polynomials = interpolate_columns(&extension_rows);
         polynomials
             .into_iter()
-            .map(|poly| {
-                let mut coefficients = scale_poly(&poly, F::from_base_prime_field(offset)).coeffs;
-                coefficients.resize(codeword_len, F::zero());
-                number_theory_transform(&coefficients)
-            })
+            .map(|poly| poly.evaluate_over_domain(eval_domain))
             .collect()
     }
 }

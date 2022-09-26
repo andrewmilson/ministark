@@ -1,37 +1,19 @@
 use ark_ff::FftField;
-use ark_ff::Field;
-use num_traits::One;
+use ark_poly::EvaluationDomain;
+use ark_poly::Evaluations;
 
-// pub fn evaluation_difference<F>(a: &[F], b: &[F]) -> Vec<F>
-// where
-//     F: Field,
-//     F::BasePrimeField: FftField,
-// {
-
-// }
-
-pub fn quotient<F>(a: &[F], b: &[F]) -> Vec<F>
-where
-    F: Field,
-    F::BasePrimeField: FftField,
-{
-    assert_eq!(a.len(), b.len());
-    assert!(a.len().is_power_of_two());
-    let codeword_len = a.len();
-    let offset = F::BasePrimeField::GENERATOR;
-    let omega = F::BasePrimeField::get_root_of_unity(codeword_len as u64).unwrap();
-    let difference_codeword = a.iter().zip(b).map(|(&x, &y)| x - y);
+pub fn quotient<F: FftField, D: EvaluationDomain<F>>(
+    a: &Evaluations<F, D>,
+    b: &Evaluations<F, D>,
+) -> Evaluations<F, D> {
+    let domain = a.domain();
+    assert_eq!(domain, b.domain());
+    let difference = a - b;
     // The polynomial (x - 1) evaluated over the FRI domain.
-    // The intuition is that the permutation arguments should be equal in the first
-    // itteration (1 == omicron^0)
-    let zerofier = (0..codeword_len)
-        .map(|i| offset * omega.pow([i as u64]) - F::BasePrimeField::one())
-        .collect::<Vec<F::BasePrimeField>>();
-    let mut zerofier_inv = zerofier;
-    ark_ff::batch_inversion(&mut zerofier_inv);
-
-    difference_codeword
-        .zip(zerofier_inv)
-        .map(|(d, z)| d * F::from_base_prime_field(z))
-        .collect()
+    // Essentially a boundary consition stating that the the permutation arguments
+    // should be equal in the first itteration
+    let mut boundary_zerofier_inv =
+        Evaluations::from_vec_and_domain(domain.elements().map(|x| x - F::one()).collect(), domain);
+    ark_ff::batch_inversion(&mut boundary_zerofier_inv.evals);
+    &difference * &boundary_zerofier_inv
 }

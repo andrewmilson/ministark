@@ -8,13 +8,13 @@ legacy-algebra = { path = "../legacy-algebra" }
 num-bigint = { version = "0.4", default-features = false }
 rand = "0.8.5"
 num-traits = "0.2.14"
-ark-ff = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
-ark-poly = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
+ark-ff = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
+ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
 
 [dev-dependencies]
-ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
+ark-ff-optimized = { path = "../optimized-fields" }
 
 [patch.crates-io]
-ark-ff = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
-ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
-ark-poly = { git = "https://github.com/arkworks-rs/algebra", branch = "explicit-derive-feature" }
+ark-ff = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
+ark-ff-optimized = { path = "../optimized-fields" }
+ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }

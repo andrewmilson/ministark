@@ -1,10 +1,9 @@
 use super::table::Table;
 use crate::util::interpolate_columns;
-use crate::util::lift;
 use ark_ff::FftField;
 use ark_ff::Field;
-use legacy_algebra::number_theory_transform::number_theory_transform;
-use legacy_algebra::scale_poly;
+use ark_poly::EvaluationDomain;
+use ark_poly::Evaluations;
 use legacy_algebra::Multivariate;
 use num_traits::Zero;
 
@@ -20,7 +19,7 @@ struct IoTable<F: Field> {
 
 impl<F> IoTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     // base column
@@ -124,20 +123,18 @@ where
         // evaluation_terminal
     }
 
-    fn base_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
-        let polynomials = interpolate_columns(&self.matrix, 0);
-        // return the codewords
+    fn base_lde<D: EvaluationDomain<F::BasePrimeField>>(
+        &mut self,
+        eval_domain: D,
+    ) -> Vec<Evaluations<F::BasePrimeField, D>> {
+        let polynomials = interpolate_columns(&self.matrix);
         polynomials
             .into_iter()
-            .map(|poly| {
-                let mut coefficients = scale_poly(&poly, offset).coeffs;
-                coefficients.resize(codeword_len, F::BasePrimeField::zero());
-                lift(number_theory_transform(&coefficients))
-            })
+            .map(|poly| poly.evaluate_over_domain(eval_domain))
             .collect()
     }
 
-    fn extension_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
+    fn extension_lde<D: EvaluationDomain<F>>(&mut self, eval_domain: D) -> Vec<Evaluations<F, D>> {
         let extension_rows = self
             .extended_matrix
             .as_ref()
@@ -145,15 +142,10 @@ where
             .iter()
             .map(|row| [row[Self::EVALUATION]])
             .collect::<Vec<[F; 1]>>();
-        let polynomials = interpolate_columns(&extension_rows, 0);
-        // return the codewords
+        let polynomials = interpolate_columns(&extension_rows);
         polynomials
             .into_iter()
-            .map(|poly| {
-                let mut coefficients = scale_poly(&poly, F::from_base_prime_field(offset)).coeffs;
-                coefficients.resize(codeword_len, F::zero());
-                number_theory_transform(&coefficients)
-            })
+            .map(|poly| poly.evaluate_over_domain(eval_domain))
             .collect()
     }
 }
@@ -162,7 +154,7 @@ pub struct OutputTable<F: Field>(IoTable<F>);
 
 impl<F> OutputTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     pub fn new() -> Self {
@@ -172,7 +164,7 @@ where
 
 impl<F> Table<F> for OutputTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     const BASE_WIDTH: usize = BASE_WIDTH;
@@ -276,14 +268,17 @@ where
         self.0.extend(delta);
     }
 
-    fn base_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
+    fn base_lde<D: EvaluationDomain<F::BasePrimeField>>(
+        &mut self,
+        eval_domain: D,
+    ) -> Vec<Evaluations<F::BasePrimeField, D>> {
         println!("output_lde");
-        self.0.base_lde(offset, codeword_len)
+        self.0.base_lde(eval_domain)
     }
 
-    fn extension_lde(&mut self, offset: F::BasePrimeField, expansion_factor: usize) -> Vec<Vec<F>> {
+    fn extension_lde<D: EvaluationDomain<F>>(&mut self, eval_domain: D) -> Vec<Evaluations<F, D>> {
         println!("output_lde_ext");
-        self.0.extension_lde(offset, expansion_factor)
+        self.0.extension_lde(eval_domain)
     }
 }
 
@@ -291,7 +286,7 @@ pub struct InputTable<F: Field>(IoTable<F>);
 
 impl<F> InputTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     pub fn new() -> Self {
@@ -301,7 +296,7 @@ where
 
 impl<F> Table<F> for InputTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     const BASE_WIDTH: usize = BASE_WIDTH;
@@ -405,13 +400,16 @@ where
         self.0.extend(gamma)
     }
 
-    fn base_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
+    fn base_lde<D: EvaluationDomain<F::BasePrimeField>>(
+        &mut self,
+        eval_domain: D,
+    ) -> Vec<Evaluations<F::BasePrimeField, D>> {
         println!("input_lde");
-        self.0.base_lde(offset, codeword_len)
+        self.0.base_lde(eval_domain)
     }
 
-    fn extension_lde(&mut self, offset: F::BasePrimeField, expansion_factor: usize) -> Vec<Vec<F>> {
+    fn extension_lde<D: EvaluationDomain<F>>(&mut self, eval_domain: D) -> Vec<Evaluations<F, D>> {
         println!("input_lde_ext");
-        self.0.extension_lde(offset, expansion_factor)
+        self.0.extension_lde(eval_domain)
     }
 }

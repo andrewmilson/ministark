@@ -3,5 +3,7 @@ members = [
     "legacy-algebra",
     "fast-poly",
     "brainfuck",
-    "stark"
+    "stark",
+    "fri",
+    "optimized-fields"
 ]

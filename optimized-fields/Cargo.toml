@@ -1,0 +1,33 @@
+[package]
+name = "ark-ff-optimized"
+version = "0.1.0"
+edition = "2021"
+authors = ["Andrew Milson <andrew.j.milson@gmail.com>"]
+description = "Optimized field implementations that outperform the generic field implementations in arkworks"
+repository = "https://github.com/andrewmilson/optimized-fields"
+homepage = "https://github.com/andrewmilson/optimized-fields"
+readme = "README.md"
+license = "MIT"
+
+[dependencies]
+ark-ff = { git = "https://github.com/andrewmilson/algebra", features = ["asm"], branch = "coset-domain" }
+rand = "0.8.5"
+
+[dev-dependencies]
+rand_pcg = "0.3.1"
+ark-algebra-test-templates = { git = "https://github.com/andrewmilson/algebra", features = ["std"], branch = "coset-domain" }
+ark-algebra-bench-templates = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
+ark-std = { git = "https://github.com/arkworks-rs/std" }
+ark-serialize = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
+
+[patch.crates-io]
+ark-std = { git = "https://github.com/arkworks-rs/std" }
+ark-ff = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
+ark-serialize = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
+ark-algebra-bench-templates = { git = "https://github.com/arkworks-rs/algebra", features = ["std"], branch = "coset-domain" }
+ark-algebra-test-templates = { git = "https://github.com/andrewmilson/algebra", branch = "coset-domain" }
+
+[[bench]]
+name = "fp64"
+path = "benches/fp64.rs"
+harness = false

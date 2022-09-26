@@ -25,7 +25,7 @@ use std::hash::Hasher;
 #[derive(Debug, Clone)]
 pub enum ProofObject<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {
@@ -48,7 +48,7 @@ where
 
 impl<F> CanonicalSerialize for ProofObject<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {
@@ -135,7 +135,7 @@ where
 
 impl<F> Valid for ProofObject<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {
@@ -146,7 +146,7 @@ where
 
 impl<F> CanonicalDeserialize for ProofObject<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {
@@ -191,7 +191,7 @@ where
 
 pub trait ProofStream<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {
@@ -206,7 +206,7 @@ where
 // #[derive(Serialize, Deserialize)]
 pub struct StandardProofStream<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {
@@ -216,7 +216,7 @@ where
 
 impl<F> StandardProofStream<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {
@@ -227,7 +227,7 @@ where
 
 impl<F> Default for StandardProofStream<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {
@@ -241,7 +241,7 @@ where
 
 impl<F> ProofStream<F> for StandardProofStream<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
     [(); InputTable::<F>::BASE_WIDTH]:,
 {

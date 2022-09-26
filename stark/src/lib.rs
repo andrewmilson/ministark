@@ -8,7 +8,11 @@ use ark_ff::PrimeField;
 use ark_ff::UniformRand;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
+use ark_poly::EvaluationDomain;
+use ark_poly::Evaluations;
+use ark_poly::GeneralEvaluationDomain;
 use ark_poly::Polynomial;
+use brainfuck::lift;
 use brainfuck::permutation_argument;
 use brainfuck::InputTable;
 use brainfuck::InstructionTable;
@@ -17,9 +21,6 @@ use brainfuck::OutputTable;
 use brainfuck::ProcessorTable;
 use brainfuck::Table;
 use fri::Fri;
-use legacy_algebra::number_theory_transform::inverse_number_theory_transform;
-use legacy_algebra::number_theory_transform::number_theory_transform;
-use legacy_algebra::scale_poly;
 use num_traits::Zero;
 use protocol::ProofObject;
 use protocol::ProofStream;
@@ -43,7 +44,7 @@ pub trait Config {
     /// Base prime field
     type Fp: PrimeField + FftField;
     /// Extension field element
-    type Fx: Field<BasePrimeField = Self::Fp>;
+    type Fx: FftField + Field<BasePrimeField = Self::Fp>;
 
     // type MTParams: ark_crypto_primitives::merkle_tree::Config;
     // type SaltedMTParams: ark_crypto_primitives::merkle_tree::Config;
@@ -131,6 +132,10 @@ impl<P: Config> BrainFuckStark<P> {
         indices
     }
 
+    fn fri_domain<F: FftField>(&self) -> GeneralEvaluationDomain<F> {
+        GeneralEvaluationDomain::new_coset(self.fri_codeword_length(), F::GENERATOR).unwrap()
+    }
+
     pub fn prove(
         &mut self,
         processor_matrix: Vec<[P::Fp; ProcessorTable::<P::Fx>::BASE_WIDTH]>,
@@ -183,19 +188,16 @@ impl<P: Config> BrainFuckStark<P> {
 
         let randomizer_codewords = {
             let n = ceil_power_of_two(self.max_degree());
-            let coefficients = (0..n).map(|_| P::Fx::rand(&mut rng)).collect::<Vec<_>>();
-            let polynomial = DensePolynomial::from_coefficients_vec(coefficients);
-            let polynomial = scale_poly(&polynomial, P::Fx::from_base_prime_field(offset));
-            let mut coefficients = polynomial.coeffs;
-            coefficients.resize(codeword_len, P::Fx::zero());
-            vec![number_theory_transform(&coefficients)]
+            let polynomial = DensePolynomial::rand(n, &mut rng);
+            vec![polynomial.evaluate_over_domain(self.fri_domain())]
         };
 
-        let base_processor_lde = self.processor_table.base_lde(offset, codeword_len);
-        let base_memory_lde = self.memory_table.base_lde(offset, codeword_len);
-        let base_instruction_lde = self.instruction_table.base_lde(offset, codeword_len);
-        let base_input_lde = self.input_table.base_lde(offset, codeword_len);
-        let base_output_lde = self.output_table.base_lde(offset, codeword_len);
+        let eval_domain = self.fri_domain::<P::Fp>();
+        let base_processor_lde = lift::<P::Fx>(self.processor_table.base_lde(eval_domain));
+        let base_memory_lde = lift::<P::Fx>(self.memory_table.base_lde(eval_domain));
+        let base_instruction_lde = lift::<P::Fx>(self.instruction_table.base_lde(eval_domain));
+        let base_input_lde = lift::<P::Fx>(self.input_table.base_lde(eval_domain));
+        let base_output_lde = lift::<P::Fx>(self.output_table.base_lde(eval_domain));
 
         let base_codewords = vec![
             base_processor_lde.clone(),
@@ -205,6 +207,11 @@ impl<P: Config> BrainFuckStark<P> {
             base_output_lde.clone(),
         ]
         .concat();
+
+        println!("BUTTER BASE");
+        for codeword in &base_codewords {
+            self.determine_codeword_degree(codeword);
+        }
 
         let all_base_codewords =
             vec![randomizer_codewords.clone(), base_codewords.clone()].concat();
@@ -251,11 +258,12 @@ impl<P: Config> BrainFuckStark<P> {
             self.instruction_table.evaluation_terminal.unwrap(),
         ];
 
-        let ext_processor_lde = self.processor_table.extension_lde(offset, codeword_len);
-        let ext_memory_lde = self.memory_table.extension_lde(offset, codeword_len);
-        let ext_instruction_lde = self.instruction_table.extension_lde(offset, codeword_len);
-        let ext_input_lde = self.input_table.extension_lde(offset, codeword_len);
-        let ext_output_lde = self.output_table.extension_lde(offset, codeword_len);
+        let eval_domain = self.fri_domain::<P::Fx>();
+        let ext_processor_lde = self.processor_table.extension_lde(eval_domain);
+        let ext_memory_lde = self.memory_table.extension_lde(eval_domain);
+        let ext_instruction_lde = self.instruction_table.extension_lde(eval_domain);
+        let ext_input_lde = self.input_table.extension_lde(eval_domain);
+        let ext_output_lde = self.output_table.extension_lde(eval_domain);
 
         let extension_codewords = vec![
             ext_processor_lde.clone(),
@@ -265,6 +273,11 @@ impl<P: Config> BrainFuckStark<P> {
             ext_output_lde.clone(),
         ]
         .concat();
+
+        println!("🤯EXTENSSSSSSSIIIIIOOOOONNNNNSSSSS");
+        for codeword in &extension_codewords {
+            self.determine_codeword_degree(codeword);
+        }
 
         let extension_degree_bounds = vec![
             vec![
@@ -337,6 +350,11 @@ impl<P: Config> BrainFuckStark<P> {
             ),
         ]
         .concat();
+
+        println!("\n\n\nQQQQUUUUUOOOOTIENTS");
+        for codeword in &quotient_codewords {
+            self.determine_codeword_degree(codeword);
+        }
 
         let mut quotient_degree_bounds = vec![
             self.processor_table
@@ -416,12 +434,14 @@ impl<P: Config> BrainFuckStark<P> {
         {
             let shift = (self.max_degree() - degree_bound) as u64;
             // dot product of codeword and evaluation of the polynomial `x^shift`
-            let shifted_codeword = (0..codeword_len)
-                .map(|i| {
-                    P::Fx::from_base_prime_field(offset * omega.pow([i as u64])).pow([shift])
-                        * codeword[i]
-                })
-                .collect::<Vec<P::Fx>>();
+            let shifted_codeword = Evaluations::from_vec_and_domain(
+                eval_domain
+                    .elements()
+                    .zip(&codeword.evals)
+                    .map(|(x, y)| x.pow([shift]) * y)
+                    .collect::<Vec<P::Fx>>(),
+                eval_domain,
+            );
             terms.push(codeword);
             terms.push(shifted_codeword);
         }
@@ -440,18 +460,20 @@ impl<P: Config> BrainFuckStark<P> {
         let combination_codeword = terms
             .iter()
             .zip(weights)
-            .map(|(term, weight)| term.iter().copied().map(|v| v * weight).collect())
-            .fold(vec![P::Fx::zero(); codeword_len], sum);
+            .map(|(term, weight)| term * weight)
+            .fold(
+                Evaluations::from_vec_and_domain(vec![P::Fx::zero(); codeword_len], eval_domain),
+                |acc, c| &acc + &c,
+            );
 
         {
             println!("TRYING TO INTERPOLATE");
-            let coefficients = inverse_number_theory_transform(&combination_codeword);
-            let my_poly = DensePolynomial::from_coefficients_vec(coefficients);
-            println!("MY POLY DEGREE {}", my_poly.degree());
+            let poly = combination_codeword.clone().interpolate();
+            println!("MY POLY DEGREE {}", poly.degree());
             println!("CODEWORD LEN {}", codeword_len);
         }
 
-        let combination_tree = Merkle::new(&combination_codeword);
+        let combination_tree = Merkle::new(&combination_codeword.evals);
         proof_stream.push(ProofObject::MerkleRoot(combination_tree.root()));
 
         // get indices of leafs to prove non-linear combination
@@ -512,10 +534,20 @@ impl<P: Config> BrainFuckStark<P> {
         }
 
         // prove low degree of combination polynomial and collect indices
-        self.fri.prove(proof_stream, &combination_codeword);
+        self.fri.prove(proof_stream, &combination_codeword.evals);
 
         // the final proof is just the serialized stream
         proof_stream.serialize()
+    }
+
+    fn determine_codeword_degree<F: FftField, D: EvaluationDomain<F>>(
+        &self,
+        evaluations: &Evaluations<F, D>,
+    ) {
+        // let poly = DensePolynomial::from_coefficients_vec(
+        //     legacy_algebra::number_theory_transform::inverse_number_theory_transform(evaluations),
+        // );
+        println!("Degree is: {}", evaluations.clone().interpolate().degree());
     }
 
     pub fn verify(
@@ -1072,7 +1104,12 @@ impl<P: Config> BrainFuckStark<P> {
             assert_eq!(terms.len(), weights.len());
 
             // compute inner product of weights and terms
-            let inner_product = P::Fx::sum_of_products(&weights, &terms);
+            let inner_product = weights
+                .iter()
+                .copied()
+                .zip(&terms)
+                .map(|(weight, term)| weight * term)
+                .sum::<P::Fx>(); // P::Fx::sum_of_products(&weights, &terms);
 
             // compare inner product against the combination codeword value
             // Not needed. Verifier can re-compute the leaf

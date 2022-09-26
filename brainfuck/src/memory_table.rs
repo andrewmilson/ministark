@@ -1,14 +1,12 @@
 use super::table::Table;
 use crate::processor_table::ProcessorTable;
 use crate::util::interpolate_columns;
-use crate::util::lift;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
-use ark_ff::PrimeField;
 use ark_ff::Zero;
-use legacy_algebra::number_theory_transform::number_theory_transform;
-use legacy_algebra::scale_poly;
+use ark_poly::EvaluationDomain;
+use ark_poly::Evaluations;
 use legacy_algebra::Multivariate;
 
 const BASE_WIDTH: usize = 4;
@@ -24,7 +22,7 @@ pub struct MemoryTable<F: Field> {
 
 impl<F> MemoryTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     // base columns
@@ -151,7 +149,7 @@ where
 
 impl<F> Table<F> for MemoryTable<F>
 where
-    F: Field,
+    F: FftField,
     F::BasePrimeField: FftField,
 {
     const BASE_WIDTH: usize = BASE_WIDTH;
@@ -367,21 +365,19 @@ where
         // self.permutation_terminal = mem_permutation_running_product;
     }
 
-    fn base_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
+    fn base_lde<D: EvaluationDomain<F::BasePrimeField>>(
+        &mut self,
+        eval_domain: D,
+    ) -> Vec<Evaluations<F::BasePrimeField, D>> {
         println!("mem_lde");
-        let polynomials = interpolate_columns(&self.matrix, self.num_randomizers);
-        // return the codewords
+        let polynomials = interpolate_columns(&self.matrix);
         polynomials
             .into_iter()
-            .map(|poly| {
-                let mut coefficients = scale_poly(&poly, offset).coeffs;
-                coefficients.resize(codeword_len, F::BasePrimeField::zero());
-                lift(number_theory_transform(&coefficients))
-            })
+            .map(|poly| poly.evaluate_over_domain(eval_domain))
             .collect()
     }
 
-    fn extension_lde(&mut self, offset: F::BasePrimeField, codeword_len: usize) -> Vec<Vec<F>> {
+    fn extension_lde<D: EvaluationDomain<F>>(&mut self, eval_domain: D) -> Vec<Evaluations<F, D>> {
         println!("mem_lde_ext");
         let extension_rows = self
             .extended_matrix
@@ -390,15 +386,10 @@ where
             .iter()
             .map(|row| [row[Self::PERMUTATION]])
             .collect::<Vec<[F; 1]>>();
-        let polynomials = interpolate_columns(&extension_rows, self.num_randomizers);
-        // return the codewords
+        let polynomials = interpolate_columns(&extension_rows);
         polynomials
             .into_iter()
-            .map(|poly| {
-                let mut coefficients = scale_poly(&poly, F::from_base_prime_field(offset)).coeffs;
-                coefficients.resize(codeword_len, F::zero());
-                number_theory_transform(&coefficients)
-            })
+            .map(|poly| poly.evaluate_over_domain(eval_domain))
             .collect()
     }
 }

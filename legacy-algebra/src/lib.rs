@@ -32,8 +32,6 @@ pub use multivariate::Multivariate;
 // mod univariate;
 // pub use univariate::Univariate;
 
-pub mod number_theory_transform;
-
 mod bigint;
 
 pub mod fp_u128;
