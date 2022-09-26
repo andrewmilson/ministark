@@ -221,40 +221,31 @@ where
             .map(|(i, z)| z * (eval_domain.element(i) - last_x))
             .collect::<Vec<F>>();
 
-        let mut quotient_codewords = Vec::new();
-
         let row_step = eval_domain.size() / self.height();
         let row_step_old = codeword_len / self.height();
         println!("Row step is: {} {}", row_step, row_step_old);
         let transition_constraints = Self::extension_transition_constraints(challenges);
-        for constraint in transition_constraints {
-            println!("constraint");
-            let mut quotient_evals = Vec::new();
-            // let combination_codeword = Vec::new();
-            for i in 0..codeword_len {
-                // if i % 1024 == 0 {
-                //     println!("pos:{i} {codeword_len}");
-                // }
-                let point_lhs = codewords
-                    .iter()
-                    .map(|codeword| codeword[i])
-                    .collect::<Vec<F>>();
-                // TODO: HELP: why do we just wrap around here. Don't we need the codeword to be
-                // extended so we have the right point?
-                // Right. We are dealing with roots of unity so the evaluation is o^(n-1)*o=o^0
-                let point_rhs = codewords
-                    .iter()
-                    .map(|codeword| codeword[(i + row_step) % codeword_len])
-                    .collect::<Vec<F>>();
-                let point = vec![point_lhs, point_rhs].concat();
+        let mut quotient_codewords = (0..transition_constraints.len())
+            .map(|_| Evaluations::from_vec_and_domain(vec![F::zero(); codeword_len], eval_domain))
+            .collect::<Vec<Evaluations<F, D>>>();
+
+        for i in 0..codeword_len {
+            // if i % 1024 == 0 {
+            //     println!("pos:{i} {codeword_len}");
+            // }
+            let (point_lhs, point_rhs): (Vec<F>, Vec<F>) = codewords
+                .iter()
+                .map(|codeword| (codeword[i], codeword[(i + row_step) % codeword_len]))
+                .unzip();
+            // TODO: HELP: why do we just wrap around here. Don't we need the codeword to be
+            // extended so we have the right point?
+            // Right. We are dealing with roots of unity so the evaluation is o^(n-1)*o=o^0
+            let point = vec![point_lhs, point_rhs].concat();
+            for (j, constraint) in transition_constraints.iter().enumerate() {
                 let evaluation = constraint.evaluate(&point);
                 // combination_codeword.push(evaluation);
-                quotient_evals.push(evaluation * transition_zerofier_inv[i]);
+                quotient_codewords[j].evals[i] = evaluation * transition_zerofier_inv[i];
             }
-            quotient_codewords.push(Evaluations::from_vec_and_domain(
-                quotient_evals,
-                eval_domain,
-            ));
         }
 
         quotient_codewords
@@ -314,14 +305,14 @@ where
         // println!("pos:{codeword_len}");
         let boundary_quotients = self.boundary_quotients(codeword_len, codewords, challenges);
         println!("BOUNDARY");
-        for codeword in &boundary_quotients {
-            determine_codeword_degree(codeword);
-        }
+        // for codeword in &boundary_quotients {
+        //     determine_codeword_degree(codeword);
+        // }
         let transition_quotients = self.transition_quotients(codeword_len, codewords, challenges);
         println!("TRANSITION {}-{}", Self::BASE_WIDTH, Self::EXTENSION_WIDTH);
-        for codeword in &transition_quotients {
-            determine_codeword_degree(codeword);
-        }
+        // for codeword in &transition_quotients {
+        //     determine_codeword_degree(codeword);
+        // }
         let terminal_quotients =
             self.terminal_quotients(codeword_len, codewords, challenges, terminals);
         println!("TERMINALS");

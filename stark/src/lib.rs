@@ -209,9 +209,9 @@ impl<P: Config> BrainFuckStark<P> {
         .concat();
 
         println!("BUTTER BASE");
-        for codeword in &base_codewords {
-            self.determine_codeword_degree(codeword);
-        }
+        // for codeword in &base_codewords {
+        //     self.determine_codeword_degree(codeword);
+        // }
 
         let all_base_codewords =
             vec![randomizer_codewords.clone(), base_codewords.clone()].concat();
@@ -275,9 +275,9 @@ impl<P: Config> BrainFuckStark<P> {
         .concat();
 
         println!("🤯EXTENSSSSSSSIIIIIOOOOONNNNNSSSSS");
-        for codeword in &extension_codewords {
-            self.determine_codeword_degree(codeword);
-        }
+        // for codeword in &extension_codewords {
+        //     self.determine_codeword_degree(codeword);
+        // }
 
         let extension_degree_bounds = vec![
             vec![
@@ -352,9 +352,9 @@ impl<P: Config> BrainFuckStark<P> {
         .concat();
 
         println!("\n\n\nQQQQUUUUUOOOOTIENTS");
-        for codeword in &quotient_codewords {
-            self.determine_codeword_degree(codeword);
-        }
+        // for codeword in &quotient_codewords {
+        //     self.determine_codeword_degree(codeword);
+        // }
 
         let mut quotient_degree_bounds = vec![
             self.processor_table
