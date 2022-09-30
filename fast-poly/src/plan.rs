@@ -4,8 +4,8 @@ use crate::stage::Variant;
 use crate::twiddles::fill_twiddles;
 use crate::utils::bit_reverse;
 use crate::utils::buffer_no_copy;
+use crate::GpuField;
 use crate::NttDirection;
-use crate::NttOrdering;
 use legacy_algebra::PrimeFelt;
 use legacy_algebra::StarkFelt;
 use std::time::Instant;
@@ -13,7 +13,6 @@ use std::time::Instant;
 pub struct Ntt<'a, E> {
     command_queue: &'a metal::CommandQueueRef,
     direction: NttDirection,
-    input_order: NttOrdering,
     twiddles: Vec<E, PageAlignedAllocator>,
     grid_dim: metal::MTLSize,
     threadgroup_dim: metal::MTLSize,
@@ -21,8 +20,8 @@ pub struct Ntt<'a, E> {
     stages: Vec<NttGpuStage<E>>,
 }
 
-impl<'a, E: StarkFelt + PrimeFelt> Ntt<'a, E> {
-    pub fn process(&mut self, buffer: &mut Vec<E, PageAlignedAllocator>) {
+impl<'a, F: GpuField> Ntt<'a, F> {
+    pub fn process(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
         let mut input_buffer = buffer_no_copy(self.command_queue.device(), buffer);
         let mut twiddles_buffer = buffer_no_copy(self.command_queue.device(), &mut self.twiddles);
         let command_buffer = self.command_queue.new_command_buffer();
@@ -56,11 +55,7 @@ impl Planner {
         }
     }
 
-    pub fn plan_ntt_forward<E: StarkFelt + PrimeFelt>(
-        &self,
-        n: usize,
-        input_order: NttOrdering,
-    ) -> Ntt<E> {
+    pub fn plan_fft<F: GpuField>(&self, n: usize) -> Ntt<F> {
         assert!(n.is_power_of_two(), "must be a power of two");
         assert!(n >= 2048);
         let direction = NttDirection::Forward;
@@ -68,16 +63,13 @@ impl Planner {
         let grid_dim = metal::MTLSize::new((n / 2).try_into().unwrap(), 1, 1);
         let start = Instant::now();
         let mut twiddles = Vec::with_capacity_in(n, PageAlignedAllocator);
-        twiddles.resize(n / 2, E::zero());
+        twiddles.resize(n / 2, F::zero());
         println!("Allocation: {:?}", start.elapsed());
         let start = Instant::now();
         fill_twiddles(&mut twiddles, n, direction);
         println!("Generation: {:?}", start.elapsed());
         let start = Instant::now();
-        match input_order {
-            NttOrdering::Natural => bit_reverse(&mut twiddles),
-            NttOrdering::BitReversed => {}
-        }
+        bit_reverse(&mut twiddles);
         println!("Reversal: {:?}", start.elapsed());
         let stages = match n {
             4194304 => vec![
@@ -93,6 +85,31 @@ impl Planner {
                 NttGpuStage::new(&self.library, direction, n, 512, Variant::Single),
                 NttGpuStage::new(&self.library, direction, n, 1024, Variant::Single),
                 NttGpuStage::new(&self.library, direction, n, 2048, Variant::Multiple),
+            ],
+            2097152 => vec![
+                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 128, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 256, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 512, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 1024, Variant::Multiple),
+            ],
+            1048576 => vec![
+                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 128, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 256, Variant::Single),
+                NttGpuStage::new(&self.library, direction, n, 512, Variant::Multiple),
             ],
             524288 => vec![
                 NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
@@ -171,7 +188,6 @@ impl Planner {
             threadgroup_dim,
             twiddles,
             direction,
-            input_order,
             n,
             stages,
         }

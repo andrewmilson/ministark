@@ -6,6 +6,7 @@
 
 #include <metal_stdlib>
 #include "felt_u128.h"
+#include "felt_u64.h"
 #include "permute.h"
 using namespace metal;
 
@@ -35,26 +36,21 @@ constant unsigned N [[ function_constant(0) ]];
 constant unsigned NUM_BOXES [[ function_constant(1) ]];
 
 // Performs a single itteration of Cooley-Tuckey radix-2 decimation-in-time (DIT)
-template<typename E> kernel void
-NttSingle(device E *vals [[ buffer(0) ]],
-        constant E *twiddles [[ buffer(1) ]],
+template<typename FieldT> kernel void
+NttSingle(device FieldT *vals [[ buffer(0) ]],
+        constant FieldT *twiddles [[ buffer(1) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
     unsigned input_step = (N / NUM_BOXES) / 2;
     unsigned box_id = global_tid / input_step;
     unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
-    E twiddle = twiddles[box_id];
-    E p = vals[target_index];
-    E tmp = vals[target_index + input_step];
-    E q = tmp * twiddle;
+    FieldT twiddle = twiddles[box_id];
+    FieldT p = vals[target_index];
+    FieldT tmp = vals[target_index + input_step];
+    FieldT q = tmp * twiddle;
 
     vals[target_index] = p + q;
     vals[target_index + input_step] = p - q;
-}
-
-//
-constexpr unsigned inv_twiddle_idx(unsigned idx) {
-    return permute_index(N, N - permute_index(N, idx)) % N;
 }
 
 // Performs a single itteration of Cooley-Tuckey radix-2 decimation-in-frequency (DIF)
@@ -76,17 +72,17 @@ constexpr unsigned inv_twiddle_idx(unsigned idx) {
 //     7  // 111->111
 // ]
 // ```
-template<typename E> kernel void
-INttSingle(device E *vals [[ buffer(0) ]],
-        constant E *inv_twiddles [[ buffer(1) ]],
+template<typename FieldT> kernel void
+INttSingle(device FieldT *vals [[ buffer(0) ]],
+        constant FieldT *inv_twiddles [[ buffer(1) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
     unsigned input_step = (N / NUM_BOXES) / 2;
     unsigned box_id = global_tid / input_step;
     unsigned target_index = 2 * box_id * input_step + (global_tid % input_step);
 
-    E inv_twiddle = inv_twiddles[2 * box_id];
-    E p = vals[target_index];
-    E q = vals[target_index + input_step];
+    FieldT inv_twiddle = inv_twiddles[2 * box_id];
+    FieldT p = vals[target_index];
+    FieldT q = vals[target_index + input_step];
     
     vals[target_index] = p + q;
     vals[target_index + input_step] = (p - q) * inv_twiddle;
@@ -95,11 +91,14 @@ INttSingle(device E *vals [[ buffer(0) ]],
 
 // Performs multiple itteration stages of Cooley-Tuckey radix-2 decimation-in-time (DIT)
 //
-// Template param "E" represents the type of field element.
-template<typename E> kernel void
-NttMultiple(device E *vals [[ buffer(0) ]],
-        constant E *twiddles [[ buffer(1) ]],
-        threadgroup E *shared_array [[ threadgroup(0) ]],
+// Template param "F" represents the type of field element.
+//
+// TODO: Figure out poor perf reasons. Unrolls might cause instruction cache misses.
+// TODO: Theoretically should be faster due to use of threadgroup memory... but it's not :(
+template<typename FieldT> kernel void
+NttMultiple(device FieldT *vals [[ buffer(0) ]],
+        constant FieldT *twiddles [[ buffer(1) ]],
+        threadgroup FieldT *shared_array [[ threadgroup(0) ]],
         unsigned group_id [[ threadgroup_position_in_grid ]],
         unsigned local_tid [[ thread_index_in_threadgroup ]]) {
 #pragma unroll
@@ -118,10 +117,10 @@ NttMultiple(device E *vals [[ buffer(0) ]],
             unsigned box_id = global_tid / input_step;
             unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
-            E p = shared_array[target_index];
-            E twiddle = twiddles[box_id + group_id * (boxes / NUM_BOXES)];
-            E tmp = shared_array[target_index + input_step];
-            E q = tmp * twiddle;
+            FieldT p = shared_array[target_index];
+            FieldT twiddle = twiddles[box_id + group_id * (boxes / NUM_BOXES)];
+            FieldT tmp = shared_array[target_index + input_step];
+            FieldT q = tmp * twiddle;
 
             shared_array[target_index] = p + q;
             shared_array[target_index + input_step] = p - q;
@@ -138,6 +137,11 @@ NttMultiple(device E *vals [[ buffer(0) ]],
     }
 }
 
+
+// ===========================================================
+// FFT for Fp=270497897142230380135924736767050121217
+// - 128 bit prime field
+// - from Stark Anatomy series
 template [[ host_name("ntt_single_fp270497897142230380135924736767050121217") ]] kernel void
 NttSingle<FP270497897142230380135924736767050121217>(
         device FP270497897142230380135924736767050121217*,
@@ -155,3 +159,26 @@ NttMultiple<FP270497897142230380135924736767050121217>(
         threadgroup FP270497897142230380135924736767050121217*,
         unsigned,
         unsigned);
+// ===========================================================
+// FFT for Fp=18446744069414584321
+// - 64 bit prime field (2^64−2^32+1 = 18446744069414584321)
+// - Polygon filed (usesed by Miden and Zero)
+// - Prime has many nice properties
+template [[ host_name("ntt_single_fp18446744069414584321") ]] kernel void
+NttSingle<FP18446744069414584321>(
+        device FP18446744069414584321*,
+        constant FP18446744069414584321*,
+        unsigned);
+template [[ host_name("intt_single_fp18446744069414584321") ]] kernel void
+INttSingle<FP18446744069414584321>(
+        device FP18446744069414584321*,
+        constant FP18446744069414584321*,
+        unsigned);
+template [[ host_name("ntt_multiple_fp18446744069414584321") ]] kernel void
+NttMultiple<FP18446744069414584321>(
+        device FP18446744069414584321*,
+        constant FP18446744069414584321*,
+        threadgroup FP18446744069414584321*,
+        unsigned,
+        unsigned);
+// ===========================================================

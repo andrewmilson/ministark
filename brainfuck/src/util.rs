@@ -47,7 +47,7 @@ pub fn lift<F: FftField>(
     e.into_iter()
         .map(|codeword| {
             let domain = codeword.domain();
-            let offset = F::from_base_prime_field(domain.offset());
+            let offset = F::from_base_prime_field(domain.coset_offset());
             Evaluations::from_vec_and_domain(
                 codeword
                     .evals

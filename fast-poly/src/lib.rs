@@ -1,5 +1,8 @@
 #![feature(test, allocator_api, const_try, int_log)]
 
+use ark_ff::FftField;
+use ark_ff_optimized::fp64;
+
 pub mod allocator;
 pub mod plan;
 pub mod stage;
@@ -13,20 +16,14 @@ pub enum NttDirection {
     Inverse,
 }
 
-/// A trait that allows NTT algorithms to report whether they compute forward
-/// NTTs or inverse NTTs
-pub trait Direction {
-    /// Returns [Forward](NttDirection::Forward) if this instance computes
-    /// forward NTT, or [Inverse](NttDirection::Inverse) for inverse NTTs
-    fn ntt_direction(&self) -> NttDirection;
+// GPU implementation of the field exists in metal/
+pub trait GpuField: FftField {
+    // Used to select which GPU kernel to call.
+    fn field_name() -> String;
 }
 
-#[derive(PartialEq, Eq)]
-pub enum NttOrdering {
-    BitReversed,
-    Natural,
-}
-
-pub trait Ordering {
-    fn ntt_ordering(&self) -> NttOrdering;
+impl GpuField for fp64::Fp {
+    fn field_name() -> String {
+        "fp18446744069414584321".to_owned()
+    }
 }

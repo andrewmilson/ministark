@@ -1,6 +1,5 @@
+use super::GpuField;
 use crate::NttDirection;
-use legacy_algebra::PrimeFelt;
-use legacy_algebra::StarkFelt;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]
@@ -12,9 +11,9 @@ pub enum Variant {
 /// GPU kernel name
 ///
 /// Kernel names declared at the bottom of `ntt.metal`
-fn ntt_kernel_name<E: PrimeFelt>(direction: NttDirection, variant: Variant) -> String {
+fn ntt_kernel_name<F: GpuField>(direction: NttDirection, variant: Variant) -> String {
     format!(
-        "{}_{}_fp{}",
+        "{}_{}_{}",
         match direction {
             NttDirection::Forward => "ntt",
             NttDirection::Inverse => "intt",
@@ -23,7 +22,7 @@ fn ntt_kernel_name<E: PrimeFelt>(direction: NttDirection, variant: Variant) -> S
             Variant::Multiple => "multiple",
             Variant::Single => "single",
         },
-        E::MODULUS
+        F::field_name()
     )
 }
 
@@ -36,7 +35,7 @@ pub struct NttGpuStage<E> {
     _phantom: PhantomData<E>,
 }
 
-impl<E: StarkFelt + PrimeFelt> NttGpuStage<E> {
+impl<E: GpuField> NttGpuStage<E> {
     pub fn new(
         library: &metal::LibraryRef,
         direction: NttDirection,

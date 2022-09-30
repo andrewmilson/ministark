@@ -91,11 +91,6 @@ public:
         return Felt128(mul(inner, rhs.inner));
     }
 
-    Felt128 operator/(const Felt128 rhs) const
-    {
-        return Felt128(mul(inner, mod_inv(rhs.inner)));
-    }
-
 private:
     u128 inner;
 

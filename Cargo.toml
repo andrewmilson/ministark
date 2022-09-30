@@ -7,3 +7,16 @@ members = [
     "fri",
     "optimized-fields"
 ]
+
+[profile.release]
+codegen-units = 1
+lto = true
+
+# Hi Anna,
+# My situation has slightly changed. 
+# The Google Hiring freeze is thawing. My recruiter reached out of the blue yesterday
+# to mention they'll have some open roles in the near future. As a result of this I 
+# no longer feel comfortable commiting to the 3 month contract as discussed. I'd be 
+# happy working fortnightly if that's something that works for Envoy.
+# Thanks,
+# Andrew

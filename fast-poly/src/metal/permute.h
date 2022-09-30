@@ -42,6 +42,11 @@ constexpr unsigned reverse_bits(unsigned n)
     return n;
 }
 
+// NOTE: Needs to be in ntt.metal to get access to N variable
+// constexpr unsigned inv_twiddle_idx(unsigned idx) {
+//     return permute_index(N, N - permute_index(N, idx)) % N;
+// }
+
 // Reverses the bits of each index
 constexpr unsigned permute_index(unsigned size, unsigned index)
 {

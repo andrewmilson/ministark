@@ -284,6 +284,9 @@ where
                     .iter()
                     .map(|codeword| codeword[i])
                     .collect::<Vec<F>>();
+                // for i in Self::BASE_WIDTH {
+                //     i * 30 % BASE_WIDTH
+                // }
                 quotient_codeword.push(constraint.evaluate(&point) * terminal_zerofier_inv[i]);
             }
             quotient_codewords.push(Evaluations::from_vec_and_domain(

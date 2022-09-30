@@ -1,22 +1,21 @@
 #![feature(test, allocator_api)]
 
 extern crate test;
+use ark_ff::Field;
+use ark_ff_optimized::fp64::Fp;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::Planner;
-use fast_poly::NttOrdering;
-use legacy_algebra::fp_u128::BaseFelt;
-use legacy_algebra::Felt;
 use objc::rc::autoreleasepool;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_pcg::Pcg64;
 use test::Bencher;
 
-fn gen_pcg_input<E: Felt>(n: usize) -> Vec<E, PageAlignedAllocator> {
+fn gen_pcg_input<F: Field>(n: usize) -> Vec<F, PageAlignedAllocator> {
     let mut rng = Pcg64::seed_from_u64(n.try_into().unwrap());
     let mut res = Vec::new_in(PageAlignedAllocator);
-    res.resize(n, E::zero());
-    res.iter_mut().for_each(|v| *v = E::from(rng.gen::<u128>()));
+    res.resize(n, F::zero());
+    res.iter_mut().for_each(|v| *v = F::rand(&mut rng));
     res
 }
 
@@ -24,9 +23,9 @@ fn gen_pcg_input<E: Felt>(n: usize) -> Vec<E, PageAlignedAllocator> {
 fn ntt_2048_vals(b: &mut Bencher) {
     autoreleasepool(|| {
         let n = 2048;
-        let mut buf = gen_pcg_input::<BaseFelt>(n);
+        let mut buf = gen_pcg_input::<Fp>(n);
         let planner = Planner::default();
-        let mut ntt = planner.plan_ntt_forward(n, NttOrdering::Natural);
+        let mut ntt = planner.plan_fft(n);
 
         b.iter(|| ntt.process(&mut buf));
     });
