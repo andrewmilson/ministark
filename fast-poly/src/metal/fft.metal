@@ -13,7 +13,7 @@ using namespace metal;
 // Number of input items being transformed
 constant unsigned N [[ function_constant(0) ]];
 
-// Number of boxes for the NTT/INTT itteration e.g.
+// Number of boxes for the FFT/IFFT itteration e.g.
 // ┌─────────────────────────┐ ┌─────────────────────┐ ┌───────────────────┐
 // │ a[0]               a[0] │ │ a[0]           a[0] │ │ a[0]         a[0] │
 // │      ╲           ╱      │ │      ╲       ╱      │ │      ❭ εϊз ❬      │
@@ -37,7 +37,7 @@ constant unsigned NUM_BOXES [[ function_constant(1) ]];
 
 // Performs a single itteration of Cooley-Tuckey radix-2 decimation-in-time (DIT)
 template<typename FieldT> kernel void
-NttSingle(device FieldT *vals [[ buffer(0) ]],
+FftSingle(device FieldT *vals [[ buffer(0) ]],
         constant FieldT *twiddles [[ buffer(1) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
     unsigned input_step = (N / NUM_BOXES) / 2;
@@ -56,7 +56,7 @@ NttSingle(device FieldT *vals [[ buffer(0) ]],
 // Performs bit reversal 
 template<typename FieldT> kernel void
 BitReverse(device FieldT *vals [[ buffer(0) ]],
-    unsigned i = global_tid * 2 + shift;
+        unsigned i [[ thread_position_in_grid ]]) {
     unsigned ri = reverse_bits(i) >> (32 - log2_floor(N));
 
     if (i < ri) {
@@ -87,7 +87,7 @@ BitReverse(device FieldT *vals [[ buffer(0) ]],
 // ]
 // ```
 template<typename FieldT> kernel void
-INttSingle(device FieldT *vals [[ buffer(0) ]],
+IFftSingle(device FieldT *vals [[ buffer(0) ]],
         constant FieldT *inv_twiddles [[ buffer(1) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
     unsigned input_step = (N / NUM_BOXES) / 2;
@@ -110,7 +110,7 @@ INttSingle(device FieldT *vals [[ buffer(0) ]],
 // TODO: Figure out poor perf reasons. Unrolls might cause instruction cache misses.
 // TODO: Theoretically should be faster due to use of threadgroup memory... but it's not :(
 template<typename FieldT> kernel void
-NttMultiple(device FieldT *vals [[ buffer(0) ]],
+FftMultiple(device FieldT *vals [[ buffer(0) ]],
         constant FieldT *twiddles [[ buffer(1) ]],
         threadgroup FieldT *shared_array [[ threadgroup(0) ]],
         unsigned group_id [[ threadgroup_position_in_grid ]],
@@ -156,18 +156,18 @@ NttMultiple(device FieldT *vals [[ buffer(0) ]],
 // FFT for Fp=270497897142230380135924736767050121217
 // - 128 bit prime field
 // - from Stark Anatomy series
-template [[ host_name("ntt_single_fp270497897142230380135924736767050121217") ]] kernel void
-NttSingle<FP270497897142230380135924736767050121217>(
+template [[ host_name("fft_single_fp270497897142230380135924736767050121217") ]] kernel void
+FftSingle<FP270497897142230380135924736767050121217>(
         device FP270497897142230380135924736767050121217*,
         constant FP270497897142230380135924736767050121217*,
         unsigned);
-template [[ host_name("intt_single_fp270497897142230380135924736767050121217") ]] kernel void
-INttSingle<FP270497897142230380135924736767050121217>(
+template [[ host_name("ifft_single_fp270497897142230380135924736767050121217") ]] kernel void
+IFftSingle<FP270497897142230380135924736767050121217>(
         device FP270497897142230380135924736767050121217*,
         constant FP270497897142230380135924736767050121217*,
         unsigned);
-template [[ host_name("ntt_multiple_fp270497897142230380135924736767050121217") ]] kernel void
-NttMultiple<FP270497897142230380135924736767050121217>(
+template [[ host_name("fft_multiple_fp270497897142230380135924736767050121217") ]] kernel void
+FftMultiple<FP270497897142230380135924736767050121217>(
         device FP270497897142230380135924736767050121217*,
         constant FP270497897142230380135924736767050121217*,
         threadgroup FP270497897142230380135924736767050121217*,
@@ -182,18 +182,18 @@ template [[ host_name("bit_reverse_fp18446744069414584321") ]] kernel void
 BitReverse<FP18446744069414584321>(
         device FP18446744069414584321*,
         unsigned);
-template [[ host_name("ntt_single_fp18446744069414584321") ]] kernel void
-NttSingle<FP18446744069414584321>(
+template [[ host_name("fft_single_fp18446744069414584321") ]] kernel void
+FftSingle<FP18446744069414584321>(
         device FP18446744069414584321*,
         constant FP18446744069414584321*,
         unsigned);
-template [[ host_name("intt_single_fp18446744069414584321") ]] kernel void
-INttSingle<FP18446744069414584321>(
+template [[ host_name("ifft_single_fp18446744069414584321") ]] kernel void
+IFftSingle<FP18446744069414584321>(
         device FP18446744069414584321*,
         constant FP18446744069414584321*,
         unsigned);
-template [[ host_name("ntt_multiple_fp18446744069414584321") ]] kernel void
-NttMultiple<FP18446744069414584321>(
+template [[ host_name("fft_multiple_fp18446744069414584321") ]] kernel void
+FftMultiple<FP18446744069414584321>(
         device FP18446744069414584321*,
         constant FP18446744069414584321*,
         threadgroup FP18446744069414584321*,

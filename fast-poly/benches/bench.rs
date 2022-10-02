@@ -5,6 +5,7 @@ use ark_ff::Field;
 use ark_ff_optimized::fp64::Fp;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::Planner;
+use fast_poly::plan::PLANNER;
 use objc::rc::autoreleasepool;
 use rand::Rng;
 use rand::SeedableRng;
@@ -20,13 +21,12 @@ fn gen_pcg_input<F: Field>(n: usize) -> Vec<F, PageAlignedAllocator> {
 }
 
 #[bench]
-fn ntt_2048_vals(b: &mut Bencher) {
+fn fft_2048_vals(b: &mut Bencher) {
     autoreleasepool(|| {
         let n = 2048;
         let mut buf = gen_pcg_input::<Fp>(n);
-        let planner = Planner::default();
-        let mut ntt = planner.plan_fft(n);
+        let mut fft = PLANNER.plan_fft(n);
 
-        b.iter(|| ntt.process(&mut buf));
+        b.iter(|| fft.process(&mut buf));
     });
 }

@@ -135,7 +135,7 @@ pub trait Felt:
 ///
 /// The efficiency comes from the fact the underlying field has a subgroup of
 /// order `2^n`. This is required to compute the fast fourier transform (FFT) -
-/// also called the number theory transform (NTT) in the case of finite fields.
+/// also called the number theory transform (FFT) in the case of finite fields.
 ///
 /// Given `n` number of points to interpolate, fast fourier based interpolation
 /// runtime is `O(n log n)` as opposed to naive implementations of `O(n^2)`.

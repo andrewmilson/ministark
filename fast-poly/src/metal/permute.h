@@ -43,7 +43,7 @@ constexpr unsigned bit_rev(unsigned n)
     return n;
 }
 
-// NOTE: Needs to be in ntt.metal to get access to N variable
+// NOTE: Needs to be in fft.metal to get access to N variable
 // constexpr unsigned inv_twiddle_idx(unsigned idx) {
 //     return permute_index(N, N - permute_index(N, idx)) % N;
 // }

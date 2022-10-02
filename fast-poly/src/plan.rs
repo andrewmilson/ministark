@@ -1,24 +1,24 @@
 use crate::allocator::PageAlignedAllocator;
 use crate::stage::BitReverseGpuStage;
-use crate::stage::NttGpuStage;
+use crate::stage::FftGpuStage;
 use crate::stage::Variant;
 use crate::twiddles::fill_twiddles;
 use crate::utils::bit_reverse;
 use crate::utils::buffer_no_copy;
+use crate::FftDirection;
 use crate::GpuField;
-use crate::NttDirection;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 use std::time::Instant;
 
 pub struct Fft<E> {
     command_queue: Arc<metal::CommandQueue>,
-    direction: NttDirection,
+    direction: FftDirection,
     twiddles: Vec<E, PageAlignedAllocator>,
     grid_dim: metal::MTLSize,
     threadgroup_dim: metal::MTLSize,
     n: usize,
-    stages: Vec<NttGpuStage<E>>,
+    stages: Vec<FftGpuStage<E>>,
     bit_reverse_stage: BitReverseGpuStage<E>,
 }
 
@@ -47,6 +47,8 @@ impl<F: GpuField> Fft<F> {
     }
 }
 
+const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
+
 pub static PLANNER: Lazy<Planner> = Lazy::new(Planner::default);
 
 pub struct Planner {
@@ -59,8 +61,7 @@ unsafe impl Sync for Planner {}
 
 impl Planner {
     pub fn new(device: &metal::DeviceRef) -> Self {
-        let library_data = include_bytes!("metal/ntt.metallib");
-        let library = device.new_library_with_data(library_data).unwrap();
+        let library = device.new_library_with_data(LIBRARY_DATA).unwrap();
         let command_queue = Arc::new(device.new_command_queue());
         Self {
             library,
@@ -71,7 +72,7 @@ impl Planner {
     pub fn plan_fft<F: GpuField>(&self, n: usize) -> Fft<F> {
         assert!(n.is_power_of_two(), "must be a power of two");
         assert!(n >= 2048);
-        let direction = NttDirection::Forward;
+        let direction = FftDirection::Forward;
         let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
         let grid_dim = metal::MTLSize::new((n / 2).try_into().unwrap(), 1, 1);
         let start = Instant::now();
@@ -86,106 +87,106 @@ impl Planner {
         println!("Reversal: {:?}", start.elapsed());
         let stages = match n {
             4194304 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 32, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 64, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 128, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 256, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 512, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 1024, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2048, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 128, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 256, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 512, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 1024, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2048, Variant::Multiple),
             ],
             2097152 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 32, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 64, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 128, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 256, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 512, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 1024, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 128, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 256, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 512, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 1024, Variant::Multiple),
             ],
             1048576 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 32, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 64, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 128, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 256, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 512, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 128, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 256, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 512, Variant::Multiple),
             ],
             524288 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 32, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 64, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 128, Variant::Single),
-                // NttGpuStage::new(&self.library, direction, n, 256, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 256, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 128, Variant::Single),
+                // FftGpuStage::new(&self.library, direction, n, 256, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 256, Variant::Multiple),
             ],
             262144 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 32, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 64, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 128, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 128, Variant::Multiple),
             ],
             131072 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 32, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 64, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 64, Variant::Multiple),
             ],
             65536 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 16, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 32, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Multiple),
             ],
             32768 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 16, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Multiple),
             ],
             16384 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 8, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Multiple),
             ],
             8192 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 4, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Multiple),
             ],
             4096 => vec![
-                NttGpuStage::new(&self.library, direction, n, 1, Variant::Single),
-                NttGpuStage::new(&self.library, direction, n, 2, Variant::Multiple),
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Multiple),
             ],
-            2048 => vec![NttGpuStage::new(
+            2048 => vec![FftGpuStage::new(
                 &self.library,
                 direction,
                 n,
@@ -193,7 +194,7 @@ impl Planner {
                 Variant::Multiple,
             )],
             // TODO: change to an error
-            _ => panic!("invalid ntt size of {n}"),
+            _ => panic!("invalid FFT size of {n}"),
         };
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);
         Fft {

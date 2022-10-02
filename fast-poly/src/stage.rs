@@ -1,5 +1,5 @@
 use super::GpuField;
-use crate::NttDirection;
+use crate::FftDirection;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]
@@ -10,13 +10,13 @@ pub enum Variant {
 
 /// GPU kernel name
 ///
-/// Kernel names declared at the bottom of `ntt.metal`
-fn ntt_kernel_name<F: GpuField>(direction: NttDirection, variant: Variant) -> String {
+/// Kernel names declared at the bottom of `fft.metal`
+fn fft_kernel_name<F: GpuField>(direction: FftDirection, variant: Variant) -> String {
     format!(
         "{}_{}_{}",
         match direction {
-            NttDirection::Forward => "ntt",
-            NttDirection::Inverse => "intt",
+            FftDirection::Forward => "fft",
+            FftDirection::Inverse => "ifft",
         },
         match variant {
             Variant::Multiple => "multiple",
@@ -26,46 +26,46 @@ fn ntt_kernel_name<F: GpuField>(direction: NttDirection, variant: Variant) -> St
     )
 }
 
-pub struct NttGpuStage<E> {
+pub struct FftGpuStage<E> {
     pipeline: metal::ComputePipelineState,
     n: u32,
     num_boxes: u32,
-    direction: NttDirection,
+    direction: FftDirection,
     variant: Variant,
     _phantom: PhantomData<E>,
 }
 
-impl<E: GpuField> NttGpuStage<E> {
+impl<E: GpuField> FftGpuStage<E> {
     pub fn new(
         library: &metal::LibraryRef,
-        direction: NttDirection,
+        direction: FftDirection,
         n: usize,
         num_boxes: usize,
         variant: Variant,
-    ) -> NttGpuStage<E> {
+    ) -> FftGpuStage<E> {
         assert!(n.is_power_of_two());
         assert!(num_boxes.is_power_of_two());
         assert!(num_boxes < n);
         assert!((2048..=1073741824).contains(&n));
 
         // Create the compute pipeline
-        let ntt_constants = metal::FunctionConstantValues::new();
+        let fft_constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         let num_boxes = num_boxes as u32;
-        ntt_constants.set_constant_value_at_index(
+        fft_constants.set_constant_value_at_index(
             &n as *const u32 as *const std::ffi::c_void,
             metal::MTLDataType::UInt,
             0,
         );
-        ntt_constants.set_constant_value_at_index(
+        fft_constants.set_constant_value_at_index(
             &num_boxes as *const u32 as *const std::ffi::c_void,
             metal::MTLDataType::UInt,
             1,
         );
         let func = library
             .get_function(
-                &ntt_kernel_name::<E>(direction, variant),
-                Some(ntt_constants),
+                &fft_kernel_name::<E>(direction, variant),
+                Some(fft_constants),
             )
             .unwrap();
         let pipeline = library
@@ -73,7 +73,7 @@ impl<E: GpuField> NttGpuStage<E> {
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
 
-        NttGpuStage {
+        FftGpuStage {
             pipeline,
             n,
             num_boxes,
@@ -118,15 +118,15 @@ impl<E: GpuField> BitReverseGpuStage<E> {
         assert!((2048..=1073741824).contains(&n));
 
         // Create the compute pipeline
-        let ntt_constants = metal::FunctionConstantValues::new();
+        let fft_constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         let num_boxes = 5u32;
-        ntt_constants.set_constant_value_at_index(
+        fft_constants.set_constant_value_at_index(
             &n as *const u32 as *const std::ffi::c_void,
             metal::MTLDataType::UInt,
             0,
         );
-        ntt_constants.set_constant_value_at_index(
+        fft_constants.set_constant_value_at_index(
             &num_boxes as *const u32 as *const std::ffi::c_void,
             metal::MTLDataType::UInt,
             1,
@@ -134,7 +134,7 @@ impl<E: GpuField> BitReverseGpuStage<E> {
         let func = library
             .get_function(
                 &format!("bit_reverse_{}", E::field_name()),
-                Some(ntt_constants),
+                Some(fft_constants),
             )
             .unwrap();
         let pipeline = library

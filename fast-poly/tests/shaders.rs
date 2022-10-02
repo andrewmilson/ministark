@@ -16,7 +16,7 @@ use rand_pcg::Pcg64;
 use std::time::Instant;
 
 // Number theory transform
-fn ntt_control<F: FftField>(values: &[F]) -> Vec<F> {
+fn fft_control<F: FftField>(values: &[F]) -> Vec<F> {
     let domain = Radix2EvaluationDomain::<F>::new(values.len()).unwrap();
     let mut vals = values.to_owned();
     domain.fft_in_place(&mut vals);
@@ -32,17 +32,17 @@ fn gen_pcg_input<F: Field>(n: usize) -> Vec<F, PageAlignedAllocator> {
 }
 
 #[test]
-fn ntt_2048_vals() {
+fn fft_2048_vals() {
     autoreleasepool(|| {
         let n = 2048;
         let mut input = gen_pcg_input::<Fp>(n);
         let now = Instant::now();
-        let mut expected = ntt_control(&input);
+        let mut expected = fft_control(&input);
         println!("Control fft time: {:?}", now.elapsed());
 
         let now = Instant::now();
-        let mut ntt = PLANNER.plan_fft(n);
-        ntt.process(&mut input);
+        let mut fft = PLANNER.plan_fft(n);
+        fft.process(&mut input);
         println!("Gpu fft time: {:?}", now.elapsed());
 
         for (i, (a, b)) in input.iter().zip(&expected).enumerate() {
@@ -52,12 +52,12 @@ fn ntt_2048_vals() {
 }
 
 #[test]
-fn ntt_524288_vals() {
+fn fft_524288_vals() {
     autoreleasepool(|| {
         let n = 4194304;
         let mut input = gen_pcg_input::<Fp>(n);
         let now = Instant::now();
-        let mut expected = ntt_control(&input);
+        let mut expected = fft_control(&input);
         println!("Control fft time: {:?}", now.elapsed());
 
         let now = Instant::now();

@@ -9,9 +9,9 @@ pub mod stage;
 pub mod twiddles;
 pub mod utils;
 
-/// Represents a NTT direction
+/// Represents a FFT direction
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum NttDirection {
+pub enum FftDirection {
     Forward,
     Inverse,
 }

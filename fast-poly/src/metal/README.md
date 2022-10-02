@@ -4,9 +4,9 @@ Right not only implementation for prime field arithmetic has been done although 
 
 ## GPU functions
 
-### Number Theory Transform (NTT)
+### Number Theory Transform (FFT)
 
-The NTT happens in-place and employs the [Cooley–Tukey algorithm](https://en.wikipedia.org/wiki/Cooley%E2%80%93Tukey_FFT_algorithm). As input it takes an array of values $a = [a_0,a_1,...,a_{n-1}]$ to be transformed and a constant array of twiddle factors
+The FFT happens in-place and employs the [Cooley–Tukey algorithm](https://en.wikipedia.org/wiki/Cooley%E2%80%93Tukey_FFT_algorithm). As input it takes an array of values $a = [a_0,a_1,...,a_{n-1}]$ to be transformed and a constant array of twiddle factors
 
 $$twiddles[i] = ω^{permute(i)}\quad\forall\ 0 \leq i < n/2$$
 
@@ -14,14 +14,14 @@ where $n \in 2^\mathbb{N}$ is the length of the input values $a$ and $ω$ is $n$
 
 Due to the nature of the Cooley-Tuckey algorithm the in-place transformed values are reshuffled (unmuffling results in non-negligible overhead). Either (1) bit-reversed order input values are transformed to natural order output values or (2) natural order input values are transformed to bit-reversed order output values. It's required that (1) has twiddle factors in natural order and (2) has twiddle factors in bit-reversed order.
 
-There are two functions for performing the NTT:
+There are two functions for performing the FFT:
 
-- `NttMultiple` uses threadgroup memory (faster than global) to perform multiple NTT iterations
-- `NttSingle` performs a single iteration without threadgroup memory
+- `FftMultiple` uses threadgroup memory (faster than global) to perform multiple FFT iterations
+- `FftSingle` performs a single iteration without threadgroup memory
 
-### Inverse Number Theory Transform (INTT)
+### Inverse Number Theory Transform (IFFT)
 
-The INTT happens in-place and employs the [Cooley–Tukey algorithm](https://en.wikipedia.org/wiki/Cooley%E2%80%93Tukey_FFT_algorithm) with the Gentleman-Sande butterfly structure. As input it takes an array of values $a^\prime = [a^\prime_0,a^\prime_1,...,a^\prime_{n-1}]$ to be transformed and a constant array of inverse twiddle factors
+The IFFT happens in-place and employs the [Cooley–Tukey algorithm](https://en.wikipedia.org/wiki/Cooley%E2%80%93Tukey_FFT_algorithm) with the Gentleman-Sande butterfly structure. As input it takes an array of values $a^\prime = [a^\prime_0,a^\prime_1,...,a^\prime_{n-1}]$ to be transformed and a constant array of inverse twiddle factors
 
 $$
 inv\_twiddles[i] = \dfrac{1}{n}\ ω^{-permute(i)}\quad\forall\ 0 \leq i < n/2
@@ -31,7 +31,7 @@ where $n\in 2^\mathbb{N}$ is the length of the input values $a^\prime$ and $ω$ 
 
 Due to the nature of the Cooley-Tuckey algorithm the in-place transformed values are reshuffled (unmuffling results in non-negligible overhead). Either (1) bit-reversed order input values are transformed to natural order output values or (2) natural order input values are transformed to bit-reversed order output values. It's required that (1) has twiddle factors in natural order and (2) has twiddle factors in bit-reversed order.
 
-There are two functions for performing the NTT:
+There are two functions for performing the FFT:
 
-- `INttMultiple` uses threadgroup memory (faster than global) to perform multiple INTT iterations
-- `INttSingle` performs a single INTT iteration without threadgroup memory
+- `IFftMultiple` uses threadgroup memory (faster than global) to perform multiple IFFT iterations
+- `IFftSingle` performs a single IFFT iteration without threadgroup memory
