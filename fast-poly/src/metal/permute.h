@@ -32,7 +32,8 @@ constexpr int log2_floor(unsigned n)
     return i;
 }
 
-constexpr unsigned reverse_bits(unsigned n)
+// TODO: Can use metal::reverse_bits method
+constexpr unsigned bit_rev(unsigned n)
 {
     n = (n & 0xFFFF0000) >> 16 | (n & ~0xFFFF0000) << 16;
     n = (n & 0xFF00FF00) >> 8 | (n & ~0xFF00FF00) << 8;
@@ -50,7 +51,7 @@ constexpr unsigned reverse_bits(unsigned n)
 // Reverses the bits of each index
 constexpr unsigned permute_index(unsigned size, unsigned index)
 {
-    return reverse_bits(index) >> (sizeof(unsigned) * 8 - log2_floor(size));
+    return bit_rev(index) >> (sizeof(unsigned) * 8 - log2_floor(size));
 }
 
 #endif /* permute_h */

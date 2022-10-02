@@ -1,4 +1,5 @@
 use crate::allocator::PageAlignedAllocator;
+use crate::stage::BitReverseGpuStage;
 use crate::stage::NttGpuStage;
 use crate::stage::Variant;
 use crate::twiddles::fill_twiddles;
@@ -6,21 +7,26 @@ use crate::utils::bit_reverse;
 use crate::utils::buffer_no_copy;
 use crate::GpuField;
 use crate::NttDirection;
-use legacy_algebra::PrimeFelt;
-use legacy_algebra::StarkFelt;
+use once_cell::sync::Lazy;
+use std::sync::Arc;
 use std::time::Instant;
 
-pub struct Ntt<'a, E> {
-    command_queue: &'a metal::CommandQueueRef,
+pub struct Fft<E> {
+    command_queue: Arc<metal::CommandQueue>,
     direction: NttDirection,
     twiddles: Vec<E, PageAlignedAllocator>,
     grid_dim: metal::MTLSize,
     threadgroup_dim: metal::MTLSize,
     n: usize,
     stages: Vec<NttGpuStage<E>>,
+    bit_reverse_stage: BitReverseGpuStage<E>,
 }
 
-impl<'a, F: GpuField> Ntt<'a, F> {
+// // https://github.com/gfx-rs/metal-rs/issues/40
+// unsafe impl<F: GpuField> Send for Fft<F> {}
+// unsafe impl<F: GpuField> Sync for Fft<F> {}
+
+impl<F: GpuField> Fft<F> {
     pub fn process(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
         let mut input_buffer = buffer_no_copy(self.command_queue.device(), buffer);
         let mut twiddles_buffer = buffer_no_copy(self.command_queue.device(), &mut self.twiddles);
@@ -34,28 +40,35 @@ impl<'a, F: GpuField> Ntt<'a, F> {
                 &mut twiddles_buffer,
             );
         }
+        self.bit_reverse_stage
+            .encode(command_buffer, &mut input_buffer);
         command_buffer.commit();
         command_buffer.wait_until_completed();
     }
 }
 
+pub static PLANNER: Lazy<Planner> = Lazy::new(Planner::default);
+
 pub struct Planner {
     library: metal::Library,
-    command_queue: metal::CommandQueue,
+    command_queue: Arc<metal::CommandQueue>,
 }
+
+unsafe impl Send for Planner {}
+unsafe impl Sync for Planner {}
 
 impl Planner {
     pub fn new(device: &metal::DeviceRef) -> Self {
         let library_data = include_bytes!("metal/ntt.metallib");
         let library = device.new_library_with_data(library_data).unwrap();
-        let command_queue = device.new_command_queue();
+        let command_queue = Arc::new(device.new_command_queue());
         Self {
             library,
             command_queue,
         }
     }
 
-    pub fn plan_fft<F: GpuField>(&self, n: usize) -> Ntt<F> {
+    pub fn plan_fft<F: GpuField>(&self, n: usize) -> Fft<F> {
         assert!(n.is_power_of_two(), "must be a power of two");
         assert!(n >= 2048);
         let direction = NttDirection::Forward;
@@ -182,14 +195,16 @@ impl Planner {
             // TODO: change to an error
             _ => panic!("invalid ntt size of {n}"),
         };
-        Ntt {
-            command_queue: &self.command_queue,
+        let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);
+        Fft {
+            command_queue: self.command_queue.clone(),
             grid_dim,
             threadgroup_dim,
             twiddles,
             direction,
             n,
             stages,
+            bit_reverse_stage,
         }
     }
 }

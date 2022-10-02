@@ -130,17 +130,17 @@ public:
         products[0][2] = top[3] * bottom[2];
         products[1][2] = top[2] * bottom[2];
         products[2][2] = top[1] * bottom[2];
-        products[3][2] = top[0] * bottom[2];
+        // products[3][2] = top[0] * bottom[2];
 
         products[0][1] = top[3] * bottom[1];
         products[1][1] = top[2] * bottom[1];
-        products[2][1] = top[1] * bottom[1];
+        // products[2][1] = top[1] * bottom[1];
         products[3][1] = top[0] * bottom[1];
 
         products[0][0] = top[3] * bottom[0];
-        products[1][0] = top[2] * bottom[0];
-        products[2][0] = top[1] * bottom[0];
-        products[3][0] = top[0] * bottom[0];
+        // products[1][0] = top[2] * bottom[0];
+        // products[2][0] = top[1] * bottom[0];
+        // products[3][0] = top[0] * bottom[0];
 
         // first row
         unsigned long fourth32 = products[0][3] & 0xffffffff;
@@ -161,17 +161,18 @@ public:
         first32 += products[3][3] & 0xffffffff;
 
         // move carry to next digit
-        third32 += fourth32 >> 32; // TODO: figure out if this is a nop
+        // third32 += fourth32 >> 32; // TODO: figure out if this is a nop
         second32 += third32 >> 32;
         first32 += second32 >> 32;
 
         // remove carry from current digit
-        fourth32 &= 0xffffffff; // TODO: figure out if this is a nop
-        third32 &= 0xffffffff;
+        // fourth32 &= 0xffffffff; // TODO: figure out if this is a nop
+        // third32 &= 0xffffffff;
         second32 &= 0xffffffff;
-        first32 &= 0xffffffff;
+        // first32 &= 0xffffffff;
 
         // combine components
+        // return u128((first32 << 32) | second32, (third32 << 32) | fourth32);
         return u128((first32 << 32) | second32, (third32 << 32) | fourth32);
     }
 

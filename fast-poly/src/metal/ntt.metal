@@ -53,6 +53,20 @@ NttSingle(device FieldT *vals [[ buffer(0) ]],
     vals[target_index + input_step] = p - q;
 }
 
+// Performs bit reversal 
+template<typename FieldT> kernel void
+BitReverse(device FieldT *vals [[ buffer(0) ]],
+    unsigned i = global_tid * 2 + shift;
+    unsigned ri = reverse_bits(i) >> (32 - log2_floor(N));
+
+    if (i < ri) {
+        // Swap positions
+        FieldT tmp = vals[i];
+        vals[i] = vals[ri];
+        vals[ri] = tmp;
+    }
+}
+
 // Performs a single itteration of Cooley-Tuckey radix-2 decimation-in-frequency (DIF)
 //
 // Inverse number theory transform. Opperates on input `vals` in bit-reversed order and
@@ -164,6 +178,10 @@ NttMultiple<FP270497897142230380135924736767050121217>(
 // - 64 bit prime field (2^64−2^32+1 = 18446744069414584321)
 // - Polygon filed (usesed by Miden and Zero)
 // - Prime has many nice properties
+template [[ host_name("bit_reverse_fp18446744069414584321") ]] kernel void
+BitReverse<FP18446744069414584321>(
+        device FP18446744069414584321*,
+        unsigned);
 template [[ host_name("ntt_single_fp18446744069414584321") ]] kernel void
 NttSingle<FP18446744069414584321>(
         device FP18446744069414584321*,
