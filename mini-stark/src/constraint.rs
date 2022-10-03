@@ -8,8 +8,6 @@ use std::ops::Mul;
 use std::ops::Neg;
 use std::ops::Sub;
 
-mod helper;
-
 /// A constraint element represents a column in the current or next cycle
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Element {
@@ -28,7 +26,7 @@ impl<F: GpuField> From<Element> for Constraint<F> {
 
 /// An interface for types that can symbolically represent a column of an
 /// execution trace
-trait Column {
+pub trait Column {
     /// Get the execution trace column index
     fn index(&self) -> usize;
 
@@ -75,6 +73,12 @@ impl Variables {
             }
         }
         combined_variables
+    }
+}
+
+impl Default for Variables {
+    fn default() -> Self {
+        Self(Default::default())
     }
 }
 
@@ -217,6 +221,12 @@ impl<F: GpuField> Constraint<F> {
     }
 }
 
+impl<F: GpuField> From<F> for Constraint<F> {
+    fn from(element: F) -> Self {
+        Constraint(vec![Term::new(element, Variables::default())])
+    }
+}
+
 impl<F: GpuField> Zero for Constraint<F> {
     /// Returns the zero polynomial.
     fn zero() -> Self {
@@ -237,6 +247,33 @@ impl<F: GpuField> Mul<Constraint<F>> for Constraint<F> {
     }
 }
 
+impl<F: GpuField> Mul<&Constraint<F>> for &Constraint<F> {
+    type Output = Constraint<F>;
+
+    fn mul(self, rhs: &Constraint<F>) -> Self::Output {
+        Constraint::naive_mul(self, rhs)
+    }
+}
+
+impl<F: GpuField> Mul<F> for Constraint<F> {
+    type Output = Constraint<F>;
+
+    fn mul(mut self, rhs: F) -> Self::Output {
+        for Term(coeff, _) in &mut self.0 {
+            *coeff *= rhs;
+        }
+        self
+    }
+}
+
+impl<F: GpuField> Mul<&F> for &Constraint<F> {
+    type Output = Constraint<F>;
+
+    fn mul(self, rhs: &F) -> Self::Output {
+        self.clone() * *rhs
+    }
+}
+
 impl<F: GpuField> Add<&Constraint<F>> for &Constraint<F> {
     type Output = Constraint<F>;
 
@@ -249,7 +286,15 @@ impl<F: GpuField> Add<Constraint<F>> for Constraint<F> {
     type Output = Constraint<F>;
 
     fn add(self, rhs: Constraint<F>) -> Self::Output {
-        Self::add(&self, &rhs)
+        Constraint::add(&self, &rhs)
+    }
+}
+
+impl<F: GpuField> Add<F> for Constraint<F> {
+    type Output = Constraint<F>;
+
+    fn add(self, rhs: F) -> Self::Output {
+        Constraint::add(&self, &rhs.into())
     }
 }
 
@@ -278,7 +323,7 @@ impl<F: GpuField> Sub<Constraint<F>> for Constraint<F> {
     type Output = Constraint<F>;
 
     fn sub(self, rhs: Constraint<F>) -> Self::Output {
-        self + rhs.neg()
+        Constraint::add(&self, &rhs.neg())
     }
 }
 
@@ -286,42 +331,67 @@ impl<F: GpuField> Sub<&Constraint<F>> for &Constraint<F> {
     type Output = Constraint<F>;
 
     fn sub(self, rhs: &Constraint<F>) -> Self::Output {
-        self + &rhs.neg()
+        Constraint::add(self, &rhs.neg())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ark_ff_optimized::fp64::Fp;
+impl<F: GpuField> Sub<&Constraint<F>> for Constraint<F> {
+    type Output = Constraint<F>;
 
-    /// Processor columns
-    #[derive(Clone, Copy)]
-    enum Processor {
-        Cycle,
-        Mp,
-        MemVal,
-        Dummy,
-        Permutation,
+    fn sub(self, rhs: &Constraint<F>) -> Self::Output {
+        Constraint::add(&self, &rhs.neg())
+    }
+}
+
+impl<F: GpuField> Sub<F> for Constraint<F> {
+    type Output = Constraint<F>;
+
+    fn sub(self, rhs: F) -> Self::Output {
+        Constraint::add(&self, &rhs.neg().into())
+    }
+}
+
+impl<F: GpuField> Sub<F> for &Constraint<F> {
+    type Output = Constraint<F>;
+
+    fn sub(self, rhs: F) -> Self::Output {
+        Constraint::add(self, &rhs.neg().into())
+    }
+}
+
+impl<F: GpuField> Sub<&F> for &Constraint<F> {
+    type Output = Constraint<F>;
+
+    fn sub(self, rhs: &F) -> Self::Output {
+        Constraint::add(self, &rhs.neg().into())
+    }
+}
+
+pub mod helper {
+    use super::Constraint;
+    use fast_poly::GpuField;
+    use std::borrow::Borrow;
+
+    /// Returns zero only when a == b.
+    pub fn are_eq<F: GpuField>(
+        a: impl Borrow<Constraint<F>>,
+        b: impl Borrow<Constraint<F>>,
+    ) -> Constraint<F> {
+        a.borrow() - b.borrow()
     }
 
-    impl Column for Processor {
-        fn index(&self) -> usize {
-            match self {
-                Self::Cycle => 0,
-                Self::Mp => 1,
-                Self::MemVal => 2,
-                Self::Dummy => 3,
-                Self::Permutation => 4,
-            }
-        }
+    /// Returns zero only when a == zero.
+    pub fn is_zero<F: GpuField>(a: impl Borrow<Constraint<F>>) -> Constraint<F> {
+        a.borrow().clone()
     }
 
-    #[test]
-    fn general_test() {
-        use Processor::*;
-        let curr_cycle = Cycle.curr();
-        let next_cycle = Mp.next();
-        let constraint: Constraint<Fp> = curr_cycle * next_cycle + MemVal.curr();
+    /// Returns zero only when a == zero.
+    pub fn is_one<F: GpuField>(a: impl Borrow<Constraint<F>>) -> Constraint<F> {
+        a.borrow() - F::one()
+    }
+
+    /// Returns zero only when a = zero || a == one.
+    pub fn is_binary<F: GpuField>(a: impl Borrow<Constraint<F>>) -> Constraint<F> {
+        a.borrow() * a.borrow() - a.borrow()
     }
 }
