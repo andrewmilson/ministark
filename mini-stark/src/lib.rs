@@ -7,17 +7,41 @@ use constraints::Constraint;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
 
-/// Matrix with values stored in column major.
-pub struct Columns<F>(Vec<Vec<F, PageAlignedAllocator>>);
+/// Matrix is an array of columns.
+pub struct Matrix<F>(Vec<Vec<F, PageAlignedAllocator>>);
 
-trait Trace {
+impl<F: GpuField> Matrix<F> {
+    fn num_rows(&self) -> usize {
+        if self.0.is_empty() {
+            return 0;
+        }
+        // Check all columns have the same length
+        let expected_len = self.0[0].len();
+        assert!(self.0.iter().all(|col| col.len() == expected_len));
+        expected_len
+    }
+
+    fn num_cols(&self) -> usize {
+        self.0.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.num_rows() == 0
+    }
+}
+
+pub trait Trace {
     type BaseField: GpuField;
 
     /// Returns the number of rows in this trace.
     fn len(&self) -> usize;
 
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns a reference to the base trace columns.
-    fn base_columns(&self) -> &Columns<Self::BaseField>;
+    fn base_columns(&self) -> &Matrix<Self::BaseField>;
 
     /// Builds and returns the extension columns
     /// These columns require auxiliary random elements to be constructed.
@@ -25,7 +49,7 @@ trait Trace {
     fn build_extension_columns(
         &self,
         challenges: &[Self::BaseField],
-    ) -> Option<Columns<Self::BaseField>>;
+    ) -> Option<Matrix<Self::BaseField>>;
 }
 
 // TODO: include ability to specify:

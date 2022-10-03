@@ -1,3 +1,5 @@
+//! Implementation is adapted from the multivariable polynomial in arkworks.
+
 use ark_ff::Zero;
 use fast_poly::GpuField;
 use std::cmp::Ordering;
