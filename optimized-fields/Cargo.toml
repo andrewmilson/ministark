@@ -10,22 +10,22 @@ readme = "README.md"
 license = "MIT"
 
 [dependencies]
-ark-ff = { git = "https://github.com/andrewmilson/algebra", features = ["asm"] }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra", features = ["asm"] }
 rand = "0.8.5"
 
 [dev-dependencies]
 rand_pcg = "0.3.1"
-ark-algebra-test-templates = { git = "https://github.com/andrewmilson/algebra", features = ["std"] }
-ark-algebra-bench-templates = { git = "https://github.com/andrewmilson/algebra" }
+ark-algebra-test-templates = { git = "https://github.com/arkworks-rs/algebra", features = ["std"] }
+ark-algebra-bench-templates = { git = "https://github.com/arkworks-rs/algebra" }
 ark-std = { git = "https://github.com/arkworks-rs/std" }
-ark-serialize = { git = "https://github.com/andrewmilson/algebra" }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 
 [patch.crates-io]
 ark-std = { git = "https://github.com/arkworks-rs/std" }
-ark-ff = { git = "https://github.com/andrewmilson/algebra" }
-ark-serialize = { git = "https://github.com/andrewmilson/algebra" }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 ark-algebra-bench-templates = { git = "https://github.com/arkworks-rs/algebra", features = ["std"] }
-ark-algebra-test-templates = { git = "https://github.com/andrewmilson/algebra" }
+ark-algebra-test-templates = { git = "https://github.com/arkworks-rs/algebra" }
 
 [[bench]]
 name = "fp64"

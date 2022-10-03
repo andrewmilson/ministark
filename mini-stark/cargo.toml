@@ -1,0 +1,12 @@
+[package]
+name = "mini-stark"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
+ark-ff-optimized = { path = "../optimized-fields" }
+fast-poly = { path = "../fast-poly" }
+
+[patch.crates-io]
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }

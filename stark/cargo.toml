@@ -10,14 +10,14 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rand = "0.8.5"
 ark-crypto-primitives = "0.3.0"
-ark-ff = { git = "https://github.com/andrewmilson/algebra" }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
 ark-ff-optimized = { path = "../optimized-fields" }
 num-traits = "0.2.14"
-ark-poly = { git = "https://github.com/andrewmilson/algebra" }
-ark-serialize = { git = "https://github.com/andrewmilson/algebra" }
+ark-poly = { git = "https://github.com/arkworks-rs/algebra" }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 
 [patch.crates-io]
-ark-ff = { git = "https://github.com/andrewmilson/algebra" }
-ark-poly = { git = "https://github.com/andrewmilson/algebra" }
-ark-serialize = { git = "https://github.com/andrewmilson/algebra" }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
+ark-poly = { git = "https://github.com/arkworks-rs/algebra" }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 ark-ff-optimized = { path = "../optimized-fields" }

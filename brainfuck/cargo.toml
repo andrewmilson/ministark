@@ -8,13 +8,13 @@ legacy-algebra = { path = "../legacy-algebra" }
 num-bigint = { version = "0.4", default-features = false }
 rand = "0.8.5"
 num-traits = "0.2.14"
-ark-ff = { git = "https://github.com/andrewmilson/algebra" }
-ark-poly = { git = "https://github.com/andrewmilson/algebra" }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
+ark-poly = { git = "https://github.com/arkworks-rs/algebra" }
 
 [dev-dependencies]
 ark-ff-optimized = { path = "../optimized-fields" }
 
 [patch.crates-io]
-ark-ff = { git = "https://github.com/andrewmilson/algebra" }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
 ark-ff-optimized = { path = "../optimized-fields" }
-ark-poly = { git = "https://github.com/andrewmilson/algebra" }
+ark-poly = { git = "https://github.com/arkworks-rs/algebra" }
