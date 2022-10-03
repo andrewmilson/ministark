@@ -1,6 +1,7 @@
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
+use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
 use ark_poly::Evaluations;
 use ark_poly::GeneralEvaluationDomain;
@@ -264,7 +265,7 @@ where
         }
 
         let eval_domain = codewords[0].domain();
-        let interp_domain = GeneralEvaluationDomain::<F>::new_subgroup(self.height()).unwrap();
+        let interp_domain = Radix2EvaluationDomain::<F>::new_subgroup(self.height()).unwrap();
         let last_interp_x = interp_domain.element(self.height() - 1);
         // evaluations of the polynomial (x - o^(n-1)). Note that o^(n-1) is the
         // inverse of `o`.

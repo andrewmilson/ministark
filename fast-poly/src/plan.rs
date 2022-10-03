@@ -7,6 +7,8 @@ use crate::utils::bit_reverse;
 use crate::utils::buffer_no_copy;
 use crate::FftDirection;
 use crate::GpuField;
+use ark_poly::EvaluationDomain;
+use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 use std::time::Instant;
@@ -44,6 +46,12 @@ impl<F: GpuField> Fft<F> {
             .encode(command_buffer, &mut input_buffer);
         command_buffer.commit();
         command_buffer.wait_until_completed();
+    }
+}
+
+impl<F: GpuField> From<Radix2EvaluationDomain<F>> for Fft<F> {
+    fn from(domain: Radix2EvaluationDomain<F>) -> Self {
+        PLANNER.plan_fft(domain.size())
     }
 }
 

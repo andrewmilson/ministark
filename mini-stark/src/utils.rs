@@ -1,5 +1,8 @@
 use crate::Column;
+use ark_poly::domain::Radix2EvaluationDomain;
+use ark_poly::EvaluationDomain;
 use fast_poly::allocator::PageAlignedAllocator;
+use fast_poly::plan::Fft;
 use fast_poly::GpuField;
 use std::ops::Index;
 use std::ops::IndexMut;
@@ -30,6 +33,22 @@ impl<F: GpuField> Matrix<F> {
 
     pub fn is_empty(&self) -> bool {
         self.num_rows() == 0
+    }
+
+    pub fn interpolate_columns(&self) -> Self {
+        let n = self.num_rows();
+        assert!(n.is_power_of_two());
+        let domain = Radix2EvaluationDomain::<F>::new(n).unwrap();
+        let mut fft = Fft::<F>::from(domain);
+        // TODO: turn into map once allocator API more stable
+        let mut columns = Vec::new();
+        for evaluations in &self.0 {
+            let mut column = Vec::with_capacity_in(n, PageAlignedAllocator);
+            column.extend_from_slice(evaluations);
+            fft.process(&mut column);
+            columns.push(column);
+        }
+        Matrix::new(columns)
     }
 }
 

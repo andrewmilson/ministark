@@ -3,6 +3,7 @@
 mod air;
 pub mod constraint;
 mod prover;
+mod random;
 mod trace;
 mod utils;
 

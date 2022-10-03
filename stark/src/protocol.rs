@@ -9,19 +9,6 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 
-// impl<T: CanonicalSerialize> CanonicalSerialize for UncompressedUnchecked<T> {
-// 	// always invoke `T::serialize_uncompressed()`
-// }
-// impl<T: CanonicalDeserialize> CanonicalDeserialize for
-// UncompressedUnchecked<T> { 	// always invoke
-// `T::deserialize_uncompressed_unchecked()` }
-// impl<T: CanonicalSerialize> serde::Serialize for UncompressedUnchecked<T> {
-// 	// always invoke `CanonicalSerialize::serialize_uncompressed()`
-// }
-// impl<T: CanonicalDeserialize> serde::DeserializeOwned for
-// UncompressedUnchecked<T> { 	// always invoke
-// `CanonicalDeserialize::deserialize_uncompressed_unchecked()` }
-
 #[derive(Debug, Clone)]
 pub enum ProofObject<F>
 where

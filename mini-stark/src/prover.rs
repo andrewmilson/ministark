@@ -1,8 +1,12 @@
+use crate::random::PublicCoin;
 use crate::Air;
 use crate::Trace;
 use crate::TraceInfo;
+use ark_poly::domain::Radix2EvaluationDomain;
+use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::GpuField;
+use sha2::Sha256;
 
 // TODO: include ability to specify:
 // - base field
@@ -67,8 +71,12 @@ pub trait Prover {
         pub_inputs
             .serialize_compressed(&mut pub_input_bytes)
             .expect("couldn't serialize public inputs");
+        let mut public_coin = PublicCoin::<Sha256>::new(&pub_input_bytes);
 
         let air = Self::Air::new(trace_info.clone(), pub_inputs, options);
+
+        let base_columns = trace.base_columns();
+        let base_polynomials = base_columns.interpolate_columns();
 
         Ok(Proof {
             options,

@@ -13,6 +13,7 @@ use mini_stark::ProofOptions;
 use mini_stark::Prover;
 use mini_stark::Trace;
 use mini_stark::TraceInfo;
+use std::time::Instant;
 
 enum Fib {
     FirstCol,
@@ -133,9 +134,11 @@ fn gen_trace(len: usize) -> FibTrace {
 }
 
 fn main() {
+    let now = Instant::now();
     let options = ProofOptions::new(32, 4);
     let prover = FibProver::new(options);
-    let trace = gen_trace(32);
+    let trace = gen_trace(4194304);
     let proof = prover.generate_proof(trace);
+    println!("Runtime: {:?}", now.elapsed());
     println!("Result: {:?}", proof.unwrap());
 }
