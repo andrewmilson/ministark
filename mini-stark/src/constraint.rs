@@ -384,6 +384,14 @@ pub mod helper {
     use fast_poly::GpuField;
     use std::borrow::Borrow;
 
+    // /// Returns zero only when a == b.
+    // pub fn are_eq<F: GpuField>(
+    //     a: impl Borrow<Constraint<F>>,
+    //     b: impl Borrow<Constraint<F>>,
+    // ) -> Constraint<F> {
+    //     a.borrow() - b.borrow()
+    // }
+
     /// Returns zero only when a == b.
     pub fn are_eq<F: GpuField>(
         a: impl Borrow<Constraint<F>>,

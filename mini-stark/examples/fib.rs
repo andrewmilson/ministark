@@ -73,15 +73,10 @@ impl Air for FibAir {
     }
 
     fn transition_constraints(&self) -> Vec<Constraint<Self::Fp>> {
+        use Fib::*;
         vec![
-            are_eq(
-                Fib::FirstCol.curr() + Fib::SecondCol.curr(),
-                Fib::FirstCol.next(),
-            ),
-            are_eq(
-                Fib::FirstCol.next() + Fib::SecondCol.curr(),
-                Fib::SecondCol.next(),
-            ),
+            are_eq(FirstCol.curr() + SecondCol.curr(), FirstCol.next()),
+            are_eq(FirstCol.next() + SecondCol.curr(), SecondCol.next()),
         ]
     }
 
