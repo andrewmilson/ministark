@@ -1,6 +1,7 @@
 #![feature(allocator_api)]
 
 mod air;
+mod channel;
 pub mod constraint;
 mod prover;
 mod random;

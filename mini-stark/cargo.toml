@@ -12,6 +12,8 @@ ark-poly = { git = "https://github.com/arkworks-rs/algebra" }
 ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 ark-ff-optimized = { path = "../optimized-fields" }
 fast-poly = { path = "../fast-poly" }
+anyhow = "1.0.65"
+thiserror = "1.0.37"
 
 [patch.crates-io]
 ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }

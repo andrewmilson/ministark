@@ -1,12 +1,15 @@
 use crate::Matrix;
+use ark_serialize::CanonicalDeserialize;
+use ark_serialize::CanonicalSerialize;
 use fast_poly::GpuField;
 
 /// Public metadata about a trace.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct TraceInfo {
     num_base_columns: usize,
     num_extension_columns: usize,
     trace_len: usize,
+    // TODO: want to change this to auxiliary data
     meta: Vec<u8>,
 }
 
@@ -44,21 +47,18 @@ pub trait Trace {
     const NUM_BASE_COLUMNS: usize;
     const NUM_EXTENSION_COLUMNS: usize = 0;
 
-    type BaseField: GpuField;
+    type Fp: GpuField;
 
     /// Returns the number of rows in this trace.
     fn len(&self) -> usize;
 
     /// Returns a reference to the base trace columns.
-    fn base_columns(&self) -> &Matrix<Self::BaseField>;
+    fn base_columns(&self) -> &Matrix<Self::Fp>;
 
     /// Builds and returns the extension columns
     /// These columns require auxiliary random elements to be constructed.
     /// Returns None if there are no columns that require this.
-    fn build_extension_columns(
-        &self,
-        challenges: &[Self::BaseField],
-    ) -> Option<Matrix<Self::BaseField>> {
+    fn build_extension_columns(&self, challenges: &[Self::Fp]) -> Option<Matrix<Self::Fp>> {
         None
     }
 

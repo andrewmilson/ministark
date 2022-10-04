@@ -32,7 +32,7 @@ impl Column for Fib {
 struct FibTrace(Matrix<Fp>);
 
 impl Trace for FibTrace {
-    type BaseField = Fp;
+    type Fp = Fp;
 
     const NUM_BASE_COLUMNS: usize = 2;
 
@@ -41,14 +41,11 @@ impl Trace for FibTrace {
         self.0.num_rows()
     }
 
-    fn base_columns(&self) -> &Matrix<Self::BaseField> {
+    fn base_columns(&self) -> &Matrix<Self::Fp> {
         &self.0
     }
 
-    fn build_extension_columns(
-        &self,
-        challenges: &[Self::BaseField],
-    ) -> Option<Matrix<Self::BaseField>> {
+    fn build_extension_columns(&self, challenges: &[Self::Fp]) -> Option<Matrix<Self::Fp>> {
         todo!()
     }
 }
@@ -60,7 +57,7 @@ struct FibAir {
 }
 
 impl Air for FibAir {
-    type BaseField = Fp;
+    type Fp = Fp;
     type PublicInputs = Fp;
 
     fn new(trace_info: TraceInfo, public_input: Fp, options: ProofOptions) -> Self {
@@ -71,11 +68,11 @@ impl Air for FibAir {
         }
     }
 
-    fn boundary_constraints(&self) -> Vec<Constraint<Self::BaseField>> {
+    fn boundary_constraints(&self) -> Vec<Constraint<Self::Fp>> {
         vec![is_one(Fib::FirstCol.curr()), is_one(Fib::SecondCol.curr())]
     }
 
-    fn transition_constraints(&self) -> Vec<Constraint<Self::BaseField>> {
+    fn transition_constraints(&self) -> Vec<Constraint<Self::Fp>> {
         vec![
             are_eq(
                 Fib::FirstCol.curr() + Fib::SecondCol.curr(),
@@ -88,7 +85,7 @@ impl Air for FibAir {
         ]
     }
 
-    fn terminal_constraints(&self) -> Vec<Constraint<Self::BaseField>> {
+    fn terminal_constraints(&self) -> Vec<Constraint<Self::Fp>> {
         vec![Fib::SecondCol.curr() - self.result]
     }
 
@@ -100,7 +97,7 @@ impl Air for FibAir {
 struct FibProver(ProofOptions);
 
 impl Prover for FibProver {
-    type BaseField = Fp;
+    type Fp = Fp;
     type Air = FibAir;
     type Trace = FibTrace;
 

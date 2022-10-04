@@ -1,9 +1,12 @@
+use crate::channel::ProverChannel;
 use crate::random::PublicCoin;
 use crate::Air;
+use crate::Matrix;
 use crate::Trace;
 use crate::TraceInfo;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
+use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::GpuField;
 use sha2::Sha256;
@@ -15,7 +18,7 @@ use sha2::Sha256;
 // - determine if grinding factor is appropriate
 // - fri folding factor
 // - fri max remainder size
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProofOptions {
     pub num_queries: u8,
     pub expansion_factor: u8,
@@ -50,9 +53,9 @@ pub enum ProvingError {
 }
 
 pub trait Prover {
-    type BaseField: GpuField;
-    type Air: Air<BaseField = Self::BaseField>;
-    type Trace: Trace<BaseField = Self::BaseField>;
+    type Fp: GpuField;
+    type Air: Air<Fp = Self::Fp>;
+    type Trace: Trace<Fp = Self::Fp>;
 
     fn new(options: ProofOptions) -> Self;
 
@@ -60,20 +63,21 @@ pub trait Prover {
 
     fn options(&self) -> ProofOptions;
 
+    fn build_trace_commitment(
+        &self,
+        trace: &Matrix<Self::Fp>,
+        domain: Radix2EvaluationDomain<Self::Fp>,
+    ) -> Matrix<Self::Fp> {
+        let trace_lde = trace.evaluate(domain);
+        trace_lde
+    }
+
     fn generate_proof(&self, trace: Self::Trace) -> Result<Proof, ProvingError> {
         let options = self.options();
         let trace_info = trace.info();
         let pub_inputs = self.get_pub_inputs(&trace);
-
-        // Serialize public inputs.
-        // These will be the seed for the public coin protocol.
-        let mut pub_input_bytes = Vec::new();
-        pub_inputs
-            .serialize_compressed(&mut pub_input_bytes)
-            .expect("couldn't serialize public inputs");
-        let mut public_coin = PublicCoin::<Sha256>::new(&pub_input_bytes);
-
         let air = Self::Air::new(trace_info.clone(), pub_inputs, options);
+        let channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
         let base_columns = trace.base_columns();
         let base_polynomials = base_columns.interpolate_columns();

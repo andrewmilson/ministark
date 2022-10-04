@@ -1,3 +1,4 @@
+use ark_ff::Field;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
@@ -27,6 +28,10 @@ impl<D: Digest> PublicCoin<D> {
         hasher.update(data);
         self.seed = hasher.finalize();
         self.counter = 0;
+    }
+
+    pub fn draw<F: Field>(&mut self) -> F {
+        F::rand(&mut self.draw_rng())
     }
 
     pub fn draw_rng(&mut self) -> ChaCha20Rng {

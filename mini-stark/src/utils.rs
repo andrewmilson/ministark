@@ -39,14 +39,28 @@ impl<F: GpuField> Matrix<F> {
         let n = self.num_rows();
         assert!(n.is_power_of_two());
         let domain = Radix2EvaluationDomain::<F>::new(n).unwrap();
-        let mut fft = Fft::<F>::from(domain);
+        let mut fft = Fft::from(domain);
         // TODO: turn into map once allocator API more stable
         let mut columns = Vec::new();
         for evaluations in &self.0 {
-            let mut column = Vec::with_capacity_in(n, PageAlignedAllocator);
-            column.extend_from_slice(evaluations);
-            fft.process(&mut column);
-            columns.push(column);
+            let mut poly = Vec::with_capacity_in(n, PageAlignedAllocator);
+            poly.extend_from_slice(evaluations);
+            fft.process(&mut poly);
+            columns.push(poly);
+        }
+        Matrix::new(columns)
+    }
+
+    pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
+        let n = domain.size();
+        let mut fft = Fft::from(domain);
+        let mut columns = Vec::new();
+        for poly in &self.0 {
+            let mut evaluations = Vec::with_capacity_in(n, PageAlignedAllocator);
+            evaluations.extend_from_slice(poly);
+            evaluations.resize(n, F::zero());
+            fft.process(&mut evaluations);
+            columns.push(evaluations);
         }
         Matrix::new(columns)
     }
