@@ -1,5 +1,7 @@
 use crate::channel::ProverChannel;
+use crate::merkle::MerkleTree;
 use crate::random::PublicCoin;
+use crate::utils::Timer;
 use crate::Air;
 use crate::Matrix;
 use crate::Trace;
@@ -8,6 +10,7 @@ use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use fast_poly::plan::Fft;
 use fast_poly::GpuField;
 use sha2::Sha256;
 
@@ -21,14 +24,14 @@ use sha2::Sha256;
 #[derive(Debug, Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProofOptions {
     pub num_queries: u8,
-    pub expansion_factor: u8,
+    pub blowup_factor: u8,
 }
 
 impl ProofOptions {
-    pub fn new(num_queries: u8, expansion_factor: u8) -> Self {
+    pub fn new(num_queries: u8, blowup_factor: u8) -> Self {
         ProofOptions {
             num_queries,
-            expansion_factor,
+            blowup_factor,
         }
     }
 }
@@ -63,24 +66,41 @@ pub trait Prover {
 
     fn options(&self) -> ProofOptions;
 
+    /// Return value is of the form `(low_degree_extension, polynomials,
+    /// merkle_tree)`
     fn build_trace_commitment(
         &self,
         trace: &Matrix<Self::Fp>,
-        domain: Radix2EvaluationDomain<Self::Fp>,
-    ) -> Matrix<Self::Fp> {
-        let trace_lde = trace.evaluate(domain);
-        trace_lde
+        lde_domain: Radix2EvaluationDomain<Self::Fp>,
+    ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
+        let trace_polys = {
+            let _timer = Timer::new("trace interpolation");
+            trace.interpolate_columns()
+        };
+        let trace_lde = {
+            let _timer = Timer::new("trace low degree extension");
+            trace_polys.evaluate(lde_domain)
+        };
+        let merkle_tree = {
+            let _timer = Timer::new("trace commitment");
+            trace_lde.commit_to_rows()
+        };
+        (trace_polys, trace_lde, merkle_tree)
     }
 
     fn generate_proof(&self, trace: Self::Trace) -> Result<Proof, ProvingError> {
+        let _timer = Timer::new("proof generation");
+
         let options = self.options();
         let trace_info = trace.info();
         let pub_inputs = self.get_pub_inputs(&trace);
         let air = Self::Air::new(trace_info.clone(), pub_inputs, options);
-        let channel = ProverChannel::<Self::Air, Sha256>::new(&air);
+        let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
-        let base_columns = trace.base_columns();
-        let base_polynomials = base_columns.interpolate_columns();
+        let (base_trace_lde, base_trace_polys, base_trace_lde_tree) =
+            self.build_trace_commitment(trace.base_columns(), air.lde_domain());
+
+        channel.commit_trace(base_trace_lde_tree.root());
 
         Ok(Proof {
             options,

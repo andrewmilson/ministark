@@ -3,6 +3,8 @@
 mod air;
 mod channel;
 pub mod constraint;
+mod domain;
+mod merkle;
 mod prover;
 mod random;
 mod trace;

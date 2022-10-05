@@ -1,11 +1,17 @@
+use crate::merkle::MerkleTree;
 use crate::Column;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
+use digest::Digest;
+use digest::Output;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::Fft;
 use fast_poly::GpuField;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use std::ops::Index;
 use std::ops::IndexMut;
+use std::time::Instant;
 
 /// Matrix is an array of columns.
 pub struct Matrix<F>(Vec<Vec<F, PageAlignedAllocator>>);
@@ -36,33 +42,68 @@ impl<F: GpuField> Matrix<F> {
     }
 
     pub fn interpolate_columns(&self) -> Self {
-        let n = self.num_rows();
-        assert!(n.is_power_of_two());
-        let domain = Radix2EvaluationDomain::<F>::new(n).unwrap();
-        let mut fft = Fft::from(domain);
-        // TODO: turn into map once allocator API more stable
-        let mut columns = Vec::new();
-        for evaluations in &self.0 {
-            let mut poly = Vec::with_capacity_in(n, PageAlignedAllocator);
-            poly.extend_from_slice(evaluations);
-            fft.process(&mut poly);
-            columns.push(poly);
-        }
+        let domain = Radix2EvaluationDomain::<F>::new(self.num_rows()).unwrap();
+        let fft = Fft::from(domain);
+        let columns = self
+            .0
+            .iter()
+            .map(|evaluations| {
+                let mut poly = evaluations.to_vec_in(PageAlignedAllocator);
+                fft.process(&mut poly);
+                poly
+            })
+            .collect();
+        // ark_std::cfg_iter!(self.0)
+        // .map(|evaluations| {
+        //     let mut poly = evaluations.to_vec_in(PageAlignedAllocator);
+        //     fft.process(&mut poly);
+        //     poly
+        // })
+        // .collect();
         Matrix::new(columns)
     }
 
     pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
-        let n = domain.size();
-        let mut fft = Fft::from(domain);
-        let mut columns = Vec::new();
-        for poly in &self.0 {
-            let mut evaluations = Vec::with_capacity_in(n, PageAlignedAllocator);
-            evaluations.extend_from_slice(poly);
-            evaluations.resize(n, F::zero());
-            fft.process(&mut evaluations);
-            columns.push(evaluations);
-        }
+        let fft = {
+            let _timer = Timer::new("FFT eval creation");
+            Fft::from(domain)
+        };
+        let columns = {
+            let _timer = Timer::new("Actual evaluations");
+            self.0
+                .iter()
+                .map(|poly| {
+                    let mut evaluations = poly.to_vec_in(PageAlignedAllocator);
+                    fft.process(&mut evaluations);
+                    evaluations
+                })
+                .collect()
+            // ark_std::cfg_iter!(self.0)
+            //     .map(|poly| {
+            //         let mut evaluations =
+            // poly.to_vec_in(PageAlignedAllocator);         fft.
+            // process(&mut evaluations);         evaluations
+            //     })
+            //     .collect()
+        };
         Matrix::new(columns)
+    }
+
+    pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {
+        let num_rows = self.num_rows();
+        let num_cols = self.num_cols();
+        let mut row_hashes = Vec::with_capacity(num_rows);
+        for row in 0..num_rows {
+            // TODO: move this outside the for loop and use .reset()
+            let mut hasher = D::new();
+            for col in 0..num_cols {
+                let mut bytes = Vec::new();
+                self.0[col][row].serialize_compressed(&mut bytes);
+                hasher.update(&bytes);
+            }
+            row_hashes.push(hasher.finalize())
+        }
+        MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
     }
 }
 
@@ -77,5 +118,23 @@ impl<F: GpuField, C: Column> Index<C> for Matrix<F> {
 impl<F: GpuField, C: Column> IndexMut<C> for Matrix<F> {
     fn index_mut(&mut self, col: C) -> &mut Self::Output {
         &mut self.0[col.index()]
+    }
+}
+
+pub struct Timer<'a> {
+    name: &'a str,
+    start: Instant,
+}
+
+impl<'a> Timer<'a> {
+    pub fn new(name: &'a str) -> Timer<'a> {
+        let start = Instant::now();
+        Timer { name, start }
+    }
+}
+
+impl<'a> Drop for Timer<'a> {
+    fn drop(&mut self) {
+        println!("{} in {:?}", self.name, self.start.elapsed());
     }
 }

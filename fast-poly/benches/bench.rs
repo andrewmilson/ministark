@@ -20,13 +20,13 @@ fn gen_pcg_input<F: Field>(n: usize) -> Vec<F, PageAlignedAllocator> {
     res
 }
 
-#[bench]
-fn fft_2048_vals(b: &mut Bencher) {
-    autoreleasepool(|| {
-        let n = 2048;
-        let mut buf = gen_pcg_input::<Fp>(n);
-        let mut fft = PLANNER.plan_fft(n);
+// #[bench]
+// fn fft_2048_vals(b: &mut Bencher) {
+//     autoreleasepool(|| {
+//         let n = 2048;
+//         let mut buf = gen_pcg_input::<Fp>(n);
+//         let mut fft = PLANNER.plan_fft(n);
 
-        b.iter(|| fft.process(&mut buf));
-    });
-}
+//         b.iter(|| fft.process(&mut buf));
+//     });
+// }

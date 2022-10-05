@@ -6,11 +6,11 @@ use fast_poly::GpuField;
 /// Public metadata about a trace.
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct TraceInfo {
-    num_base_columns: usize,
-    num_extension_columns: usize,
-    trace_len: usize,
+    pub num_base_columns: usize,
+    pub num_extension_columns: usize,
+    pub trace_len: usize,
     // TODO: want to change this to auxiliary data
-    meta: Vec<u8>,
+    pub meta: Vec<u8>,
 }
 
 impl TraceInfo {

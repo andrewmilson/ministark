@@ -4,6 +4,7 @@ use crate::stage::FftGpuStage;
 use crate::stage::Variant;
 use crate::twiddles::fill_twiddles;
 use crate::utils::bit_reverse;
+use crate::utils::buffer_mut_no_copy;
 use crate::utils::buffer_no_copy;
 use crate::FftDirection;
 use crate::GpuField;
@@ -13,25 +14,27 @@ use once_cell::sync::Lazy;
 use std::sync::Arc;
 use std::time::Instant;
 
-pub struct Fft<E> {
+pub struct Fft<F: GpuField> {
+    domain: Radix2EvaluationDomain<F>,
     command_queue: Arc<metal::CommandQueue>,
     direction: FftDirection,
-    twiddles: Vec<E, PageAlignedAllocator>,
+    twiddles: Vec<F, PageAlignedAllocator>,
     grid_dim: metal::MTLSize,
     threadgroup_dim: metal::MTLSize,
     n: usize,
-    stages: Vec<FftGpuStage<E>>,
-    bit_reverse_stage: BitReverseGpuStage<E>,
+    stages: Vec<FftGpuStage<F>>,
+    bit_reverse_stage: BitReverseGpuStage<F>,
 }
 
-// // https://github.com/gfx-rs/metal-rs/issues/40
-// unsafe impl<F: GpuField> Send for Fft<F> {}
-// unsafe impl<F: GpuField> Sync for Fft<F> {}
+// https://github.com/gfx-rs/metal-rs/issues/40
+unsafe impl<F: GpuField> Send for Fft<F> {}
+unsafe impl<F: GpuField> Sync for Fft<F> {}
 
 impl<F: GpuField> Fft<F> {
-    pub fn process(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
-        let mut input_buffer = buffer_no_copy(self.command_queue.device(), buffer);
-        let mut twiddles_buffer = buffer_no_copy(self.command_queue.device(), &mut self.twiddles);
+    pub fn process(&self, buffer: &mut Vec<F, PageAlignedAllocator>) {
+        let start = Instant::now();
+        let mut input_buffer = buffer_mut_no_copy(self.command_queue.device(), buffer);
+        let twiddles_buffer = buffer_no_copy(self.command_queue.device(), &self.twiddles);
         let command_buffer = self.command_queue.new_command_buffer();
         for stage in &self.stages {
             stage.encode(
@@ -39,19 +42,24 @@ impl<F: GpuField> Fft<F> {
                 self.grid_dim,
                 self.threadgroup_dim,
                 &mut input_buffer,
-                &mut twiddles_buffer,
+                &twiddles_buffer,
             );
         }
         self.bit_reverse_stage
             .encode(command_buffer, &mut input_buffer);
+        println!("Preperation: {:?}", start.elapsed());
+        let start = Instant::now();
         command_buffer.commit();
+        println!("Commitment: {:?}", start.elapsed());
+        let start = Instant::now();
         command_buffer.wait_until_completed();
+        println!("Completion: {:?}", start.elapsed());
     }
 }
 
 impl<F: GpuField> From<Radix2EvaluationDomain<F>> for Fft<F> {
     fn from(domain: Radix2EvaluationDomain<F>) -> Self {
-        PLANNER.plan_fft(domain.size())
+        PLANNER.plan_fft(domain)
     }
 }
 
@@ -77,8 +85,8 @@ impl Planner {
         }
     }
 
-    pub fn plan_fft<F: GpuField>(&self, n: usize) -> Fft<F> {
-        assert!(n.is_power_of_two(), "must be a power of two");
+    pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> Fft<F> {
+        let n = domain.size();
         assert!(n >= 2048);
         let direction = FftDirection::Forward;
         let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
@@ -94,6 +102,38 @@ impl Planner {
         bit_reverse(&mut twiddles);
         println!("Reversal: {:?}", start.elapsed());
         let stages = match n {
+            33554432 => vec![
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 128, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 256, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 512, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 1024, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2048, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4096, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8192, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16384, Variant::Multiple),
+            ],
+            8388608 => vec![
+                FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 8, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 16, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 32, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 64, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 128, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 256, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 512, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 1024, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 2048, Variant::Single),
+                FftGpuStage::new(&self.library, direction, n, 4096, Variant::Multiple),
+            ],
             4194304 => vec![
                 FftGpuStage::new(&self.library, direction, n, 1, Variant::Single),
                 FftGpuStage::new(&self.library, direction, n, 2, Variant::Single),
@@ -206,6 +246,7 @@ impl Planner {
         };
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);
         Fft {
+            domain,
             command_queue: self.command_queue.clone(),
             grid_dim,
             threadgroup_dim,

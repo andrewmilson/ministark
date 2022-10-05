@@ -89,7 +89,7 @@ impl<E: GpuField> FftGpuStage<E> {
         grid_dim: metal::MTLSize,
         threadgroup_dim: metal::MTLSize,
         input_buffer: &mut metal::BufferRef,
-        twiddles_buffer: &mut metal::BufferRef,
+        twiddles_buffer: &metal::BufferRef,
     ) {
         let command_encoder = command_buffer.new_compute_command_encoder();
         command_encoder.set_compute_pipeline_state(&self.pipeline);

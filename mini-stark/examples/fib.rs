@@ -68,6 +68,14 @@ impl Air for FibAir {
         }
     }
 
+    fn options(&self) -> &ProofOptions {
+        &self.options
+    }
+
+    fn pub_inputs(&self) -> &Self::PublicInputs {
+        &self.result
+    }
+
     fn boundary_constraints(&self) -> Vec<Constraint<Self::Fp>> {
         vec![is_one(Fib::FirstCol.curr()), is_one(Fib::SecondCol.curr())]
     }
@@ -129,7 +137,7 @@ fn main() {
     let now = Instant::now();
     let options = ProofOptions::new(32, 4);
     let prover = FibProver::new(options);
-    let trace = gen_trace(4194304);
+    let trace = gen_trace(2097152);
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());
     println!("Result: {:?}", proof.unwrap());

@@ -121,7 +121,7 @@ FftMultiple(device FieldT *vals [[ buffer(0) ]],
         shared_array[global_tid] = vals[global_tid + group_id * (N / NUM_BOXES)];
     }
 
-#pragma unroll
+// #pragma unroll
     for (unsigned boxes = NUM_BOXES; boxes < N; boxes *= 2) {
         unsigned input_step = (N / boxes) / 2;
 

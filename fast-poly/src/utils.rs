@@ -18,6 +18,18 @@ pub fn bit_reverse<T>(v: &mut [T]) {
 
 pub fn buffer_no_copy<T: Sized>(
     device: &metal::DeviceRef,
+    v: &Vec<T, PageAlignedAllocator>,
+) -> metal::Buffer {
+    device.new_buffer_with_bytes_no_copy(
+        v.as_ptr() as *mut std::ffi::c_void,
+        (v.len() * std::mem::size_of::<T>()).try_into().unwrap(),
+        metal::MTLResourceOptions::StorageModeShared,
+        None,
+    )
+}
+
+pub fn buffer_mut_no_copy<T: Sized>(
+    device: &metal::DeviceRef,
     v: &mut Vec<T, PageAlignedAllocator>,
 ) -> metal::Buffer {
     device.new_buffer_with_bytes_no_copy(
