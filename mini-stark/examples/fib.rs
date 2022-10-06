@@ -15,20 +15,6 @@ use mini_stark::Trace;
 use mini_stark::TraceInfo;
 use std::time::Instant;
 
-enum Fib {
-    FirstCol,
-    SecondCol,
-}
-
-impl Column for Fib {
-    fn index(&self) -> usize {
-        match self {
-            Self::FirstCol => 0,
-            Self::SecondCol => 1,
-        }
-    }
-}
-
 struct FibTrace(Matrix<Fp>);
 
 impl Trace for FibTrace {
@@ -77,19 +63,42 @@ impl Air for FibAir {
     }
 
     fn boundary_constraints(&self) -> Vec<Constraint<Self::Fp>> {
-        vec![is_one(Fib::FirstCol.curr()), is_one(Fib::SecondCol.curr())]
+        let v0 = Constraint::from(Fp::one());
+        let v1 = &v0 + &v0;
+        let v2 = &v0 * &v1;
+        let v3 = &v1 * &v2;
+        let v4 = &v2 * &v3;
+        let v5 = &v3 * &v4;
+        let v6 = &v4 * &v5;
+        let v7 = &v5 * &v6;
+
+        vec![
+            are_eq(0.curr(), v0),
+            are_eq(1.curr(), v1),
+            are_eq(2.curr(), v2),
+            are_eq(3.curr(), v3),
+            are_eq(4.curr(), v4),
+            are_eq(5.curr(), v5),
+            are_eq(6.curr(), v6),
+            are_eq(7.curr(), v7),
+        ]
     }
 
     fn transition_constraints(&self) -> Vec<Constraint<Self::Fp>> {
-        use Fib::*;
         vec![
-            are_eq(FirstCol.curr() + SecondCol.curr(), FirstCol.next()),
-            are_eq(FirstCol.next() + SecondCol.curr(), SecondCol.next()),
+            are_eq(0.next(), 6.curr() * 7.curr()),
+            are_eq(1.next(), 7.curr() * 0.next()),
+            are_eq(2.next(), 0.next() * 1.next()),
+            are_eq(3.next(), 1.next() * 2.next()),
+            are_eq(4.next(), 2.next() * 3.next()),
+            are_eq(5.next(), 3.next() * 4.next()),
+            are_eq(6.next(), 4.next() * 5.next()),
+            are_eq(7.next(), 5.next() * 6.next()),
         ]
     }
 
     fn terminal_constraints(&self) -> Vec<Constraint<Self::Fp>> {
-        vec![Fib::SecondCol.curr() - self.result]
+        vec![7.curr() - self.result]
     }
 
     fn trace_info(&self) -> &TraceInfo {
@@ -113,7 +122,7 @@ impl Prover for FibProver {
     }
 
     fn get_pub_inputs(&self, trace: &FibTrace) -> <<Self as Prover>::Air as Air>::PublicInputs {
-        let res = *trace.0[Fib::SecondCol].last().unwrap();
+        let res = *trace.0[7].last().unwrap();
         println!("Pub: {}", res);
         res
     }
@@ -122,22 +131,55 @@ impl Prover for FibProver {
 fn gen_trace(len: usize) -> FibTrace {
     assert!(len.is_power_of_two());
     assert!(len > 8);
+
+    let mut col0 = Vec::new_in(PageAlignedAllocator);
     let mut col1 = Vec::new_in(PageAlignedAllocator);
     let mut col2 = Vec::new_in(PageAlignedAllocator);
-    col1.push(Fp::one());
-    col2.push(Fp::one());
-    for _ in 1..len / 2 {
-        col1.push(*col1.last().unwrap() + col2.last().unwrap());
-        col2.push(*col1.last().unwrap() + col2.last().unwrap());
+    let mut col3 = Vec::new_in(PageAlignedAllocator);
+    let mut col4 = Vec::new_in(PageAlignedAllocator);
+    let mut col5 = Vec::new_in(PageAlignedAllocator);
+    let mut col6 = Vec::new_in(PageAlignedAllocator);
+    let mut col7 = Vec::new_in(PageAlignedAllocator);
+
+    let mut v0 = Fp::one();
+    let mut v1 = v0 + v0;
+    let mut v2 = v0 * v1;
+    let mut v3 = v1 * v2;
+    let mut v4 = v2 * v3;
+    let mut v5 = v3 * v4;
+    let mut v6 = v4 * v5;
+    let mut v7 = v5 * v6;
+
+    for _ in 0..len / 8 {
+        col0.push(v0);
+        col1.push(v1);
+        col2.push(v2);
+        col3.push(v3);
+        col4.push(v4);
+        col5.push(v5);
+        col6.push(v6);
+        col7.push(v7);
+
+        v0 = v6 * v7;
+        v1 = v7 * v0;
+        v2 = v0 * v1;
+        v3 = v1 * v2;
+        v4 = v2 * v3;
+        v5 = v3 * v4;
+        v6 = v4 * v5;
+        v7 = v5 * v6;
     }
-    FibTrace(Matrix::new(vec![col1, col2]))
+
+    FibTrace(Matrix::new(vec![
+        col0, col1, col2, col3, col4, col5, col6, col7,
+    ]))
 }
 
 fn main() {
     let now = Instant::now();
     let options = ProofOptions::new(32, 4);
     let prover = FibProver::new(options);
-    let trace = gen_trace(2097152);
+    let trace = gen_trace(1048576);
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());
     println!("Result: {:?}", proof.unwrap());

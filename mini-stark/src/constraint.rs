@@ -41,6 +41,12 @@ pub trait Column {
     }
 }
 
+impl Column for usize {
+    fn index(&self) -> usize {
+        *self
+    }
+}
+
 /// Represents the group of variables within a constraint polynomial term.
 /// Each variable is of the form `(element, power)`.
 #[derive(Clone, PartialEq, Eq, Default)]
