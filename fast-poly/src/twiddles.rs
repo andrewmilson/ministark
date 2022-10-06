@@ -49,7 +49,6 @@ macro_rules! batch_iter_mut {
 ///
 /// [Inverse](FftDirection::Inverse) twiddles are normalized by `1 / n`.
 pub fn fill_twiddles<F: FftField>(dst: &mut [F], n: usize, direction: FftDirection) {
-    assert!(n.is_power_of_two(), "must be a power of two");
     let n = n as u64;
     let root = F::get_root_of_unity(n).unwrap();
     let mut norm_factor = if direction == FftDirection::Inverse {

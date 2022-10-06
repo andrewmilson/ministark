@@ -69,12 +69,12 @@ BitReverse(device FieldT *vals [[ buffer(0) ]],
 
 // Performs bit reversal 
 template<typename FieldT> kernel void
-CosetScale(device FieldT *vals [[ buffer(0) ]],
-        constant FieldT *scale_factors [[ buffer(1) ]],
+MulAssign(device FieldT *lhs_vals [[ buffer(0) ]],
+        constant FieldT *rhs_vals [[ buffer(1) ]],
         unsigned i [[ thread_position_in_grid ]]) {
-    FieldT val = vals[i];
-    FieldT factor = scale_factors[i];
-    vals[i] = val * factor;
+    FieldT lhs = lhs_vals[i];
+    FieldT rhs = rhs_vals[i];
+    lhs_vals[i] = lhs * rhs;
 }
 
 // Performs a single itteration of Cooley-Tuckey radix-2 decimation-in-frequency (DIF)
@@ -192,8 +192,8 @@ template [[ host_name("bit_reverse_fp18446744069414584321") ]] kernel void
 BitReverse<FP18446744069414584321>(
         device FP18446744069414584321*,
         unsigned);
-template [[ host_name("coset_scale_fp18446744069414584321") ]] kernel void
-CosetScale<FP18446744069414584321>(
+template [[ host_name("mul_assign_fp18446744069414584321") ]] kernel void
+MulAssign<FP18446744069414584321>(
         device FP18446744069414584321*,
         constant FP18446744069414584321*,
         unsigned);

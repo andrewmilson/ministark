@@ -107,7 +107,7 @@ impl<F: GpuField> FftGpuStage<F> {
     }
 }
 
-pub struct CosetScaleGpuStage<F> {
+pub struct PolyScaleGpuStage<F> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
@@ -115,7 +115,7 @@ pub struct CosetScaleGpuStage<F> {
     _phantom: PhantomData<F>,
 }
 
-impl<F: GpuField> CosetScaleGpuStage<F> {
+impl<F: GpuField> PolyScaleGpuStage<F> {
     pub fn new(
         library: &metal::LibraryRef,
         command_queue: &metal::CommandQueue,
@@ -124,7 +124,7 @@ impl<F: GpuField> CosetScaleGpuStage<F> {
     ) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("coset_scale_{}", F::field_name()), None)
+            .get_function(&format!("mul_assign_{}", F::field_name()), None)
             .unwrap();
         let pipeline = library
             .device()
@@ -139,7 +139,7 @@ impl<F: GpuField> CosetScaleGpuStage<F> {
         let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
-        CosetScaleGpuStage {
+        PolyScaleGpuStage {
             pipeline,
             threadgroup_dim,
             grid_dim,
