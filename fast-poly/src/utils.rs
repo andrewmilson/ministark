@@ -1,4 +1,5 @@
 use crate::allocator::PageAlignedAllocator;
+use metal::CommandQueue;
 
 fn bit_reverse_index(n: usize, i: usize) -> usize {
     assert!(n.is_power_of_two());
@@ -16,6 +17,24 @@ pub fn bit_reverse<T>(v: &mut [T]) {
     }
 }
 
+pub fn copy_to_private_buffer<T: Sized>(
+    command_queue: &metal::CommandQueue,
+    v: &Vec<T, PageAlignedAllocator>,
+) -> metal::Buffer {
+    let device = command_queue.device();
+    let shared_buffer = buffer_no_copy(device, v);
+    let size = shared_buffer.length();
+    let private_buffer = device.new_buffer(size, metal::MTLResourceOptions::StorageModePrivate);
+    let command_buffer = command_queue.new_command_buffer();
+    let blit_command_encoder = command_buffer.new_blit_command_encoder();
+    blit_command_encoder.copy_from_buffer(&shared_buffer, 0, &private_buffer, 0, size);
+    blit_command_encoder.end_encoding();
+    command_buffer.commit();
+    command_buffer.wait_until_completed();
+    private_buffer
+}
+
+/// WARNING: keep the original data around or it will be freed.
 pub fn buffer_no_copy<T: Sized>(
     device: &metal::DeviceRef,
     v: &Vec<T, PageAlignedAllocator>,
@@ -28,6 +47,7 @@ pub fn buffer_no_copy<T: Sized>(
     )
 }
 
+/// WARNING: keep the original data around or it will be freed.
 pub fn buffer_mut_no_copy<T: Sized>(
     device: &metal::DeviceRef,
     v: &mut Vec<T, PageAlignedAllocator>,

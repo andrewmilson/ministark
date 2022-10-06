@@ -4,7 +4,10 @@ use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff_optimized::fp64::Fp;
 use ark_poly::domain::Radix2EvaluationDomain;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
+use ark_poly::Polynomial;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::Fft;
 use fast_poly::plan::Planner;
@@ -25,47 +28,26 @@ fn gen_pcg_input<F: Field>(n: usize) -> Vec<F, PageAlignedAllocator> {
 }
 
 #[test]
-fn fft_2048_vals() {
+fn fft() {
     autoreleasepool(|| {
-        let domain = Radix2EvaluationDomain::new(2048).unwrap();
-        let mut input = gen_pcg_input::<Fp>(domain.size());
-        let now = Instant::now();
-        let mut expected = domain.fft(&input);
-        println!("Control fft time: {:?}", now.elapsed());
+        let domains = [
+            Radix2EvaluationDomain::new(2048).unwrap(),
+            Radix2EvaluationDomain::new(8192).unwrap(),
+            Radix2EvaluationDomain::new_coset(2048, Fp::GENERATOR).unwrap(),
+            Radix2EvaluationDomain::new_coset(8192, Fp::GENERATOR).unwrap(),
+        ];
 
-        let now = Instant::now();
-        let mut fft = Fft::from(domain);
-        fft.process(&mut input);
-        println!("Gpu fft time: {:?}", now.elapsed());
+        for (i, domain) in domains.into_iter().enumerate() {
+            let poly = DensePolynomial::<Fp>::rand(domain.size() - 1, &mut ark_std::test_rng());
 
-        for (i, (a, b)) in input.iter().zip(&expected).enumerate() {
-            assert_eq!(a, b, "mismatch at index {i}");
+            let mut evals = poly.coeffs.to_vec_in(PageAlignedAllocator);
+            let mut fft = Fft::from(domain);
+            fft.encode(&mut evals);
+            fft.execute();
+
+            for (j, (x, y)) in domain.elements().zip(evals).enumerate() {
+                assert_eq!(poly.evaluate(&x), y, "domain ({i}) mismatch at index {j}");
+            }
         }
-    });
-}
-
-#[test]
-fn fft_524288_vals() {
-    autoreleasepool(|| {
-        let n = 33554432;
-        let domain = Radix2EvaluationDomain::new(n).unwrap();
-        let mut input = gen_pcg_input::<Fp>(domain.size());
-        let mut expected = input.to_vec();
-        let now = Instant::now();
-        domain.fft_in_place(&mut expected);
-        println!("Control fft time: {:?}", now.elapsed());
-
-        let now = Instant::now();
-        let mut fft = Fft::from(domain);
-        fft.process(&mut input);
-        println!("Gpu fft time: {:?}", now.elapsed());
-
-        // for (i, (a, b)) in input.iter().zip(&expected).enumerate().take(10) {
-        //     println!("{}, {}", a, b);
-        // }
-
-        // for (i, (a, b)) in input.iter().zip(&expected).enumerate() {
-        //     assert_eq!(a, b, "mismatch at index {i}");
-        // }
     });
 }

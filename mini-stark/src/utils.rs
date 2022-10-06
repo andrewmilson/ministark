@@ -43,13 +43,13 @@ impl<F: GpuField> Matrix<F> {
 
     pub fn interpolate_columns(&self) -> Self {
         let domain = Radix2EvaluationDomain::<F>::new(self.num_rows()).unwrap();
-        let fft = Fft::from(domain);
+        let mut fft = Fft::from(domain);
         let columns = self
             .0
             .iter()
             .map(|evaluations| {
                 let mut poly = evaluations.to_vec_in(PageAlignedAllocator);
-                fft.process(&mut poly);
+                fft.encode(&mut poly);
                 poly
             })
             .collect();
@@ -60,11 +60,16 @@ impl<F: GpuField> Matrix<F> {
         //     poly
         // })
         // .collect();
+
+        let start = Instant::now();
+        fft.execute();
+        println!("THE Completion: {:?}", start.elapsed());
+
         Matrix::new(columns)
     }
 
     pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
-        let fft = {
+        let mut fft = {
             let _timer = Timer::new("FFT eval creation");
             Fft::from(domain)
         };
@@ -74,7 +79,7 @@ impl<F: GpuField> Matrix<F> {
                 .iter()
                 .map(|poly| {
                     let mut evaluations = poly.to_vec_in(PageAlignedAllocator);
-                    fft.process(&mut evaluations);
+                    fft.encode(&mut evaluations);
                     evaluations
                 })
                 .collect()
@@ -86,6 +91,11 @@ impl<F: GpuField> Matrix<F> {
             //     })
             //     .collect()
         };
+
+        let start = Instant::now();
+        fft.execute();
+        println!("THE Completion: {:?}", start.elapsed());
+
         Matrix::new(columns)
     }
 
