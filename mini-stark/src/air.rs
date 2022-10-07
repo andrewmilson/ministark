@@ -76,4 +76,20 @@ pub trait Air {
     fn terminal_constraints(&self) -> Vec<Constraint<Self::Fp>> {
         Vec::new()
     }
+
+    fn num_challenges(&self) -> usize {
+        let all_constraints = vec![
+            self.boundary_constraints(),
+            self.transition_constraints(),
+            self.terminal_constraints(),
+        ]
+        .concat();
+        // TODO: change get_challenge_indices to a constraint iterator and extract the
+        // constraint with the highest index
+        all_constraints
+            .iter()
+            .flat_map(|constraint| constraint.get_challenge_indices())
+            .max()
+            .unwrap_or(0)
+    }
 }

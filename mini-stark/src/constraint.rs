@@ -1,18 +1,25 @@
 //! Implementation is adapted from the multivariable polynomial in arkworks.
 
+use crate::challenges;
+use crate::challenges::Challenges;
 use ark_ff::Zero;
+use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
+use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::Add;
 use std::ops::Mul;
 use std::ops::Neg;
 use std::ops::Sub;
 
-/// A constraint element represents a column in the current or next cycle
+/// A constraint element can represent several things:
+/// - a column in the current cycle
+/// - a column in the next cycle
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Element {
     Curr(usize),
     Next(usize),
+    Challenge(usize),
 }
 
 impl<F: GpuField> From<Element> for Constraint<F> {
@@ -21,6 +28,17 @@ impl<F: GpuField> From<Element> for Constraint<F> {
             F::one(),
             Variables::new(vec![(element, 1)]),
         )])
+    }
+}
+
+pub trait Challenge {
+    /// Get the challenge index
+    fn index(&self) -> usize;
+
+    /// Symbolic representation of a challenge
+    // TODO: terrible name. Needs refactoring
+    fn get_challenge<F: GpuField>(&self) -> Constraint<F> {
+        Constraint::from(Element::Challenge(self.index()))
     }
 }
 
@@ -62,7 +80,14 @@ impl Variables {
 
     /// Returns the combined degree of all variables
     fn degree(&self) -> usize {
-        self.0.iter().fold(0, |sum, element| sum + element.1)
+        self.0
+            .iter()
+            .filter(|element| match element.0 {
+                // challenges are just delayed constants so they don't contribute to the degree
+                Element::Challenge(_) => false,
+                Element::Curr(_) | Element::Next(_) => true,
+            })
+            .fold(0, |sum, element| sum + element.1)
     }
 
     /// Sums the powers of any duplicate variables.
@@ -79,6 +104,16 @@ impl Variables {
             }
         }
         combined_variables
+    }
+
+    fn get_challenge_indices(&self) -> Vec<usize> {
+        self.0
+            .iter()
+            .filter_map(|element| match element.0 {
+                Element::Challenge(index) => Some(index),
+                _ => None,
+            })
+            .collect()
     }
 }
 
@@ -122,6 +157,21 @@ impl<F: GpuField> Term<F> {
         Term(coefficient, variables)
     }
 
+    fn evaluate_challenges(&self, challenges: &[F]) -> Self {
+        let mut new_coefficient = self.0;
+        let mut new_variables = Vec::new();
+        // TODO: could turn variables into an itterator
+        for variable in &(self.1).0 {
+            match variable {
+                (Element::Challenge(index), power) => {
+                    new_coefficient *= challenges[*index].pow([*power as u64])
+                }
+                other => new_variables.push(*other),
+            }
+        }
+        Term(new_coefficient, Variables(new_variables))
+    }
+
     fn degree(&self) -> usize {
         self.1.degree()
     }
@@ -142,6 +192,24 @@ impl<'a, 'b, F: GpuField> Mul<&'a Term<F>> for &'b Term<F> {
 pub struct Constraint<F>(Vec<Term<F>>);
 
 impl<F: GpuField> Constraint<F> {
+    pub fn get_challenge_indices(&self) -> Vec<usize> {
+        let mut indices = self
+            .0
+            .iter()
+            .flat_map(|term| term.1.get_challenge_indices())
+            .collect::<Vec<usize>>();
+        indices.sort();
+        let mut ret = Vec::new();
+        for index in indices {
+            if let Some(&last_index) = ret.last() {
+                if index != last_index {
+                    ret.push(index);
+                }
+            }
+        }
+        ret
+    }
+
     fn new(mut terms: Vec<Term<F>>) -> Self {
         terms.sort_by(|a, b| a.1.cmp(&b.1));
         let mut constraint = Constraint(Self::combine_terms(terms));
@@ -169,6 +237,21 @@ impl<F: GpuField> Constraint<F> {
             }
         }
         combined_terms
+    }
+
+    fn evaluate_challenges(&self, challenges: &[F]) -> Self {
+        Constraint(
+            self.0
+                .iter()
+                .map(|term| term.evaluate_challenges(challenges))
+                .collect(),
+        )
+    }
+
+    fn evaluate(&self, challenges: &[F], columns: &[Vec<PageAlignedAllocator>]) {
+        for term in self.evaluate_challenges(challenges).0 {
+            todo!()
+        }
     }
 }
 

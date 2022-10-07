@@ -98,6 +98,23 @@ pub trait Prover {
             self.build_trace_commitment(trace.base_columns(), air.lde_domain());
 
         channel.commit_trace(base_trace_lde_tree.root());
+        let challenges = channel.get_challenges::<Self::Fp>(air.num_challenges());
+
+        let mut trace_lde = base_trace_lde;
+        let mut trace_polys = base_trace_polys;
+        let mut extension_trace_tree = None;
+
+        if let Some(extension_matrix) = trace.build_extension_columns(&challenges) {
+            let (extension_lde, extension_polys, extension_lde_tree) =
+                self.build_trace_commitment(&extension_matrix, air.lde_domain());
+            channel.commit_trace(extension_lde_tree.root());
+            // TODO: this approach could be better
+            extension_trace_tree = Some(extension_lde_tree);
+            trace_lde.append(extension_lde);
+            trace_polys.append(extension_polys);
+        }
+
+        // trace_lde
 
         Ok(Proof {
             options,

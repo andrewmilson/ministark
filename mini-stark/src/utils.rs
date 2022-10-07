@@ -33,6 +33,12 @@ impl<F: GpuField> Matrix<F> {
         expected_len
     }
 
+    pub fn append(&mut self, other: Matrix<F>) {
+        for col in other.0.into_iter() {
+            self.0.push(col)
+        }
+    }
+
     pub fn num_cols(&self) -> usize {
         self.0.len()
     }

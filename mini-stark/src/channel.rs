@@ -1,3 +1,4 @@
+use crate::challenges::Challenges;
 use crate::random::PublicCoin;
 use crate::Air;
 use anyhow::Result;
@@ -6,6 +7,7 @@ use ark_serialize::CanonicalSerialize;
 use ark_serialize::SerializationError;
 use digest::Digest;
 use digest::Output;
+use fast_poly::GpuField;
 
 pub struct ProverChannel<'a, A: Air, D: Digest> {
     air: &'a A,
@@ -35,5 +37,10 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     pub fn commit_trace(&mut self, commitment: &Output<D>) {
         self.trace_commitments.push(commitment.clone());
         self.public_coin.reseed(commitment.to_vec());
+    }
+
+    pub fn get_challenges<F: GpuField>(&mut self, num_challenges: usize) -> Challenges<F> {
+        let mut rng = self.public_coin.draw_rng();
+        Challenges::new(&mut rng, num_challenges)
     }
 }
