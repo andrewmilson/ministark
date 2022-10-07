@@ -6,6 +6,7 @@ use digest::Digest;
 use digest::Output;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::Fft;
+use fast_poly::plan::Ifft;
 use fast_poly::GpuField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -43,26 +44,19 @@ impl<F: GpuField> Matrix<F> {
 
     pub fn interpolate_columns(&self) -> Self {
         let domain = Radix2EvaluationDomain::<F>::new(self.num_rows()).unwrap();
-        let mut fft = Fft::from(domain);
+        let mut ifft = Ifft::from(domain);
         let columns = self
             .0
             .iter()
             .map(|evaluations| {
                 let mut poly = evaluations.to_vec_in(PageAlignedAllocator);
-                fft.encode(&mut poly);
+                ifft.encode(&mut poly);
                 poly
             })
             .collect();
-        // ark_std::cfg_iter!(self.0)
-        // .map(|evaluations| {
-        //     let mut poly = evaluations.to_vec_in(PageAlignedAllocator);
-        //     fft.process(&mut poly);
-        //     poly
-        // })
-        // .collect();
 
         let start = Instant::now();
-        fft.execute();
+        ifft.execute();
         println!("THE Completion: {:?}", start.elapsed());
 
         Matrix::new(columns)
@@ -83,13 +77,6 @@ impl<F: GpuField> Matrix<F> {
                     evaluations
                 })
                 .collect()
-            // ark_std::cfg_iter!(self.0)
-            //     .map(|poly| {
-            //         let mut evaluations =
-            // poly.to_vec_in(PageAlignedAllocator);         fft.
-            // process(&mut evaluations);         evaluations
-            //     })
-            //     .collect()
         };
 
         let start = Instant::now();

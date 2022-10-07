@@ -24,8 +24,7 @@ macro_rules! batch_iter_mut {
         $c($e, 0);
     };
     ($e: expr, $min_batch_size: expr, $c: expr) => {
-            println!("feature Serr");
-            #[cfg(feature = "parallel")]
+        #[cfg(feature = "parallel")]
         {
             println!("feature parallel");
             let batch_size = $e.len() / rayon::current_num_threads().next_power_of_two();

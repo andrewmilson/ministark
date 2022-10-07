@@ -27,7 +27,7 @@ fn gen_pcg_input<F: Field>(n: usize) -> Vec<F, PageAlignedAllocator> {
 }
 
 #[test]
-fn reg_fft() {
+fn fft() {
     autoreleasepool(|| {
         let domains = [
             Radix2EvaluationDomain::new(2048).unwrap(),
@@ -61,11 +61,6 @@ fn ifft() {
         ];
 
         for (i, domain) in domains.into_iter().enumerate() {
-            // let mut rng = ark_std::test_rng();
-            // let evals = (0..domain.size())
-            //     .map(|_| Fp::rand(&mut rng))
-            //     .collect::<Vec<Fp>>();
-            // let expected_coeffs = domain.ifft(&evals);
             let poly = DensePolynomial::<Fp>::rand(domain.size() - 1, &mut ark_std::test_rng());
             let evals = poly.evaluate_over_domain_by_ref(domain).evals;
 

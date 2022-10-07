@@ -12,14 +12,12 @@ use crate::GpuField;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::sync::Arc;
-use std::time::Instant;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
 
 pub struct FftEncoder<'a, F: GpuField> {
+    n: usize,
     command_queue: Arc<metal::CommandQueue>,
     twiddles_buffer: metal::Buffer,
     scale_and_normalize_stage: Option<ScaleAndNormalizeGpuStage<F>>,
@@ -61,6 +59,8 @@ pub struct Fft<'a, F: GpuField>(FftEncoder<'a, F>);
 
 impl<'a, F: GpuField> Fft<'a, F> {
     pub fn encode(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
+        assert!(self.0.n >= buffer.len());
+        buffer.resize(self.0.n, F::zero());
         let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), buffer);
         self.0.encode_scale_stage(&mut input_buffer);
         self.0.encode_butterfly_stages(&mut input_buffer);
@@ -82,6 +82,7 @@ pub struct Ifft<'a, F: GpuField>(FftEncoder<'a, F>);
 
 impl<'a, F: GpuField> Ifft<'a, F> {
     pub fn encode(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
+        assert_eq!(self.0.n, buffer.len());
         let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), buffer);
         self.0.encode_butterfly_stages(&mut input_buffer);
         self.0.encode_bit_reverse_stage(&mut input_buffer);
@@ -183,6 +184,7 @@ impl Planner {
         }
 
         FftEncoder {
+            n,
             twiddles_buffer,
             scale_and_normalize_stage,
             butterfly_stages,
