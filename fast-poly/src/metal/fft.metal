@@ -100,16 +100,30 @@ template<typename FieldT> kernel void
 IFftSingle(device FieldT *vals [[ buffer(0) ]],
         constant FieldT *inv_twiddles [[ buffer(1) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
+    // unsigned input_step = (N / NUM_BOXES) / 2;
+    // unsigned box_id = global_tid / input_step;
+    // unsigned target_index = 2 * box_id * input_step + (global_tid % input_step);
+
+    // FieldT inv_twiddle = inv_twiddles[2 * box_id];
+    // FieldT p = vals[target_index];
+    // FieldT q = vals[target_index + input_step];
+    
+    // vals[target_index] = p + q;
+    // // vals[target_index + input_step] = (p - q) * inv_twiddle;
+    // vals[target_index + input_step] = p - q;
+
     unsigned input_step = (N / NUM_BOXES) / 2;
     unsigned box_id = global_tid / input_step;
-    unsigned target_index = 2 * box_id * input_step + (global_tid % input_step);
+    unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
-    FieldT inv_twiddle = inv_twiddles[2 * box_id];
+    FieldT twiddle = inv_twiddles[box_id];
     FieldT p = vals[target_index];
+    // FieldT tmp = vals[target_index + input_step];
+    // FieldT q = tmp * twiddle;
     FieldT q = vals[target_index + input_step];
-    
+
     vals[target_index] = p + q;
-    vals[target_index + input_step] = (p - q) * inv_twiddle;
+    vals[target_index + input_step] = (p - q) * twiddle;
 }
 
 
@@ -142,7 +156,7 @@ FftMultiple(device FieldT *vals [[ buffer(0) ]],
             unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
             FieldT p = shared_array[target_index];
-            FieldT twiddle = twiddles[box_id + group_id * (boxes / NUM_BOXES)];
+            FieldT twiddle = twiddles[box_id];
             FieldT tmp = shared_array[target_index + input_step];
             FieldT q = tmp * twiddle;
 

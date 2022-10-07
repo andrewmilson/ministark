@@ -38,24 +38,40 @@ unsafe impl<'a, F: GpuField> Sync for Fft<'a, F> {}
 impl<'a, F: GpuField> Fft<'a, F> {
     pub fn encode(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
         let start = Instant::now();
-        let now = Instant::now();
         let mut input_buffer = buffer_mut_no_copy(self.command_queue.device(), buffer);
-        println!("Buffer creation {:?}", now.elapsed());
-        if let Some(poly_scale_stage) = &self.poly_scale_stage {
-            poly_scale_stage.encode(self.command_buffer, &mut input_buffer);
+        match self.direction {
+            FftDirection::Forward => self.encode_scale_stage(&mut input_buffer),
+            FftDirection::Inverse => self.encode_bit_reverse_stage(&mut input_buffer),
         }
+        self.encode_butterfly_stages(&mut input_buffer);
+        match self.direction {
+            FftDirection::Forward => self.encode_bit_reverse_stage(&mut input_buffer),
+            FftDirection::Inverse => self.encode_scale_stage(&mut input_buffer),
+        }
+        println!("Preperation: {:?}", start.elapsed());
+    }
+
+    fn encode_butterfly_stages(&self, input_buffer: &mut metal::Buffer) {
         for stage in &self.butterfly_stages {
             stage.encode(
                 self.command_buffer,
                 self.grid_dim,
                 self.threadgroup_dim,
-                &mut input_buffer,
+                input_buffer,
                 &self.twiddles_buffer,
             );
         }
+    }
+
+    fn encode_bit_reverse_stage(&self, input_buffer: &mut metal::Buffer) {
         self.bit_reverse_stage
-            .encode(self.command_buffer, &mut input_buffer);
-        println!("Preperation: {:?}", start.elapsed());
+            .encode(self.command_buffer, input_buffer);
+    }
+
+    fn encode_scale_stage(&self, input_buffer: &mut metal::Buffer) {
+        if let Some(scale_stage) = &self.poly_scale_stage {
+            scale_stage.encode(self.command_buffer, input_buffer);
+        }
     }
 
     // TODO: allow mutable

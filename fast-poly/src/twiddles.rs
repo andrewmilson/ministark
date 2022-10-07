@@ -50,14 +50,17 @@ macro_rules! batch_iter_mut {
 /// [Inverse](FftDirection::Inverse) twiddles are normalized by `1 / n`.
 pub fn fill_twiddles<F: FftField>(dst: &mut [F], n: usize, direction: FftDirection) {
     let n = n as u64;
-    let root = F::get_root_of_unity(n).unwrap();
-    let mut norm_factor = if direction == FftDirection::Inverse {
+    let mut root = F::get_root_of_unity(n).unwrap();
+    if direction == FftDirection::Inverse {
+        root.inverse_in_place();
+    }
+
+    let norm_factor = if direction == FftDirection::Inverse {
         F::from_base_prime_field(F::BasePrimeField::from(n).inverse().unwrap())
     } else {
         F::one()
     };
-    // compute_powers
-    // batch_iter_mut()
+
     batch_iter_mut!(dst, 1024, |batch: &mut [F], batch_offset: usize| {
         println!("Doint batch {batch_offset}");
         batch[0] = norm_factor * root.pow([batch_offset as u64]);
