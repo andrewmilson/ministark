@@ -2,6 +2,7 @@
 
 use ark_ff::FftField;
 use ark_ff::Field;
+use ark_ff::One;
 use ark_ff::UniformRand;
 use ark_ff_optimized::fp64::Fp;
 use ark_poly::domain::Radix2EvaluationDomain;
@@ -30,9 +31,9 @@ fn reg_fft() {
     autoreleasepool(|| {
         let domains = [
             Radix2EvaluationDomain::new(2048).unwrap(),
-            Radix2EvaluationDomain::new(8192).unwrap(),
+            Radix2EvaluationDomain::new(4096).unwrap(),
             Radix2EvaluationDomain::new_coset(2048, Fp::GENERATOR).unwrap(),
-            Radix2EvaluationDomain::new_coset(8192, Fp::GENERATOR).unwrap(),
+            Radix2EvaluationDomain::new_coset(4096, Fp::GENERATOR).unwrap(),
         ];
 
         for (i, domain) in domains.into_iter().enumerate() {
@@ -54,9 +55,9 @@ fn ifft() {
     autoreleasepool(|| {
         let domains = [
             Radix2EvaluationDomain::new(2048).unwrap(),
-            Radix2EvaluationDomain::new(8192).unwrap(),
+            Radix2EvaluationDomain::new(4096).unwrap(),
             Radix2EvaluationDomain::new_coset(2048, Fp::GENERATOR).unwrap(),
-            Radix2EvaluationDomain::new_coset(8192, Fp::GENERATOR).unwrap(),
+            Radix2EvaluationDomain::new_coset(4096, Fp::GENERATOR).unwrap(),
         ];
 
         for (i, domain) in domains.into_iter().enumerate() {
@@ -73,8 +74,14 @@ fn ifft() {
             ifft.encode(&mut coeffs);
             ifft.execute();
 
+            let domain_size_inv = Fp::one(); //domain.size_inv;
+
             for (j, (expected, actual)) in poly.coeffs.into_iter().zip(coeffs).enumerate() {
-                assert_eq!(expected, actual, "domain ({i}) mismatch at index {j}");
+                assert_eq!(
+                    expected,
+                    actual * domain_size_inv,
+                    "domain ({i}) mismatch at index {j}"
+                );
             }
         }
     });

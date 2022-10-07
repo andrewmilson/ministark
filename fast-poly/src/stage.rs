@@ -6,20 +6,16 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use std::marker::PhantomData;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Variant {
     Multiple,
     Single,
 }
 
 /// GPU FFT kernel name as declared at the bottom of `fft.metal`
-fn fft_kernel_name<F: GpuField>(direction: FftDirection, variant: Variant) -> String {
+fn fft_kernel_name<F: GpuField>(variant: Variant) -> String {
     format!(
-        "{}_{}_{}",
-        match direction {
-            FftDirection::Forward => "fft",
-            FftDirection::Inverse => "ifft",
-        },
+        "fft_{}_{}",
         match variant {
             Variant::Multiple => "multiple",
             Variant::Single => "single",
@@ -30,9 +26,9 @@ fn fft_kernel_name<F: GpuField>(direction: FftDirection, variant: Variant) -> St
 
 pub struct FftGpuStage<E> {
     pipeline: metal::ComputePipelineState,
-    n: u32,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
     num_boxes: u32,
-    direction: FftDirection,
     variant: Variant,
     _phantom: PhantomData<E>,
 }
@@ -40,7 +36,6 @@ pub struct FftGpuStage<E> {
 impl<F: GpuField> FftGpuStage<F> {
     pub fn new(
         library: &metal::LibraryRef,
-        direction: FftDirection,
         n: usize,
         num_boxes: usize,
         variant: Variant,
@@ -65,22 +60,22 @@ impl<F: GpuField> FftGpuStage<F> {
             1,
         );
         let func = library
-            .get_function(
-                &fft_kernel_name::<F>(direction, variant),
-                Some(fft_constants),
-            )
+            .get_function(&fft_kernel_name::<F>(variant), Some(fft_constants))
             .unwrap();
         let pipeline = library
             .device()
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
 
+        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        let grid_dim = metal::MTLSize::new((n / 2).try_into().unwrap(), 1, 1);
+
         FftGpuStage {
             pipeline,
-            n,
             num_boxes,
+            threadgroup_dim,
+            grid_dim,
             variant,
-            direction,
             _phantom: PhantomData,
         }
     }
@@ -88,8 +83,6 @@ impl<F: GpuField> FftGpuStage<F> {
     pub fn encode(
         &self,
         command_buffer: &metal::CommandBufferRef,
-        grid_dim: metal::MTLSize,
-        threadgroup_dim: metal::MTLSize,
         input_buffer: &mut metal::BufferRef,
         twiddles_buffer: &metal::BufferRef,
     ) {
@@ -101,13 +94,13 @@ impl<F: GpuField> FftGpuStage<F> {
         );
         command_encoder.set_buffer(0, Some(input_buffer), 0);
         command_encoder.set_buffer(1, Some(twiddles_buffer), 0);
-        command_encoder.dispatch_threads(grid_dim, threadgroup_dim);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
         command_encoder.memory_barrier_with_resources(&[input_buffer]);
         command_encoder.end_encoding()
     }
 }
 
-pub struct PolyScaleGpuStage<F> {
+pub struct ScaleAndNormalizeGpuStage<F> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
@@ -115,12 +108,13 @@ pub struct PolyScaleGpuStage<F> {
     _phantom: PhantomData<F>,
 }
 
-impl<F: GpuField> PolyScaleGpuStage<F> {
+impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
     pub fn new(
         library: &metal::LibraryRef,
         command_queue: &metal::CommandQueue,
         n: usize,
-        offset: F,
+        scale_factor: F,
+        norm_factor: F,
     ) -> Self {
         // Create the compute pipeline
         let func = library
@@ -132,14 +126,16 @@ impl<F: GpuField> PolyScaleGpuStage<F> {
             .unwrap();
 
         let mut scale_factors = Vec::with_capacity_in(n, PageAlignedAllocator);
-        scale_factors.resize(n, F::one());
-        Radix2EvaluationDomain::distribute_powers(&mut scale_factors, offset);
+        scale_factors.resize(n, norm_factor);
+        if !scale_factor.is_one() {
+            Radix2EvaluationDomain::distribute_powers(&mut scale_factors, scale_factor);
+        }
         let scale_factors_buffer = copy_to_private_buffer(command_queue, &scale_factors);
 
         let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
-        PolyScaleGpuStage {
+        ScaleAndNormalizeGpuStage {
             pipeline,
             threadgroup_dim,
             grid_dim,

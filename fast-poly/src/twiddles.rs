@@ -4,6 +4,7 @@ use ark_ff::Field;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+// stolen from Winterfell library
 macro_rules! batch_iter_mut {
     ($e: expr, $c: expr) => {
         #[cfg(feature = "parallel")]
@@ -54,39 +55,10 @@ pub fn fill_twiddles<F: FftField>(dst: &mut [F], n: usize, direction: FftDirecti
     if direction == FftDirection::Inverse {
         root.inverse_in_place();
     }
-
-    let norm_factor = if direction == FftDirection::Inverse {
-        F::from_base_prime_field(F::BasePrimeField::from(n).inverse().unwrap())
-    } else {
-        F::one()
-    };
-
     batch_iter_mut!(dst, 1024, |batch: &mut [F], batch_offset: usize| {
-        println!("Doint batch {batch_offset}");
-        batch[0] = norm_factor * root.pow([batch_offset as u64]);
+        batch[0] = root.pow([batch_offset as u64]);
         for i in 1..batch.len() {
             batch[i] = batch[i - 1] * root;
         }
     });
-
-    // // ark_std::cfg_iter_mut!(dst)
-    // for v in dst.iter_mut() {
-    //     // Using this method creates a data dependency over each iteration
-    //     // preventing parallelization so is actually slower.
-    //     *v = norm_factor;
-    //     norm_factor *= root;
-    // }
 }
-
-// /// Stolen from Winterfell
-// #[cfg(not(feature = "parallel"))]
-// fn prefix_scan(&mut) {
-//     batch_iter_mut!(&mut result, 1024, |batch: &mut [E], batch_offset: usize|
-// {         let start = b.exp((batch_offset as u64).into());
-//         fill_power_series(batch, b, start);
-//     });
-//     result
-// }
-
-// #[cfg(feature = "parallel")]
-// fn compute_powers() {}

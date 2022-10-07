@@ -156,7 +156,7 @@ FftMultiple(device FieldT *vals [[ buffer(0) ]],
             unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
             FieldT p = shared_array[target_index];
-            FieldT twiddle = twiddles[box_id];
+            FieldT twiddle = twiddles[box_id + group_id * (boxes / NUM_BOXES)];
             FieldT tmp = shared_array[target_index + input_step];
             FieldT q = tmp * twiddle;
 
