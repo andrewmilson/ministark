@@ -89,17 +89,20 @@ impl<F: GpuField> Matrix<F> {
     pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {
         let num_rows = self.num_rows();
         let num_cols = self.num_cols();
+
         let mut row_hashes = Vec::with_capacity(num_rows);
-        for row in 0..num_rows {
-            // TODO: move this outside the for loop and use .reset()
-            let mut hasher = D::new();
-            for col in 0..num_cols {
-                let mut bytes = Vec::new();
-                self.0[col][row].serialize_compressed(&mut bytes);
-                hasher.update(&bytes);
-            }
-            row_hashes.push(hasher.finalize())
-        }
+        row_hashes.resize(num_rows, Default::default());
+        ark_std::cfg_iter_mut!(row_hashes)
+            .enumerate()
+            .for_each(|(row, row_hash)| {
+                let mut hasher = D::new();
+                for col in 0..num_cols {
+                    let mut bytes = Vec::new();
+                    self.0[col][row].serialize_compressed(&mut bytes).unwrap();
+                    hasher.update(&bytes);
+                }
+                *row_hash = hasher.finalize();
+            });
         MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
     }
 }

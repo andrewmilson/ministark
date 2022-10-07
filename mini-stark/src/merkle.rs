@@ -2,9 +2,6 @@
 use anyhow::Result;
 use digest::Digest;
 use digest::Output;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
 use thiserror::Error;
 
 /// MerkleTree tree error
@@ -58,12 +55,14 @@ fn build_merkle_nodes<D: Digest>(leafs: &[Output<D>]) -> Vec<Output<D>> {
     let n = leafs.len();
     let mut nodes = vec![Output::<D>::default(); n];
     // generate first row of nodes (parents of leaves)
-    for i in 0..n / 2 {
-        let mut hasher = D::new();
-        hasher.update(&leafs[2 * i]);
-        hasher.update(&leafs[2 * i + 1]);
-        nodes[n / 2 + i] = hasher.finalize();
-    }
+    ark_std::cfg_iter_mut!(nodes[n / 2..])
+        .enumerate()
+        .for_each(|(i, node)| {
+            let mut hasher = D::new();
+            hasher.update(&leafs[2 * i]);
+            hasher.update(&leafs[2 * i + 1]);
+            *node = hasher.finalize();
+        });
     // generate remainding nodes
     for i in (1..n / 2).rev() {
         let mut hasher = D::new();

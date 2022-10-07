@@ -77,55 +77,6 @@ MulAssign(device FieldT *lhs_vals [[ buffer(0) ]],
     lhs_vals[i] = lhs * rhs;
 }
 
-// Performs a single itteration of Cooley-Tuckey radix-2 decimation-in-frequency (DIF)
-//
-// Inverse number theory transform. Opperates on input `vals` in bit-reversed order and
-// transformed values are in natural order. Operations happen in-place.
-//
-// ## Example: 8 elemet array in bit-reversed order
-//
-// ```
-// [
-//     0, // 000->000
-//     4, // 100->001
-//     2, // 010->010
-//     6, // 110->011
-//     1, // 001->100
-//     5, // 101->101
-//     3, // 011->110
-//     7  // 111->111
-// ]
-// ```
-template<typename FieldT> kernel void
-IFftSingle(device FieldT *vals [[ buffer(0) ]],
-        constant FieldT *inv_twiddles [[ buffer(1) ]],
-        unsigned global_tid [[ thread_position_in_grid ]]) {
-    // unsigned input_step = (N / NUM_BOXES) / 2;
-    // unsigned box_id = global_tid / input_step;
-    // unsigned target_index = 2 * box_id * input_step + (global_tid % input_step);
-
-    // FieldT inv_twiddle = inv_twiddles[2 * box_id];
-    // FieldT p = vals[target_index];
-    // FieldT q = vals[target_index + input_step];
-    
-    // vals[target_index] = p + q;
-    // // vals[target_index + input_step] = (p - q) * inv_twiddle;
-    // vals[target_index + input_step] = p - q;
-
-    unsigned input_step = (N / NUM_BOXES) / 2;
-    unsigned box_id = global_tid / input_step;
-    unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
-
-    FieldT twiddle = inv_twiddles[box_id];
-    FieldT p = vals[target_index];
-    // FieldT tmp = vals[target_index + input_step];
-    // FieldT q = tmp * twiddle;
-    FieldT q = vals[target_index + input_step];
-
-    vals[target_index] = p + q;
-    vals[target_index + input_step] = (p - q) * twiddle;
-}
-
 
 // Performs multiple itteration stages of Cooley-Tuckey radix-2 decimation-in-time (DIT)
 //
@@ -185,11 +136,6 @@ FftSingle<FP270497897142230380135924736767050121217>(
         device FP270497897142230380135924736767050121217*,
         constant FP270497897142230380135924736767050121217*,
         unsigned);
-template [[ host_name("ifft_single_fp270497897142230380135924736767050121217") ]] kernel void
-IFftSingle<FP270497897142230380135924736767050121217>(
-        device FP270497897142230380135924736767050121217*,
-        constant FP270497897142230380135924736767050121217*,
-        unsigned);
 template [[ host_name("fft_multiple_fp270497897142230380135924736767050121217") ]] kernel void
 FftMultiple<FP270497897142230380135924736767050121217>(
         device FP270497897142230380135924736767050121217*,
@@ -213,11 +159,6 @@ MulAssign<FP18446744069414584321>(
         unsigned);
 template [[ host_name("fft_single_fp18446744069414584321") ]] kernel void
 FftSingle<FP18446744069414584321>(
-        device FP18446744069414584321*,
-        constant FP18446744069414584321*,
-        unsigned);
-template [[ host_name("ifft_single_fp18446744069414584321") ]] kernel void
-IFftSingle<FP18446744069414584321>(
         device FP18446744069414584321*,
         constant FP18446744069414584321*,
         unsigned);
