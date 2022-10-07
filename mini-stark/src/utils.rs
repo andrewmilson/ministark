@@ -3,10 +3,9 @@ use crate::Column;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
 use digest::Digest;
-use digest::Output;
 use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::Fft;
-use fast_poly::plan::Ifft;
+use fast_poly::plan::GpuFft;
+use fast_poly::plan::GpuIfft;
 use fast_poly::GpuField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -44,7 +43,7 @@ impl<F: GpuField> Matrix<F> {
 
     pub fn interpolate_columns(&self) -> Self {
         let domain = Radix2EvaluationDomain::<F>::new(self.num_rows()).unwrap();
-        let mut ifft = Ifft::from(domain);
+        let mut ifft = GpuIfft::from(domain);
         let columns = self
             .0
             .iter()
@@ -65,7 +64,7 @@ impl<F: GpuField> Matrix<F> {
     pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
         let mut fft = {
             let _timer = Timer::new("FFT eval creation");
-            Fft::from(domain)
+            GpuFft::from(domain)
         };
         let columns = {
             let _timer = Timer::new("Actual evaluations");

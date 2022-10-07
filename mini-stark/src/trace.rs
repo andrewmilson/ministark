@@ -58,7 +58,7 @@ pub trait Trace {
     /// Builds and returns the extension columns
     /// These columns require auxiliary random elements to be constructed.
     /// Returns None if there are no columns that require this.
-    fn build_extension_columns(&self, challenges: &[Self::Fp]) -> Option<Matrix<Self::Fp>> {
+    fn build_extension_columns(&self, _challenges: &[Self::Fp]) -> Option<Matrix<Self::Fp>> {
         None
     }
 

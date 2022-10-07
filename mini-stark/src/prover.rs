@@ -1,16 +1,13 @@
 use crate::channel::ProverChannel;
 use crate::merkle::MerkleTree;
-use crate::random::PublicCoin;
 use crate::utils::Timer;
 use crate::Air;
 use crate::Matrix;
 use crate::Trace;
 use crate::TraceInfo;
 use ark_poly::domain::Radix2EvaluationDomain;
-use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use fast_poly::plan::Fft;
 use fast_poly::GpuField;
 use sha2::Sha256;
 

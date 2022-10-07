@@ -1,7 +1,7 @@
 use crate::Air;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
-use fast_poly::plan::Fft;
+use fast_poly::plan::GpuFft;
 use fast_poly::GpuField;
 
 // pub struct StarkDomain<F> {

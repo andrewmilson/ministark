@@ -18,9 +18,9 @@ thiserror = "1.0.37"
 rayon = { version = "1.5.3", optional = true }
 
 [features]
-# default = []
-# parallel = [ "dep:rayon", "ark-std/parallel", "fast-poly/parallel" ]
-default = [ "dep:rayon", "ark-std/parallel", "fast-poly/parallel" ]
+default = []
+asm = [ "sha2/asm" ]
+parallel = [ "dep:rayon", "ark-std/parallel", "fast-poly/parallel" ]
 
 [patch.crates-io]
 ark-std = { git = "https://github.com/arkworks-rs/std" }

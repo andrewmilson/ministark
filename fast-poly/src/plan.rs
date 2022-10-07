@@ -55,9 +55,9 @@ impl<'a, F: GpuField> FftEncoder<'a, F> {
     }
 }
 
-pub struct Fft<'a, F: GpuField>(FftEncoder<'a, F>);
+pub struct GpuFft<'a, F: GpuField>(FftEncoder<'a, F>);
 
-impl<'a, F: GpuField> Fft<'a, F> {
+impl<'a, F: GpuField> GpuFft<'a, F> {
     pub fn encode(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
         assert!(self.0.n >= buffer.len());
         buffer.resize(self.0.n, F::zero());
@@ -72,15 +72,15 @@ impl<'a, F: GpuField> Fft<'a, F> {
     }
 }
 
-impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for Fft<'a, F> {
+impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuFft<'a, F> {
     fn from(domain: Radix2EvaluationDomain<F>) -> Self {
         PLANNER.plan_fft(domain)
     }
 }
 
-pub struct Ifft<'a, F: GpuField>(FftEncoder<'a, F>);
+pub struct GpuIfft<'a, F: GpuField>(FftEncoder<'a, F>);
 
-impl<'a, F: GpuField> Ifft<'a, F> {
+impl<'a, F: GpuField> GpuIfft<'a, F> {
     pub fn encode(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
         assert_eq!(self.0.n, buffer.len());
         let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), buffer);
@@ -94,7 +94,7 @@ impl<'a, F: GpuField> Ifft<'a, F> {
     }
 }
 
-impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for Ifft<'a, F> {
+impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuIfft<'a, F> {
     fn from(domain: Radix2EvaluationDomain<F>) -> Self {
         PLANNER.plan_ifft(domain)
     }
@@ -120,12 +120,12 @@ impl Planner {
         }
     }
 
-    pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> Fft<F> {
-        Fft(self.create_fft_encoder(FftDirection::Forward, domain))
+    pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> GpuFft<F> {
+        GpuFft(self.create_fft_encoder(FftDirection::Forward, domain))
     }
 
-    pub fn plan_ifft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> Ifft<F> {
-        Ifft(self.create_fft_encoder(FftDirection::Inverse, domain))
+    pub fn plan_ifft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> GpuIfft<F> {
+        GpuIfft(self.create_fft_encoder(FftDirection::Inverse, domain))
     }
 
     // TODO: move to FftEncoder struct

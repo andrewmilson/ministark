@@ -15,15 +15,15 @@ rand = "0.8.5"
 
 [dev-dependencies]
 rand_pcg = "0.3.1"
-ark-algebra-test-templates = { git = "https://github.com/arkworks-rs/algebra", features = ["std"] }
-ark-algebra-bench-templates = { git = "https://github.com/arkworks-rs/algebra" }
 ark-std = { git = "https://github.com/arkworks-rs/std" }
+ark-algebra-test-templates = { git = "https://github.com/arkworks-rs/algebra" }
+ark-algebra-bench-templates = { git = "https://github.com/arkworks-rs/algebra" }
 ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 
 [patch.crates-io]
 ark-std = { git = "https://github.com/arkworks-rs/std" }
-ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
-ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra", features = ["std"] }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra", features = ["std"] }
 ark-algebra-bench-templates = { git = "https://github.com/arkworks-rs/algebra", features = ["std"] }
 ark-algebra-test-templates = { git = "https://github.com/arkworks-rs/algebra" }
 

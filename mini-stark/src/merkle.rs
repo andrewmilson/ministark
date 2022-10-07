@@ -2,6 +2,8 @@
 use anyhow::Result;
 use digest::Digest;
 use digest::Output;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use thiserror::Error;
 
 /// MerkleTree tree error
@@ -72,18 +74,3 @@ fn build_merkle_nodes<D: Digest>(leafs: &[Output<D>]) -> Vec<Output<D>> {
     }
     nodes
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::MerkleTree;
-
-//     #[test]
-//     fn test_verify() {
-//         let data = vec![584395, 344, 2, 543, 5435, 343, 76, 88];
-//         let tree = MerkleTree::new(&data);
-//         let open_index = 4;
-//         let (element, path) = tree.open(open_index);
-
-//         assert!(MerkleTree::verify(tree.root(), open_index, &path, &element))
-//     }
-// }
