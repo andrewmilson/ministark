@@ -1,4 +1,5 @@
 use crate::allocator::PageAlignedAllocator;
+use crate::allocator::PAGE_SIZE;
 use metal::CommandQueue;
 
 fn bit_reverse_index(n: usize, i: usize) -> usize {
@@ -39,9 +40,10 @@ pub fn buffer_no_copy<T: Sized>(
     device: &metal::DeviceRef,
     v: &Vec<T, PageAlignedAllocator>,
 ) -> metal::Buffer {
+    let byte_len = round_up_to_multiple(v.len() * std::mem::size_of::<T>(), *PAGE_SIZE);
     device.new_buffer_with_bytes_no_copy(
         v.as_ptr() as *mut std::ffi::c_void,
-        (v.len() * std::mem::size_of::<T>()).try_into().unwrap(),
+        byte_len.try_into().unwrap(),
         metal::MTLResourceOptions::StorageModeShared,
         None,
     )
@@ -52,12 +54,21 @@ pub fn buffer_mut_no_copy<T: Sized>(
     device: &metal::DeviceRef,
     v: &mut Vec<T, PageAlignedAllocator>,
 ) -> metal::Buffer {
+    let byte_len = round_up_to_multiple(v.len() * std::mem::size_of::<T>(), *PAGE_SIZE);
     device.new_buffer_with_bytes_no_copy(
         v.as_mut_ptr() as *mut std::ffi::c_void,
-        (v.len() * std::mem::size_of::<T>()).try_into().unwrap(),
+        byte_len.try_into().unwrap(),
         metal::MTLResourceOptions::StorageModeShared,
         None,
     )
+}
+
+fn round_up_to_multiple(n: usize, multiple: usize) -> usize {
+    if n % multiple == 0 {
+        n
+    } else {
+        n.next_multiple_of(multiple)
+    }
 }
 
 #[cfg(test)]

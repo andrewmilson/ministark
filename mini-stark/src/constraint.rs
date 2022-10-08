@@ -2,9 +2,19 @@
 
 use crate::challenges;
 use crate::challenges::Challenges;
+use crate::Matrix;
 use ark_ff::Zero;
+use ark_poly::EvaluationDomain;
+use ark_poly::Radix2EvaluationDomain;
 use fast_poly::allocator::PageAlignedAllocator;
+use fast_poly::plan::Planner;
+use fast_poly::plan::PLANNER;
+use fast_poly::stage::MulPowStage;
+use fast_poly::utils::buffer_mut_no_copy;
+use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::Add;
@@ -248,10 +258,62 @@ impl<F: GpuField> Constraint<F> {
         )
     }
 
-    fn evaluate(&self, challenges: &[F], columns: &[Vec<PageAlignedAllocator>]) {
-        for term in self.evaluate_challenges(challenges).0 {
-            todo!()
+    pub fn evaluate(
+        &self,
+        challenges: &[F],
+        trace_step: usize,
+        lde_matrix: &Matrix<F>,
+    ) -> Vec<F, PageAlignedAllocator> {
+        let n = lde_matrix.num_rows();
+        let constraint_without_challenges = self.evaluate_challenges(challenges).0;
+        let num_terms = constraint_without_challenges.len();
+        println!("NUM TERMIES: {num_terms}");
+        if num_terms == 0 {
+            let mut ret = Vec::with_capacity_in(n, PageAlignedAllocator);
+            ret.resize(n, F::zero());
+            return ret;
         }
+        let library = &PLANNER.library;
+        let command_queue = &PLANNER.command_queue;
+        let command_buffer = command_queue.new_command_buffer();
+        let mut term_evaluations = Vec::new();
+        let mut curr_multiplier = MulPowStage::<F>::new(library, n, 0);
+        let mut next_multiplier = MulPowStage::<F>::new(library, n, trace_step);
+        for term in constraint_without_challenges {
+            println!("coeff:{}", term.0);
+            let mut scratch = Vec::with_capacity_in(n, PageAlignedAllocator);
+            scratch.resize(n, term.0);
+            let mut scratch_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch);
+            for (element, power) in &(term.1).0 {
+                let (col_index, multiplier) = match element {
+                    Element::Curr(col_index) => (col_index, &curr_multiplier),
+                    Element::Next(col_index) => (col_index, &next_multiplier),
+                    _ => unreachable!(),
+                };
+                let column_buffer = buffer_no_copy(command_queue.device(), &lde_matrix[*col_index]);
+                multiplier.encode(command_buffer, &mut scratch_buffer, &column_buffer, *power);
+            }
+            term_evaluations.push(scratch);
+        }
+        command_buffer.commit();
+        command_buffer.wait_until_completed();
+        println!("term val1:{}", term_evaluations[0][0]);
+        println!("term val2:{}", term_evaluations[0][1]);
+        println!("term val3:{}", term_evaluations[0][2]);
+        // TODO: refactor this mess
+        let mut evaluations_iter = term_evaluations.into_iter();
+        let mut evaluation = evaluations_iter.next().unwrap();
+        for term_evaluation in evaluations_iter {
+            // TODO: can optimize using num cpus.
+            ark_std::cfg_chunks_mut!(evaluation, 2048)
+                .zip(ark_std::cfg_chunks!(term_evaluation, 2048))
+                .for_each(|(evals_chunk, term_evals_chunk)| {
+                    for i in 0..evals_chunk.len() {
+                        evals_chunk[i] += term_evals_chunk[i];
+                    }
+                });
+        }
+        evaluation
     }
 }
 

@@ -221,3 +221,73 @@ impl<F: GpuField> BitReverseGpuStage<F> {
         command_encoder.end_encoding()
     }
 }
+
+pub struct MulPowStage<F> {
+    n: u32,
+    shift: u32,
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> MulPowStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize, shift: usize) -> Self {
+        // Create the compute pipeline
+        let constants = metal::FunctionConstantValues::new();
+        let n = n as u32;
+        constants.set_constant_value_at_index(
+            &n as *const u32 as *const std::ffi::c_void,
+            metal::MTLDataType::UInt,
+            0,
+        );
+        // Create the compute pipeline
+        let func = library
+            .get_function(&format!("mul_pow_{}", F::field_name()), Some(constants))
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let n = n as u32;
+        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        MulPowStage {
+            n,
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            shift: shift as u32,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &mut metal::BufferRef,
+        src_buffer: &metal::BufferRef,
+        power: usize,
+    ) {
+        let command_encoder = command_buffer.new_compute_command_encoder();
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(src_buffer), 0);
+        let power = power as u32;
+        command_encoder.set_bytes(
+            2,
+            std::mem::size_of::<u32>() as u64,
+            &power as *const u32 as *const std::ffi::c_void,
+        );
+        command_encoder.set_bytes(
+            3,
+            std::mem::size_of::<u32>() as u64,
+            &self.shift as *const u32 as *const std::ffi::c_void,
+        );
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}

@@ -1,4 +1,4 @@
-#![feature(test, allocator_api, const_try, int_log)]
+#![feature(test, allocator_api, const_try, int_log, int_roundings)]
 
 use ark_ff::FftField;
 use ark_ff_optimized::fp64;

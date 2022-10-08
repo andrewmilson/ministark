@@ -1,6 +1,7 @@
 use crate::allocator::PageAlignedAllocator;
 use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
+use crate::stage::MulPowStage;
 use crate::stage::ScaleAndNormalizeGpuStage;
 use crate::stage::Variant;
 use crate::twiddles::fill_twiddles;
@@ -100,11 +101,31 @@ impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuIfft<'a, F> {
     }
 }
 
+// struct MulPow<'a, F: GpuField> {
+//     stage: MulPowStage<F>,
+//     command_queue: Arc<metal::CommandQueue>,
+//     command_buffer: &'a metal::CommandBufferRef,
+// }
+
+// impl<'a, F: GpuField> MulPow<'a, F> {
+//     fn encode(
+//         &mut self,
+//         dst: &mut Vec<F, PageAlignedAllocator>,
+//         src: &mut Vec<F, PageAlignedAllocator>,
+//     ) {
+//         assert_eq!(dst.len(), src.len());
+//         let mut dst_buffer = buffer_mut_no_copy(self.command_queue.device(),
+// dst);         let mut src_buffer =
+// buffer_mut_no_copy(self.command_queue.device(), src);     }
+
+//     fn execute() {}
+// }
+
 pub static PLANNER: Lazy<Planner> = Lazy::new(Planner::default);
 
 pub struct Planner {
-    library: metal::Library,
-    command_queue: Arc<metal::CommandQueue>,
+    pub library: metal::Library,
+    pub command_queue: Arc<metal::CommandQueue>,
 }
 
 unsafe impl Send for Planner {}

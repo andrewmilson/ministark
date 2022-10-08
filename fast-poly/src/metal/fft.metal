@@ -77,6 +77,32 @@ MulAssign(device FieldT *lhs_vals [[ buffer(0) ]],
     lhs_vals[i] = lhs * rhs;
 }
 
+// dst[i] *= src[i] ^ exponent
+// preconditions: 1 <= exponent <= 16
+template<typename FieldT> kernel void
+MulPow(device FieldT *dst [[ buffer(0) ]],
+        constant FieldT *src [[ buffer(1) ]],
+        constant unsigned &exponent [[ buffer(2) ]],
+        constant unsigned &shift [[ buffer(3) ]],
+        unsigned global_tid [[ thread_position_in_grid ]]) {
+    unsigned dst_idx = global_tid;
+    unsigned src_idx = global_tid + shift;
+    if (src_idx >= N) {
+        src_idx -= N;
+    }
+
+    FieldT src_val = src[src_idx];
+    FieldT acc = src_val;
+    
+    // TODO: optimize
+    for (unsigned i = 1; i < 16 && i < exponent; i++) {
+        acc = acc * src_val;
+    }
+
+    FieldT dst_val = dst[dst_idx];
+    dst[dst_idx] = dst_val * acc;
+}
+
 
 // Performs multiple itteration stages of Cooley-Tuckey radix-2 decimation-in-time (DIT)
 //
@@ -156,6 +182,13 @@ template [[ host_name("mul_assign_fp18446744069414584321") ]] kernel void
 MulAssign<FP18446744069414584321>(
         device FP18446744069414584321*,
         constant FP18446744069414584321*,
+        unsigned);
+template [[ host_name("mul_pow_fp18446744069414584321") ]] kernel void
+MulPow<FP18446744069414584321>(
+        device FP18446744069414584321*,
+        constant FP18446744069414584321*,
+        constant unsigned&,
+        constant unsigned&,
         unsigned);
 template [[ host_name("fft_single_fp18446744069414584321") ]] kernel void
 FftSingle<FP18446744069414584321>(

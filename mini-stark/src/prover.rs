@@ -8,6 +8,7 @@ use crate::TraceInfo;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
 use sha2::Sha256;
 
@@ -68,11 +69,12 @@ pub trait Prover {
     fn build_trace_commitment(
         &self,
         trace: &Matrix<Self::Fp>,
+        trace_domain: Radix2EvaluationDomain<Self::Fp>,
         lde_domain: Radix2EvaluationDomain<Self::Fp>,
     ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
         let trace_polys = {
             let _timer = Timer::new("trace interpolation");
-            trace.interpolate_columns()
+            trace.interpolate_columns(trace_domain)
         };
         let trace_lde = {
             let _timer = Timer::new("trace low degree extension");
@@ -95,7 +97,7 @@ pub trait Prover {
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
         let (base_trace_lde, base_trace_polys, base_trace_lde_tree) =
-            self.build_trace_commitment(trace.base_columns(), air.lde_domain());
+            self.build_trace_commitment(trace.base_columns(), air.trace_domain(), air.lde_domain());
 
         channel.commit_trace(base_trace_lde_tree.root());
         let challenges = channel.get_challenges::<Self::Fp>(air.num_challenges());
@@ -105,8 +107,11 @@ pub trait Prover {
         let mut extension_trace_tree = None;
 
         if let Some(extension_matrix) = trace.build_extension_columns(&challenges) {
-            let (extension_lde, extension_polys, extension_lde_tree) =
-                self.build_trace_commitment(&extension_matrix, air.lde_domain());
+            let (extension_lde, extension_polys, extension_lde_tree) = self.build_trace_commitment(
+                &extension_matrix,
+                air.trace_domain(),
+                air.lde_domain(),
+            );
             channel.commit_trace(extension_lde_tree.root());
             // TODO: this approach could be better
             extension_trace_tree = Some(extension_lde_tree);
@@ -114,7 +119,15 @@ pub trait Prover {
             trace_polys.append(extension_polys);
         }
 
-        // trace_lde
+        let lde_step = air.lde_blowup_factor();
+        {
+            let _timer = Timer::new("Constraint evaluations");
+            let constraint_evaluations = air
+                .transition_constraints()
+                .iter()
+                .map(|constraint| constraint.evaluate(&challenges, lde_step, &trace_lde))
+                .collect::<Vec<Vec<Self::Fp, PageAlignedAllocator>>>();
+        }
 
         Ok(Proof {
             options,

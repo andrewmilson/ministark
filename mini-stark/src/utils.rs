@@ -14,7 +14,7 @@ use std::ops::IndexMut;
 use std::time::Instant;
 
 /// Matrix is an array of columns.
-pub struct Matrix<F>(Vec<Vec<F, PageAlignedAllocator>>);
+pub struct Matrix<F>(pub Vec<Vec<F, PageAlignedAllocator>>);
 
 impl<F: GpuField> Matrix<F> {
     pub fn new(cols: Vec<Vec<F, PageAlignedAllocator>>) -> Self {
@@ -47,8 +47,7 @@ impl<F: GpuField> Matrix<F> {
         self.num_rows() == 0
     }
 
-    pub fn interpolate_columns(&self) -> Self {
-        let domain = Radix2EvaluationDomain::<F>::new(self.num_rows()).unwrap();
+    pub fn interpolate_columns(&self, domain: Radix2EvaluationDomain<F>) -> Self {
         let mut ifft = GpuIfft::from(domain);
         let columns = self
             .0
