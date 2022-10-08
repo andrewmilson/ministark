@@ -5,9 +5,9 @@
 // about. Refer to README.md for a higher lever explanation.
 
 #include <metal_stdlib>
-#include "felt_u128.h"
-#include "felt_u64.h"
-#include "permute.h"
+#include "felt_u128.h.metal"
+#include "felt_u64.h.metal"
+#include "permute.h.metal"
 using namespace metal;
 
 // Number of input items being transformed

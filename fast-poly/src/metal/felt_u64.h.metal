@@ -1,7 +1,7 @@
 #ifndef felt_u64_h
 #define felt_u64_h
 
-#include "u128.h"
+#include "u128.h.metal"
 
 class FP18446744069414584321
 {

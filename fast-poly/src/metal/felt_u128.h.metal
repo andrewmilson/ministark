@@ -1,7 +1,7 @@
 #ifndef felt_u128_h
 #define felt_u128_h
 
-#include "u128.h"
+#include "u128.h.metal"
 
 // Optimized 128-bit prime field (FP) element
 //
