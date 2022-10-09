@@ -35,7 +35,7 @@ enum OpCode {
 }
 
 impl OpCode {
-    fn iterator() -> Iter<'static, OpCode> {
+    fn iterator() -> std::slice::Iter<'static, OpCode> {
         static VALUES: [OpCode; 8] = [
             OpCode::IncrementPointer,
             OpCode::DecrementPointer,
