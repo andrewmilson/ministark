@@ -9,6 +9,7 @@ use fast_poly::plan::GpuIfft;
 use fast_poly::GpuField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::ops::Deref;
 use std::ops::Index;
 use std::ops::IndexMut;
 use std::time::Instant;
@@ -108,6 +109,14 @@ impl<F: GpuField> Matrix<F> {
                 *row_hash = hasher.finalize();
             });
         MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
+    }
+}
+
+impl<F: GpuField> Deref for Matrix<F> {
+    type Target = Vec<Vec<F, PageAlignedAllocator>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
