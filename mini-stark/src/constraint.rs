@@ -280,7 +280,6 @@ impl<F: GpuField> Constraint<F> {
         let mut curr_multiplier = MulPowStage::<F>::new(library, n, 0);
         let mut next_multiplier = MulPowStage::<F>::new(library, n, trace_step);
         for term in constraint_without_challenges {
-            println!("coeff:{}", term.0);
             let mut scratch = Vec::with_capacity_in(n, PageAlignedAllocator);
             scratch.resize(n, term.0);
             let mut scratch_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch);

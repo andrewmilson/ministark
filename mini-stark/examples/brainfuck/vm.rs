@@ -1,10 +1,14 @@
+use crate::tables::Memory;
+use crate::tables::Processor;
+use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
+use mini_stark::Column;
 use mini_stark::Matrix;
 use std::os::unix::process;
 
 /// Opcodes determined by the lexer
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum OpCode {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpCode {
     IncrementPointer,
     DecrementPointer,
     Increment,
@@ -16,7 +20,7 @@ enum OpCode {
 }
 
 impl OpCode {
-    fn iterator() -> std::slice::Iter<'static, OpCode> {
+    pub fn iterator() -> std::slice::Iter<'static, OpCode> {
         static VALUES: [OpCode; 8] = [
             OpCode::IncrementPointer,
             OpCode::DecrementPointer,
@@ -120,22 +124,23 @@ struct Register {
     mem_val: usize,
 }
 
+// Outputs base execution trace
 pub fn simulate<F: GpuField>(
     program: &[usize],
     input: &mut impl std::io::Read,
     output: &mut impl std::io::Write,
-) -> (Matrix<F>, Matrix<F>, Matrix<F>) {
+) -> Matrix<F> {
     let mut tape = [0u8; 1024];
     let mut register = Register::default();
     register.curr_instr = program[0];
     register.next_instr = if program.len() == 1 { 0 } else { program[1] };
 
     // execution trace tables in row major
-    let processor_rows = Vec::new();
-    let instruction_rows = Vec::new();
-    let input_rows = Vec::new();
-    let output_rows = Vec::new();
-    let memory_rows = Vec::new();
+    let mut processor_rows = Vec::new();
+    let mut instruction_rows = Vec::new();
+    let mut input_rows = Vec::new();
+    let mut output_rows = Vec::new();
+    let mut memory_rows = Vec::new();
 
     for i in 0..program.len() {
         instruction_rows.push(vec![
@@ -215,7 +220,7 @@ pub fn simulate<F: GpuField>(
 
     // Collect final state into execution tables
     let mem_val = F::from(register.mem_val as u64);
-    processor_rows.push([
+    processor_rows.push(vec![
         F::from(register.cycle as u64),
         F::from(register.ip as u64),
         F::from(register.curr_instr as u64),
@@ -225,16 +230,139 @@ pub fn simulate<F: GpuField>(
         mem_val.inverse().unwrap(),
     ]);
 
-    instruction_rows.push([
+    instruction_rows.push(vec![
         F::from(register.ip as u64),
         F::from(register.curr_instr as u64),
         F::from(register.next_instr as u64),
     ]);
 
     // sort instructions by address
-    matrices.instruction.sort_by_key(|row| row[0].into_bigint());
+    instruction_rows.sort_by_key(|row| row[0]);
 
-    matrices.memory = MemoryTable::<F>::derive_matrix(&matrices.processor);
+    memory_rows = derive_memory_rows(&processor_rows);
 
-    matrices
+    let padding_len = {
+        let max_length = [
+            processor_rows.len(),
+            memory_rows.len(),
+            instruction_rows.len(),
+            input_rows.len(),
+            output_rows.len(),
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
+        ceil_power_of_two(max_length)
+    };
+
+    let mut columns = vec![
+        into_columns(processor_rows),
+        into_columns(memory_rows),
+        into_columns(instruction_rows),
+        into_columns(input_rows),
+        into_columns(output_rows),
+    ]
+    .into_iter()
+    .flat_map(|columns| columns)
+    .collect::<Vec<Vec<F, PageAlignedAllocator>>>();
+
+    for column in &mut columns {
+        column.resize(padding_len, F::zero());
+    }
+
+    let mut dummy_column = Vec::with_capacity(padding_len);
+    dummy_column.resize(padding_len, F::one());
+
+    columns.push(dummy_column.to_vec_in(PageAlignedAllocator));
+    columns.push(dummy_column.to_vec_in(PageAlignedAllocator));
+    columns.push(dummy_column.to_vec_in(PageAlignedAllocator));
+    columns.push(dummy_column.to_vec_in(PageAlignedAllocator));
+    columns.push(dummy_column.to_vec_in(PageAlignedAllocator));
+    columns.push(dummy_column.to_vec_in(PageAlignedAllocator));
+    columns.push(dummy_column.to_vec_in(PageAlignedAllocator));
+    columns.push(dummy_column.to_vec_in(PageAlignedAllocator));
+
+    Matrix::new(columns)
+}
+
+fn derive_memory_rows<F: GpuField>(processor_rows: &[Vec<F>]) -> Vec<Vec<F>> {
+    // copy unpadded rows and sort
+    // TODO: sorted by IP and then CYCLE. Check to see if processor table sorts by
+    // cycle.
+    let mut memory_rows = processor_rows
+        .iter()
+        .filter_map(|row| {
+            if row[Processor::CurrInstr as usize].is_zero() {
+                None
+            } else {
+                Some(vec![
+                    row[Processor::Cycle as usize],
+                    row[Processor::Mp as usize],
+                    row[Processor::MemVal as usize],
+                    F::zero(), // dummy=no
+                ])
+            }
+        })
+        .collect::<Vec<Vec<F>>>();
+
+    // matrix.sort_by_key(|row| );
+    memory_rows.sort_by_key(|row| (row[Memory::Mp as usize], row[Memory::Cycle as usize]));
+
+    // insert dummy rows for smooth clk jumps
+    let mut i = 0;
+    while i < memory_rows.len() - 1 {
+        let curr_row = &memory_rows[i];
+        let next_row = &memory_rows[i + 1];
+
+        // check sorted by memory address then cycle
+        if curr_row[Memory::Mp as usize] == next_row[Memory::Mp as usize] {
+            // assert!(curr_row[Self::CYCLE] == next_row[Self::CYCLE] -
+            // F::BasePrimeField::one())
+        }
+
+        if curr_row[Memory::Mp as usize] == next_row[Memory::Mp as usize]
+            && curr_row[Memory::Cycle as usize] + F::one() != next_row[Memory::Cycle as usize]
+        {
+            memory_rows.insert(
+                i + 1,
+                vec![
+                    curr_row[Memory::Cycle as usize] + F::one(),
+                    curr_row[Memory::Mp as usize],
+                    curr_row[Memory::MemVal as usize],
+                    F::one(), // dummy=yes
+                ],
+            )
+        }
+
+        i += 1;
+    }
+
+    memory_rows
+}
+
+fn into_columns<F: GpuField>(rows: Vec<Vec<F>>) -> Vec<Vec<F, PageAlignedAllocator>> {
+    if rows.is_empty() {
+        Vec::new()
+    } else {
+        let num_cols = rows[0].len();
+        let mut cols = Vec::new();
+        for _ in 0..num_cols {
+            cols.push(Vec::new_in(PageAlignedAllocator));
+        }
+        for row in rows {
+            for (col, val) in cols.iter_mut().zip(row) {
+                col.push(val);
+            }
+        }
+        cols
+    }
+}
+
+/// Rounds the input value up the the nearest power of two
+fn ceil_power_of_two(value: usize) -> usize {
+    if value.is_power_of_two() {
+        value
+    } else {
+        value.next_power_of_two()
+    }
 }
