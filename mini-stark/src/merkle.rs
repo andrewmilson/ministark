@@ -19,7 +19,7 @@ pub enum MerkleTreeError {
     InvalidProof,
 }
 
-/// Merkle tree implemented as a full (power of 2) arity tree.
+/// Merkle tree implemented as a full power-of-two arity tree.
 ///
 /// ```text
 ///       #        <- root node

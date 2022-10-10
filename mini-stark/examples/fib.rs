@@ -3,8 +3,8 @@
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
 use fast_poly::allocator::PageAlignedAllocator;
-use mini_stark::constraint::helper::are_eq;
-use mini_stark::constraint::helper::is_one;
+use mini_stark::constraint::are_eq;
+use mini_stark::constraint::is_one;
 use mini_stark::Air;
 use mini_stark::Column;
 use mini_stark::Constraint;

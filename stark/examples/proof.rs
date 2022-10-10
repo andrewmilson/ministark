@@ -16,7 +16,7 @@ use std::fs;
 use std::mem::size_of;
 
 const FIB_TO_100_SOURCE: &str = "
-+++++++++++
++++
 >+>>>>++++++++++++++++++++++++++++++++++++++++++++
 >++++++++++++++++++++++++++++++++<<<<<<[>[>>>>>>+>
 +<<<<<<<-]>>>>>>>[<<<<<<<+>>>>>>>-]<[>++++++++++[-
@@ -81,6 +81,7 @@ fn main() {
         output: output_matrix,
         memory: memory_matrix,
     } = brainfuck::stark::simulate::<Fp>(&program, &mut std::io::empty(), &mut output);
+    println!("Output: {}", String::from_utf8(output));
 
     let running_time = processor_matrix.len();
     println!("Running time: {running_time}");

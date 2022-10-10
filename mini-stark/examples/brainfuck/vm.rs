@@ -12,6 +12,7 @@ use ark_ff::Zero;
 // use ark_ff_optimized::fp64::Fp;
 use fast_poly::allocator::PageAlignedAllocator;
 use mini_stark::Matrix;
+use mini_stark::TraceInfo;
 
 type Fp = <BrainfuckTrace as mini_stark::Trace>::Fp;
 
@@ -138,8 +139,6 @@ pub fn simulate(
     while register.ip < program.len() {
         let mem_val = Fp::from(register.mem_val as u64);
 
-        println!("Cycle: {}", register.cycle);
-
         processor_rows.push(vec![
             Fp::from(register.cycle as u64),
             Fp::from(register.ip as u64),
@@ -211,7 +210,7 @@ pub fn simulate(
         Fp::from(register.next_instr as u64),
         Fp::from(register.mp as u64),
         mem_val,
-        mem_val.inverse().unwrap(),
+        mem_val.inverse().unwrap_or_default(),
     ]);
 
     instruction_rows.push(vec![
@@ -232,6 +231,7 @@ pub fn simulate(
             instruction_rows.len(),
             input_rows.len(),
             output_rows.len(),
+            TraceInfo::MIN_TRACE_LENGTH,
         ]
         .into_iter()
         .max()
@@ -250,6 +250,8 @@ pub fn simulate(
     let instruction_base_trace = Matrix::new(into_columns(instruction_rows));
     let input_base_trace = Matrix::new(into_columns(input_rows));
     let output_base_trace = Matrix::new(into_columns(output_rows));
+
+    println!("Cycles:{}, Trace len:{padding_len}", register.cycle);
 
     BrainfuckTrace::new(
         processor_base_trace,

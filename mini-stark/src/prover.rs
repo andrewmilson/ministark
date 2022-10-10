@@ -22,6 +22,7 @@ use sha2::Sha256;
 #[derive(Debug, Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProofOptions {
     pub num_queries: u8,
+    // would be nice to make this clear as LDE blowup factor vs constraint blowup factor
     pub blowup_factor: u8,
 }
 
@@ -97,16 +98,16 @@ pub trait Prover {
         let air = Self::Air::new(trace_info.clone(), pub_inputs, options);
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
-        println!(
-            "Degree ISSSS: {:?}",
-            air.transition_constraints()
-                .iter()
-                .map(|c| c.degree())
-                .collect::<Vec<usize>>()
-        );
-        // println!("Num challenges is: {}", air.num_challenges());
-
-        // return Err(ProvingError::Fail);
+        {
+            assert!(
+                air.transition_constraints()
+                    .into_iter()
+                    .map(|constraint| constraint.degree())
+                    .max()
+                    .unwrap_or_default()
+                    <= options.blowup_factor.into()
+            );
+        }
 
         let (base_trace_lde, base_trace_polys, base_trace_lde_tree) =
             self.build_trace_commitment(trace.base_columns(), air.trace_domain(), air.lde_domain());
@@ -140,7 +141,7 @@ pub trait Prover {
             let constraint_evaluations = air
                 .transition_constraints()
                 .iter()
-                .map(|constraint| constraint.evaluate(&challenges, lde_step, &trace_lde))
+                .map(|constraint| constraint.evaluate_symbolic(&challenges, lde_step, &trace_lde))
                 .collect::<Vec<Vec<Self::Fp, PageAlignedAllocator>>>();
         }
 

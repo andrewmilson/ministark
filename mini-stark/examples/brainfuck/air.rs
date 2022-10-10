@@ -2,7 +2,7 @@ use crate::tables;
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
 use ark_serialize::CanonicalSerialize;
-use mini_stark::constraint::helper::are_eq;
+use mini_stark::constraint::are_eq;
 use mini_stark::Air;
 use mini_stark::Column;
 use mini_stark::Constraint;
@@ -43,6 +43,11 @@ impl Air for BrainfuckAir {
     }
 
     fn transition_constraints(&self) -> Vec<Constraint<Self::Fp>> {
+        println!(
+            "{:?}",
+            tables::ProcessorBaseColumn::transition_constraints::<Self::Fp>()[2],
+        );
+
         vec![
             tables::ProcessorBaseColumn::transition_constraints(),
             tables::MemoryBaseColumn::transition_constraints(),

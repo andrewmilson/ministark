@@ -3,6 +3,7 @@
 use crate::challenges;
 use crate::challenges::Challenges;
 use crate::Matrix;
+use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
@@ -127,6 +128,26 @@ impl Variables {
     }
 }
 
+impl core::fmt::Debug for Variables {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+        for variable in self.0.iter() {
+            let power = variable.1;
+            let (symbol, index) = match variable.0 {
+                Element::Curr(index) => ("x", index),
+                Element::Next(index) => ("x'", index),
+                Element::Challenge(index) => ("c", index),
+            };
+
+            if power.is_one() {
+                write!(f, " * {symbol}_{index}")?;
+            } else {
+                write!(f, " * {symbol}_{index}^{power}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl PartialOrd for Variables {
     /// Sort by total degree. If total degree is equal then ordering
     /// is given by exponent weight in lower-numbered variables
@@ -222,6 +243,7 @@ impl<F: GpuField> Constraint<F> {
 
     fn new(mut terms: Vec<Term<F>>) -> Self {
         terms.sort_by(|a, b| a.1.cmp(&b.1));
+
         let mut constraint = Constraint(Self::combine_terms(terms));
         constraint.remove_zeros();
         constraint
@@ -241,10 +263,11 @@ impl<F: GpuField> Constraint<F> {
             if let Some(Term(prev_coeff, prev_vars)) = combined_terms.last_mut() {
                 if prev_vars == &curr_vars {
                     *prev_coeff += curr_coeff;
+                    continue;
                 }
-            } else {
-                combined_terms.push(Term(curr_coeff, curr_vars));
             }
+
+            combined_terms.push(Term(curr_coeff, curr_vars));
         }
         combined_terms
     }
@@ -258,7 +281,24 @@ impl<F: GpuField> Constraint<F> {
         )
     }
 
-    pub fn evaluate(
+    pub fn evaluate(&self, challenges: &[F], current_row: &[F], next_row: &[F]) -> F {
+        let mut result = F::zero();
+        for Term(coeff, vars) in self.0.iter() {
+            let mut scratch = *coeff;
+            for &(element, power) in &vars.0 {
+                let val = match element {
+                    Element::Curr(index) => current_row[index],
+                    Element::Next(index) => next_row[index],
+                    Element::Challenge(index) => challenges[index],
+                };
+                scratch *= val.pow([power as u64]);
+            }
+            result += scratch;
+        }
+        result
+    }
+
+    pub fn evaluate_symbolic(
         &self,
         challenges: &[F],
         trace_step: usize,
@@ -316,6 +356,20 @@ impl<F: GpuField> Constraint<F> {
     }
 }
 
+impl<F: GpuField> core::fmt::Debug for Constraint<F> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+        // for (coeff, term) in self.0.iter().filter(|(c, _)| !c.is_zero()) {
+        for Term(coeff, variables) in self.0.iter() {
+            if variables.0.is_empty() {
+                write!(f, "\n{}", coeff)?;
+            } else {
+                write!(f, "\n{}{:?}", coeff, variables)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl<F: GpuField> From<F> for Constraint<F> {
     fn from(element: F) -> Self {
         Constraint(vec![Term::new(element, Variables::default())])
@@ -348,7 +402,8 @@ impl<F: GpuField> Mul<&Constraint<F>> for &Constraint<F> {
                     result_terms.push(lhs_term * rhs_term);
                 }
             }
-            Constraint(result_terms)
+            // Constraint::new(result_terms)
+            Constraint::new(result_terms)
         }
     }
 }
@@ -529,39 +584,24 @@ forward_ref_binop!(impl<F: GpuField> Mul, mul for Constraint<F>, F);
 forward_ref_binop!(impl<F: GpuField> Add, add for Constraint<F>, F);
 forward_ref_binop!(impl<F: GpuField> Sub, sub for Constraint<F>, F);
 
-pub mod helper {
-    use super::Constraint;
-    use fast_poly::GpuField;
-    use std::borrow::Borrow;
+pub fn are_eq<F: GpuField>(
+    a: impl Borrow<Constraint<F>>,
+    b: impl Borrow<Constraint<F>>,
+) -> Constraint<F> {
+    a.borrow() - b.borrow()
+}
 
-    // /// Returns zero only when a == b.
-    // pub fn are_eq<F: GpuField>(
-    //     a: impl Borrow<Constraint<F>>,
-    //     b: impl Borrow<Constraint<F>>,
-    // ) -> Constraint<F> {
-    //     a.borrow() - b.borrow()
-    // }
+/// Returns zero only when a == zero.
+pub fn is_zero<F: GpuField, C: Borrow<Constraint<F>>>(a: C) -> C {
+    a
+}
 
-    /// Returns zero only when a == b.
-    pub fn are_eq<F: GpuField>(
-        a: impl Borrow<Constraint<F>>,
-        b: impl Borrow<Constraint<F>>,
-    ) -> Constraint<F> {
-        a.borrow() - b.borrow()
-    }
+/// Returns zero only when a == one.
+pub fn is_one<F: GpuField>(a: impl Borrow<Constraint<F>>) -> Constraint<F> {
+    a.borrow() - F::one()
+}
 
-    /// Returns zero only when a == zero.
-    pub fn is_zero<F: GpuField>(a: impl Borrow<Constraint<F>>) -> Constraint<F> {
-        a.borrow().clone()
-    }
-
-    /// Returns zero only when a == one.
-    pub fn is_one<F: GpuField>(a: impl Borrow<Constraint<F>>) -> Constraint<F> {
-        a.borrow() - F::one()
-    }
-
-    /// Returns zero only when a = zero || a == one.
-    pub fn is_binary<F: GpuField>(a: impl Borrow<Constraint<F>>) -> Constraint<F> {
-        a.borrow() * a.borrow() - a.borrow()
-    }
+/// Returns zero only when a = zero || a == one.
+pub fn is_binary<F: GpuField>(a: impl Borrow<Constraint<F>>) -> Constraint<F> {
+    a.borrow() * a.borrow() - a.borrow()
 }

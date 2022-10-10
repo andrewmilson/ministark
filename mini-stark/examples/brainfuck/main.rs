@@ -17,6 +17,25 @@ mod tables;
 mod trace;
 mod vm;
 
+/// Source: http://esoteric.sange.fi/brainfuck/bf-source/prog/fibonacci.txt
+const FIB_TO_55_SOURCE: &str = "
+This determines how many numbers to generate:
+    ++++++++++
+
+Program:
+    >+>>>>++++++++++++++++++++++++++++++++++++++++++++
+    >++++++++++++++++++++++++++++++++<<<<<<[>[>>>>>>+>
+    +<<<<<<<-]>>>>>>>[<<<<<<<+>>>>>>>-]<[>++++++++++[-
+    <-[>>+>+<<<-]>>>[<<<+>>>-]+<[>[-]<[-]]>[<<[>>>+<<<
+    -]>>[-]]<<]>>>[>>+>+<<<-]>>>[<<<+>>>-]+<[>[-]<[-]]
+    >[<<+>>[-]]<<<<<<<]>>>>>[+++++++++++++++++++++++++
+    +++++++++++++++++++++++.[-]]++++++++++<[->-<]>++++
+    ++++++++++++++++++++++++++++++++++++++++++++.[-]<<
+    <<<<<<<<<<[>>>+>+<<<<-]>>>>[<<<<+>>>>-]<-[>>.>.<<<
+    [-]]<<[>>+>+<<<-]>>>[<<<+>>>-]<<[<+>-]>[<+>-]<<<-]
+";
+
+/// Source: https://esolangs.org/wiki/Brainfuck
 const HELLO_WORLD_SOURCE: &str = "
 +++++ +++++             initialize counter (cell #0) to 10
 [                       use loop to set 70/100/30/10
@@ -71,6 +90,8 @@ fn main() {
     let program = compile(HELLO_WORLD_SOURCE);
     let mut output = Vec::new();
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
+    println!("Output: {}", String::from_utf8(output).unwrap());
+
     let options = ProofOptions::new(32, 8);
     let prover = BrainfuckProver::new(options);
     let proof = prover.generate_proof(trace);

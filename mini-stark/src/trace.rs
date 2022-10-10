@@ -17,7 +17,7 @@ pub struct TraceInfo {
 impl TraceInfo {
     /// Smallest execution trace length
     /// TODO: justify
-    pub const MIN_TRACE_LENGTH: usize = 8;
+    pub const MIN_TRACE_LENGTH: usize = 2048;
     /// Maximum number of columns (base + extension) in an execution trace
     pub const MAX_TRACE_WIDTH: usize = 255;
     /// Maximum number of bytes in trace metadata; currently set at 64KiB.

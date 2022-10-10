@@ -1,4 +1,4 @@
-#![feature(allocator_api)]
+#![feature(allocator_api, let_chains)]
 
 mod air;
 pub mod challenges;
