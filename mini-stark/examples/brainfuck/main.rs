@@ -92,7 +92,7 @@ fn main() {
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
     println!("Output: {}", String::from_utf8(output).unwrap());
 
-    let options = ProofOptions::new(32, 8);
+    let options = ProofOptions::new(32, 16);
     let prover = BrainfuckProver::new(options);
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());

@@ -26,7 +26,7 @@ use std::ops::Sub;
 /// A constraint element can represent several things:
 /// - a column in the current cycle
 /// - a column in the next cycle
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Element {
     Curr(usize),
     Next(usize),
@@ -109,10 +109,11 @@ impl Variables {
             if let Some((prev_element, prev_exponent)) = combined_variables.last_mut() {
                 if prev_element == curr_element {
                     *prev_exponent += curr_exponent;
+                    continue;
                 }
-            } else {
-                combined_variables.push((*curr_element, *curr_exponent));
             }
+
+            combined_variables.push((*curr_element, *curr_exponent));
         }
         combined_variables
     }
@@ -230,15 +231,8 @@ impl<F: GpuField> Constraint<F> {
             .flat_map(|term| term.1.get_challenge_indices())
             .collect::<Vec<usize>>();
         indices.sort();
-        let mut ret = Vec::new();
-        for index in indices {
-            if let Some(&last_index) = ret.last() {
-                if index != last_index {
-                    ret.push(index);
-                }
-            }
-        }
-        ret
+        indices.dedup();
+        indices
     }
 
     fn new(mut terms: Vec<Term<F>>) -> Self {
@@ -273,7 +267,7 @@ impl<F: GpuField> Constraint<F> {
     }
 
     fn evaluate_challenges(&self, challenges: &[F]) -> Self {
-        Constraint(
+        Constraint::new(
             self.0
                 .iter()
                 .map(|term| term.evaluate_challenges(challenges))
@@ -307,7 +301,6 @@ impl<F: GpuField> Constraint<F> {
         let n = lde_matrix.num_rows();
         let constraint_without_challenges = self.evaluate_challenges(challenges).0;
         let num_terms = constraint_without_challenges.len();
-        println!("NUM TERMIES: {num_terms}");
         if num_terms == 0 {
             let mut ret = Vec::with_capacity_in(n, PageAlignedAllocator);
             ret.resize(n, F::zero());
@@ -336,9 +329,6 @@ impl<F: GpuField> Constraint<F> {
         }
         command_buffer.commit();
         command_buffer.wait_until_completed();
-        println!("term val1:{}", term_evaluations[0][0]);
-        println!("term val2:{}", term_evaluations[0][1]);
-        println!("term val3:{}", term_evaluations[0][2]);
         // TODO: refactor this mess
         let mut evaluations_iter = term_evaluations.into_iter();
         let mut evaluation = evaluations_iter.next().unwrap();

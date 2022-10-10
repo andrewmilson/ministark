@@ -1,15 +1,22 @@
 use crate::merkle::MerkleTree;
 use crate::Column;
+use ark_ff::BigInteger;
+use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
 use digest::Digest;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::GpuFft;
 use fast_poly::plan::GpuIfft;
+use fast_poly::plan::PLANNER;
+use fast_poly::stage::AddAssignStage;
+use fast_poly::utils::buffer_mut_no_copy;
+use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::ops::Deref;
+use std::ops::DerefMut;
 use std::ops::Index;
 use std::ops::IndexMut;
 use std::time::Instant;
@@ -35,9 +42,17 @@ impl<F: GpuField> Matrix<F> {
     }
 
     pub fn append(&mut self, other: Matrix<F>) {
-        for col in other.0.into_iter() {
+        for col in other.0 {
             self.0.push(col)
         }
+    }
+
+    pub fn join(mut matrices: Vec<Matrix<F>>) -> Matrix<F> {
+        let mut accumulator = Vec::new();
+        for matrix in &mut matrices {
+            accumulator.append(matrix)
+        }
+        Matrix::new(accumulator)
     }
 
     pub fn num_cols(&self) -> usize {
@@ -91,6 +106,31 @@ impl<F: GpuField> Matrix<F> {
         Matrix::new(columns)
     }
 
+    /// Sums columns into a single column matrix
+    pub fn sum_columns(&self) -> Matrix<F> {
+        let n = self.num_rows();
+        let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
+        accumulator.resize(n, F::zero());
+
+        if !self.num_cols().is_zero() {
+            // TODO: could improve
+            let library = &PLANNER.library;
+            let command_queue = &PLANNER.command_queue;
+            let device = command_queue.device();
+            let command_buffer = command_queue.new_command_buffer();
+            let mut accumulator_buffer = buffer_mut_no_copy(device, &mut accumulator);
+            let mut adder = AddAssignStage::<F>::new(library, n);
+            for column in self.0.iter() {
+                let column_buffer = buffer_no_copy(command_queue.device(), column);
+                adder.encode(command_buffer, &mut accumulator_buffer, &column_buffer);
+            }
+            command_buffer.commit();
+            command_buffer.wait_until_completed();
+        }
+
+        Matrix::new(vec![accumulator])
+    }
+
     pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {
         let num_rows = self.num_rows();
         let num_cols = self.num_cols();
@@ -101,6 +141,7 @@ impl<F: GpuField> Matrix<F> {
             .enumerate()
             .for_each(|(row, row_hash)| {
                 let mut hasher = D::new();
+                // TODO: bad for single column matricies
                 for col in 0..num_cols {
                     let mut bytes = Vec::new();
                     self.0[col][row].serialize_compressed(&mut bytes).unwrap();
@@ -120,6 +161,12 @@ impl<F: GpuField> Clone for Matrix<F> {
                 .map(|col| col.to_vec_in(PageAlignedAllocator))
                 .collect(),
         )
+    }
+}
+
+impl<F: GpuField> DerefMut for Matrix<F> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

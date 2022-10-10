@@ -13,9 +13,29 @@ use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
 use mini_stark::constraint::are_eq;
 use mini_stark::constraint::is_binary;
+use mini_stark::constraint::Challenge;
 use mini_stark::constraint::Column;
 use mini_stark::Constraint;
 use mini_stark::Matrix;
+
+enum TestChallenge {
+    Alpha,
+}
+
+impl Challenge for TestChallenge {
+    fn index(&self) -> usize {
+        *self as usize
+    }
+}
+
+#[test]
+fn constraint_with_challenges() {
+    let constraint = (TestChallenge::Alpha.get_challenge() - 0.curr()) * 1.curr();
+
+    assert!(constraint
+        .evaluate(&[Fp::one()], &[Fp::one(), Fp::from(100)], &[])
+        .is_zero());
+}
 
 #[test]
 fn constraint_multiplication() {

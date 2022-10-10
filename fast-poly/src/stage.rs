@@ -291,3 +291,49 @@ impl<F: GpuField> MulPowStage<F> {
         command_encoder.end_encoding()
     }
 }
+
+pub struct AddAssignStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> AddAssignStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(&format!("add_assign_{}", F::field_name()), None)
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let n = n as u32;
+        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        AddAssignStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &mut metal::BufferRef,
+        src_buffer: &metal::BufferRef,
+    ) {
+        let command_encoder = command_buffer.new_compute_command_encoder();
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(src_buffer), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}

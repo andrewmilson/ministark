@@ -82,9 +82,9 @@ impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuFft<'a, F> {
 pub struct GpuIfft<'a, F: GpuField>(FftEncoder<'a, F>);
 
 impl<'a, F: GpuField> GpuIfft<'a, F> {
-    pub fn encode(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
-        assert_eq!(self.0.n, buffer.len());
-        let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), buffer);
+    pub fn encode(&mut self, input: &mut Vec<F, PageAlignedAllocator>) {
+        assert_eq!(self.0.n, input.len());
+        let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), input);
         self.0.encode_butterfly_stages(&mut input_buffer);
         self.0.encode_bit_reverse_stage(&mut input_buffer);
         self.0.encode_scale_stage(&mut input_buffer);

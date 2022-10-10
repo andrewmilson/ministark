@@ -77,6 +77,16 @@ MulAssign(device FieldT *lhs_vals [[ buffer(0) ]],
     lhs_vals[i] = lhs * rhs;
 }
 
+// Performs bit reversal 
+template<typename FieldT> kernel void
+AddAssign(device FieldT *lhs_vals [[ buffer(0) ]],
+        constant FieldT *rhs_vals [[ buffer(1) ]],
+        unsigned i [[ thread_position_in_grid ]]) {
+    FieldT lhs = lhs_vals[i];
+    FieldT rhs = rhs_vals[i];
+    lhs_vals[i] = lhs + rhs;
+}
+
 // dst[i] *= src[i] ^ exponent
 // preconditions: 1 <= exponent <= 16
 template<typename FieldT> kernel void
@@ -177,6 +187,11 @@ FftMultiple<FP270497897142230380135924736767050121217>(
 template [[ host_name("bit_reverse_fp18446744069414584321") ]] kernel void
 BitReverse<FP18446744069414584321>(
         device FP18446744069414584321*,
+        unsigned);
+template [[ host_name("add_assign_fp18446744069414584321") ]] kernel void
+AddAssign<FP18446744069414584321>(
+        device FP18446744069414584321*,
+        constant FP18446744069414584321*,
         unsigned);
 template [[ host_name("mul_assign_fp18446744069414584321") ]] kernel void
 MulAssign<FP18446744069414584321>(

@@ -36,29 +36,13 @@ struct FibAir {
     options: ProofOptions,
     trace_info: TraceInfo,
     result: Fp,
+    boundary_constraints: Vec<Constraint<Fp>>,
+    transition_constraints: Vec<Constraint<Fp>>,
+    terminal_constraints: Vec<Constraint<Fp>>,
 }
 
-impl Air for FibAir {
-    type Fp = Fp;
-    type PublicInputs = Fp;
-
-    fn new(trace_info: TraceInfo, public_input: Fp, options: ProofOptions) -> Self {
-        FibAir {
-            options,
-            trace_info,
-            result: public_input,
-        }
-    }
-
-    fn options(&self) -> &ProofOptions {
-        &self.options
-    }
-
-    fn pub_inputs(&self) -> &Self::PublicInputs {
-        &self.result
-    }
-
-    fn boundary_constraints(&self) -> Vec<Constraint<Self::Fp>> {
+impl FibAir {
+    fn generate_boundary_constraints() -> Vec<Constraint<Fp>> {
         let v0 = Constraint::from(Fp::one());
         let v1 = &v0 + &v0;
         let v2 = &v0 * &v1;
@@ -80,7 +64,7 @@ impl Air for FibAir {
         ]
     }
 
-    fn transition_constraints(&self) -> Vec<Constraint<Self::Fp>> {
+    fn generate_transition_constraints() -> Vec<Constraint<Fp>> {
         vec![
             are_eq(0.next(), 6.curr() * 7.curr()),
             are_eq(1.next(), 7.curr() * 0.next()),
@@ -93,8 +77,44 @@ impl Air for FibAir {
         ]
     }
 
-    fn terminal_constraints(&self) -> Vec<Constraint<Self::Fp>> {
-        vec![7.curr() - self.result]
+    fn generate_terminal_constraints(result: Fp) -> Vec<Constraint<Fp>> {
+        vec![7.curr() - result]
+    }
+}
+
+impl Air for FibAir {
+    type Fp = Fp;
+    type PublicInputs = Fp;
+
+    fn new(trace_info: TraceInfo, public_input: Fp, options: ProofOptions) -> Self {
+        FibAir {
+            options,
+            trace_info,
+            result: public_input,
+            boundary_constraints: Self::generate_boundary_constraints(),
+            transition_constraints: Self::generate_transition_constraints(),
+            terminal_constraints: Self::generate_terminal_constraints(public_input),
+        }
+    }
+
+    fn options(&self) -> &ProofOptions {
+        &self.options
+    }
+
+    fn pub_inputs(&self) -> &Self::PublicInputs {
+        &self.result
+    }
+
+    fn boundary_constraints(&self) -> &[Constraint<Self::Fp>] {
+        &self.boundary_constraints
+    }
+
+    fn transition_constraints(&self) -> &[Constraint<Self::Fp>] {
+        &self.transition_constraints
+    }
+
+    fn terminal_constraints(&self) -> &[Constraint<Self::Fp>] {
+        &self.terminal_constraints
     }
 
     fn trace_info(&self) -> &TraceInfo {

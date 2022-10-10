@@ -221,7 +221,7 @@ fn gen_instruction_ext_matrix(challenges: &Challenges<Fp>, base_matrix: &Matrix<
             .collect::<Vec<Fp>>();
         let prev_base_row = base_matrix
             .iter()
-            .map(|column| column.get(row - 1).copied())
+            .map(|column| column.get(row.wrapping_sub(1)).copied())
             .collect::<Vec<Option<Fp>>>();
         let mut extension_row = vec![Fp::zero(); InstructionExtensionColumn::NUM_TRACE_COLUMNS];
 

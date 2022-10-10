@@ -20,6 +20,9 @@ pub struct BrainfuckAir {
     options: ProofOptions,
     trace_info: TraceInfo,
     execution_info: ExecutionInfo,
+    // boundary_constraints: Vec<Constraint<Fp>>,
+    transition_constraints: Vec<Constraint<Fp>>,
+    // terminal_constraints: Vec<Constraint<Fp>>,
 }
 
 impl Air for BrainfuckAir {
@@ -31,6 +34,16 @@ impl Air for BrainfuckAir {
             options,
             trace_info,
             execution_info,
+            transition_constraints: vec![
+                tables::ProcessorBaseColumn::transition_constraints(),
+                tables::MemoryBaseColumn::transition_constraints(),
+                tables::MemoryExtensionColumn::transition_constraints(),
+                tables::InstructionBaseColumn::transition_constraints(),
+                tables::InstructionExtensionColumn::transition_constraints(),
+                tables::InputExtensionColumn::transition_constraints(),
+                tables::OutputExtensionColumn::transition_constraints(),
+            ]
+            .concat(),
         }
     }
 
@@ -42,22 +55,8 @@ impl Air for BrainfuckAir {
         &self.execution_info
     }
 
-    fn transition_constraints(&self) -> Vec<Constraint<Self::Fp>> {
-        println!(
-            "{:?}",
-            tables::ProcessorBaseColumn::transition_constraints::<Self::Fp>()[2],
-        );
-
-        vec![
-            tables::ProcessorBaseColumn::transition_constraints(),
-            tables::MemoryBaseColumn::transition_constraints(),
-            tables::MemoryExtensionColumn::transition_constraints(),
-            tables::InstructionBaseColumn::transition_constraints(),
-            tables::InstructionExtensionColumn::transition_constraints(),
-            tables::InputExtensionColumn::transition_constraints(),
-            tables::OutputExtensionColumn::transition_constraints(),
-        ]
-        .concat()
+    fn transition_constraints(&self) -> &[Constraint<Self::Fp>] {
+        &self.transition_constraints
     }
 
     fn trace_info(&self) -> &TraceInfo {

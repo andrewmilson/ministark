@@ -1,16 +1,32 @@
+use crate::challenges;
+use crate::challenges::Challenges;
 use crate::channel::ProverChannel;
 use crate::merkle::MerkleTree;
 use crate::utils::Timer;
 use crate::Air;
+use crate::Constraint;
 use crate::Matrix;
 use crate::Trace;
 use crate::TraceInfo;
+use ark_ff::One;
+use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
+use ark_poly::EvaluationDomain;
+use ark_poly::Polynomial;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
+use fast_poly::plan::GpuIfft;
+use fast_poly::plan::PLANNER;
+use fast_poly::stage::AddAssignStage;
+use fast_poly::stage::MulPowStage;
+use fast_poly::utils::buffer_mut_no_copy;
+use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
 use sha2::Sha256;
+use std::time::Instant;
 
 // TODO: include ability to specify:
 // - base field
@@ -66,8 +82,7 @@ pub trait Prover {
 
     fn options(&self) -> ProofOptions;
 
-    /// Return value is of the form `(low_degree_extension, polynomials,
-    /// merkle_tree)`
+    /// Return value is of the form `(lde, polys, merkle_tree)`
     fn build_trace_commitment(
         &self,
         trace: &Matrix<Self::Fp>,
@@ -86,7 +101,70 @@ pub trait Prover {
             let _timer = Timer::new("trace commitment");
             trace_lde.commit_to_rows()
         };
-        (trace_polys, trace_lde, merkle_tree)
+        (trace_lde, trace_polys, merkle_tree)
+    }
+
+    /// builds a commitment to the combined constraint quotient evaluations.
+    /// Output is of the form `(combined_lde, combined_poly, lde_merkle_tree)`
+    fn build_constraint_commitment(
+        &self,
+        boundary_constraint_evals: Matrix<Self::Fp>,
+        transition_constraint_evals: Matrix<Self::Fp>,
+        terminal_constraint_evals: Matrix<Self::Fp>,
+        air: &Self::Air,
+    ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
+        println!("NUM COLS: {}", transition_constraint_evals.num_rows());
+
+        let boundary_divisor = air.boundary_constraint_divisor();
+        let transition_divisor = air.transition_constraint_divisor();
+        let terminal_divisor = air.terminal_constraint_divisor();
+
+        let all_quotients = Matrix::join(vec![
+            self.generate_quotients(boundary_constraint_evals, boundary_divisor),
+            self.generate_quotients(transition_constraint_evals, transition_divisor),
+            self.generate_quotients(terminal_constraint_evals, terminal_divisor),
+        ]);
+
+        let eval_matrix = all_quotients.sum_columns();
+        let poly_matrix = eval_matrix.interpolate_columns(air.lde_domain());
+        let merkle_tree = eval_matrix.commit_to_rows();
+
+        (eval_matrix, poly_matrix, merkle_tree)
+    }
+
+    fn evaluate_constraints(
+        &self,
+        challenges: &Challenges<Self::Fp>,
+        constraints: &[Constraint<Self::Fp>],
+        trace_lde: &Matrix<Self::Fp>,
+    ) -> Matrix<Self::Fp> {
+        let trace_step = self.options().blowup_factor as usize;
+        Matrix::new(
+            constraints
+                .iter()
+                .map(|constraint| constraint.evaluate_symbolic(challenges, trace_step, trace_lde))
+                .collect(),
+        )
+    }
+
+    fn generate_quotients(
+        &self,
+        mut all_evaluations: Matrix<Self::Fp>,
+        divisor: Vec<Self::Fp, PageAlignedAllocator>,
+    ) -> Matrix<Self::Fp> {
+        let library = &PLANNER.library;
+        let command_queue = &PLANNER.command_queue;
+        let command_buffer = command_queue.new_command_buffer();
+        let multiplier = MulPowStage::<Self::Fp>::new(library, divisor.len(), 0);
+        let divisor_buffer = buffer_no_copy(command_queue.device(), &divisor);
+        // TODO: let's move GPU stuff out of here and make it readable in here.
+        for evaluations in &mut all_evaluations.0 {
+            let mut evaluations_buffer = buffer_no_copy(command_queue.device(), evaluations);
+            multiplier.encode(command_buffer, &mut evaluations_buffer, &divisor_buffer, 0);
+        }
+        command_buffer.commit();
+        command_buffer.wait_until_completed();
+        all_evaluations
     }
 
     fn generate_proof(&self, trace: Self::Trace) -> Result<Proof, ProvingError> {
@@ -99,23 +177,24 @@ pub trait Prover {
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
         {
-            assert!(
-                air.transition_constraints()
-                    .into_iter()
-                    .map(|constraint| constraint.degree())
-                    .max()
-                    .unwrap_or_default()
-                    <= options.blowup_factor.into()
-            );
+            let blowup_factor = options.blowup_factor as usize;
+            let transition_constraint_degree = air
+                .transition_constraints()
+                .iter()
+                .map(|constraint| constraint.degree())
+                .max()
+                .unwrap_or_default();
+            assert!(transition_constraint_degree <= blowup_factor, "constraint degree {transition_constraint_degree} is larger than the lde blowup factor {blowup_factor}");
         }
 
         let (base_trace_lde, base_trace_polys, base_trace_lde_tree) =
             self.build_trace_commitment(trace.base_columns(), air.trace_domain(), air.lde_domain());
 
         channel.commit_trace(base_trace_lde_tree.root());
-        let num_challenges = 20;
+        // let num_challenges = 20;
         // TODO:
-        // let num_challenges = air.num_challenges();
+        let num_challenges = air.num_challenges();
+        println!("NUM CHALLENGE: {num_challenges}");
         let challenges = channel.get_challenges::<Self::Fp>(num_challenges);
 
         let mut trace_lde = base_trace_lde;
@@ -135,15 +214,23 @@ pub trait Prover {
             trace_polys.append(extension_polys);
         }
 
-        let lde_step = air.lde_blowup_factor();
-        {
-            let _timer = Timer::new("Constraint evaluations");
-            let constraint_evaluations = air
-                .transition_constraints()
-                .iter()
-                .map(|constraint| constraint.evaluate_symbolic(&challenges, lde_step, &trace_lde))
-                .collect::<Vec<Vec<Self::Fp, PageAlignedAllocator>>>();
-        }
+        let boundary_constraint_evals =
+            self.evaluate_constraints(&challenges, air.boundary_constraints(), &trace_lde);
+        let transition_constraint_evals =
+            self.evaluate_constraints(&challenges, air.transition_constraints(), &trace_lde);
+        let terminal_constraint_evals =
+            self.evaluate_constraints(&challenges, air.terminal_constraints(), &trace_lde);
+
+        let (composition_lde, composition_poly, composition_lde_tree) = self
+            .build_constraint_commitment(
+                boundary_constraint_evals,
+                transition_constraint_evals,
+                terminal_constraint_evals,
+                &air,
+            );
+
+        let poly = DensePolynomial::from_coefficients_vec(composition_poly.0[0].to_vec());
+        println!("Poly degree is: {}", poly.degree());
 
         Ok(Proof {
             options,
