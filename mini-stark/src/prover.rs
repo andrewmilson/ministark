@@ -104,14 +104,18 @@ pub trait Prover {
                 .map(|c| c.degree())
                 .collect::<Vec<usize>>()
         );
+        // println!("Num challenges is: {}", air.num_challenges());
 
-        return Err(ProvingError::Fail);
+        // return Err(ProvingError::Fail);
 
         let (base_trace_lde, base_trace_polys, base_trace_lde_tree) =
             self.build_trace_commitment(trace.base_columns(), air.trace_domain(), air.lde_domain());
 
         channel.commit_trace(base_trace_lde_tree.root());
-        let challenges = channel.get_challenges::<Self::Fp>(air.num_challenges());
+        let num_challenges = 20;
+        // TODO:
+        // let num_challenges = air.num_challenges();
+        let challenges = channel.get_challenges::<Self::Fp>(num_challenges);
 
         let mut trace_lde = base_trace_lde;
         let mut trace_polys = base_trace_polys;

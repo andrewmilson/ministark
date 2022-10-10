@@ -4,6 +4,7 @@ use crate::tables::InstructionBaseColumn;
 use crate::tables::MemoryBaseColumn;
 use crate::tables::OutputBaseColumn;
 use crate::tables::ProcessorBaseColumn;
+use crate::trace::into_columns;
 use crate::BrainfuckTrace;
 use ark_ff::Field;
 use ark_ff::One;
@@ -250,18 +251,6 @@ pub fn simulate(
     let input_base_trace = Matrix::new(into_columns(input_rows));
     let output_base_trace = Matrix::new(into_columns(output_rows));
 
-    let mut dummy_column = Vec::with_capacity(padding_len);
-    dummy_column.resize(padding_len, Fp::one());
-
-    let dummy_trace = Matrix::new(vec![
-        dummy_column.to_vec_in(PageAlignedAllocator),
-        dummy_column.to_vec_in(PageAlignedAllocator),
-        dummy_column.to_vec_in(PageAlignedAllocator),
-        dummy_column.to_vec_in(PageAlignedAllocator),
-        dummy_column.to_vec_in(PageAlignedAllocator),
-        dummy_column.to_vec_in(PageAlignedAllocator),
-    ]);
-
     BrainfuckTrace::new(
         processor_base_trace,
         memory_base_trace,
@@ -380,24 +369,6 @@ fn derive_memory_rows(processor_rows: &[Vec<Fp>]) -> Vec<Vec<Fp>> {
     }
 
     memory_rows
-}
-
-fn into_columns(rows: Vec<Vec<Fp>>) -> Vec<Vec<Fp, PageAlignedAllocator>> {
-    if rows.is_empty() {
-        Vec::new()
-    } else {
-        let num_cols = rows[0].len();
-        let mut cols = Vec::new();
-        for _ in 0..num_cols {
-            cols.push(Vec::new_in(PageAlignedAllocator));
-        }
-        for row in rows {
-            for (col, val) in cols.iter_mut().zip(row) {
-                col.push(val);
-            }
-        }
-        cols
-    }
 }
 
 /// Rounds the input value up the the nearest power of two
