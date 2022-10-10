@@ -42,24 +42,18 @@ impl Air for BrainfuckAir {
         &self.execution_info
     }
 
-    // fn boundary_constraints(&self) -> Vec<Constraint<Self::Fp>> {
-
-    // }
-
     fn transition_constraints(&self) -> Vec<Constraint<Self::Fp>> {
         vec![
-            tables::Processor::transition_constraints(),
-            // tables::Memory::transition_constraints(),
-            tables::Instruction::transition_constraints(),
-            // tables::Input::transition_constraints(),
-            // tables::Output::transition_constraints(),
+            tables::ProcessorBaseColumn::transition_constraints(),
+            tables::MemoryBaseColumn::transition_constraints(),
+            tables::MemoryExtensionColumn::transition_constraints(),
+            tables::InstructionBaseColumn::transition_constraints(),
+            tables::InstructionExtensionColumn::transition_constraints(),
+            tables::InputExtensionColumn::transition_constraints(),
+            tables::OutputExtensionColumn::transition_constraints(),
         ]
         .concat()
     }
-
-    // fn terminal_constraints(&self) -> Vec<Constraint<Self::Fp>> {
-    //     vec![7.curr() - self.result]
-    // }
 
     fn trace_info(&self) -> &TraceInfo {
         &self.trace_info

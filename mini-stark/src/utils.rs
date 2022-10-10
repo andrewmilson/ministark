@@ -112,6 +112,17 @@ impl<F: GpuField> Matrix<F> {
     }
 }
 
+impl<F: GpuField> Clone for Matrix<F> {
+    fn clone(&self) -> Self {
+        Self(
+            self.0
+                .iter()
+                .map(|col| col.to_vec_in(PageAlignedAllocator))
+                .collect(),
+        )
+    }
+}
+
 impl<F: GpuField> Deref for Matrix<F> {
     type Target = Vec<Vec<F, PageAlignedAllocator>>;
 

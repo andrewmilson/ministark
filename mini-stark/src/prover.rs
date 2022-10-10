@@ -45,8 +45,9 @@ pub struct Proof {
 /// Errors that can occur during the proving stage
 #[derive(Debug)]
 pub enum ProvingError {
-    // /// This error occurs when a transition constraint evaluated over a specific execution trace
-    // /// does not evaluate to zero at any of the steps.
+    Fail,
+    // /// This error occurs when a transition constraint evaluated over a specific execution
+    // trace /// does not evaluate to zero at any of the steps.
     // UnsatisfiedTransitionConstraintError(usize),
     // /// This error occurs when polynomials built from the columns of a constraint evaluation
     // /// table do not all have the same degree.
@@ -95,6 +96,16 @@ pub trait Prover {
         let pub_inputs = self.get_pub_inputs(&trace);
         let air = Self::Air::new(trace_info.clone(), pub_inputs, options);
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
+
+        println!(
+            "Degree ISSSS: {:?}",
+            air.transition_constraints()
+                .iter()
+                .map(|c| c.degree())
+                .collect::<Vec<usize>>()
+        );
+
+        return Err(ProvingError::Fail);
 
         let (base_trace_lde, base_trace_polys, base_trace_lde_tree) =
             self.build_trace_commitment(trace.base_columns(), air.trace_domain(), air.lde_domain());

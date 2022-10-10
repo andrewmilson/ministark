@@ -1,7 +1,7 @@
 #![feature(allocator_api)]
 
 mod air;
-mod challenges;
+pub mod challenges;
 mod channel;
 pub mod constraint;
 mod domain;
