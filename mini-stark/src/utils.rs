@@ -2,6 +2,9 @@ use crate::merkle::MerkleTree;
 use crate::Column;
 use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
+use ark_poly::Polynomial;
 use digest::Digest;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::GpuFft;
@@ -148,6 +151,15 @@ impl<F: GpuField> Matrix<F> {
                 *row_hash = hasher.finalize();
             });
         MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
+    }
+
+    pub fn evaluate_cols(&self, x: F) -> Vec<F> {
+        let mut evaluations = Vec::new();
+        for col in &self.0 {
+            let polynomial = DensePolynomial::from_coefficients_slice(col);
+            evaluations.push(polynomial.evaluate(&x));
+        }
+        evaluations
     }
 
     pub fn get_row(&self, row: usize) -> Option<Vec<F>> {

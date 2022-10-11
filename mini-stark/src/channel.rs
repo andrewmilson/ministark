@@ -9,7 +9,9 @@ use fast_poly::GpuField;
 pub struct ProverChannel<'a, A: Air, D: Digest> {
     air: &'a A,
     public_coin: PublicCoin<D>,
-    trace_commitments: Vec<Output<D>>,
+    base_trace_commitment: Output<D>,
+    extension_trace_commitment: Option<Output<D>>,
+    constraint_commitment: Output<D>,
 }
 
 // impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
@@ -27,14 +29,34 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         ProverChannel {
             air,
             public_coin,
-            trace_commitments: Vec::new(),
+            extension_trace_commitment: None,
+            base_trace_commitment: Default::default(),
+            constraint_commitment: Default::default(),
         }
     }
 
-    pub fn commit_trace(&mut self, commitment: &Output<D>) {
-        self.trace_commitments.push(commitment.clone());
+    pub fn commit_base_trace(&mut self, commitment: &Output<D>) {
+        self.base_trace_commitment = commitment.clone();
         self.public_coin.reseed(commitment.to_vec());
     }
+
+    pub fn commit_extension_trace(&mut self, commitment: &Output<D>) {
+        self.extension_trace_commitment = Some(commitment.clone());
+        self.public_coin.reseed(commitment.to_vec());
+    }
+
+    pub fn commit_constraints(&mut self, commitment: &Output<D>) {
+        self.constraint_commitment = commitment.clone();
+        self.public_coin.reseed(commitment.to_vec());
+    }
+
+    pub fn get_ood_point<F: GpuField>(&mut self) -> F {
+        self.public_coin.draw()
+    }
+
+    pub fn send_ood_trace_states<F: GpuField>(&mut self, states: [Vec<F>; 2]) -> F {}
+
+    pub fn send_ood_constraint_states<F: GpuField>(&mut self, states: [Vec<F>; 2]) -> F {}
 
     pub fn get_challenges<F: GpuField>(&mut self, num_challenges: usize) -> Challenges<F> {
         let mut rng = self.public_coin.draw_rng();

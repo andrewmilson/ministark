@@ -10,6 +10,7 @@ use crate::TraceInfo;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
+use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
@@ -172,10 +173,12 @@ pub trait Prover {
             assert!(ce_blowup_factor <= lde_blowup_factor, "constraint evaluation blowup factor {ce_blowup_factor} is larger than the lde blowup factor {lde_blowup_factor}");
         }
 
+        let trace_domain = air.trace_domain();
+        let lde_domain = air.lde_domain();
         let (base_trace_lde, base_trace_polys, base_trace_lde_tree) =
-            self.build_trace_commitment(trace.base_columns(), air.trace_domain(), air.lde_domain());
+            self.build_trace_commitment(trace.base_columns(), trace_domain, lde_domain);
 
-        channel.commit_trace(base_trace_lde_tree.root());
+        channel.commit_base_trace(base_trace_lde_tree.root());
         // let num_challenges = 20;
         // TODO:
         let num_challenges = air.num_challenges();
@@ -187,20 +190,18 @@ pub trait Prover {
         let mut extension_trace_tree = None;
 
         if let Some(extension_matrix) = trace.build_extension_columns(&challenges) {
-            let (extension_lde, extension_polys, extension_lde_tree) = self.build_trace_commitment(
-                &extension_matrix,
-                air.trace_domain(),
-                air.lde_domain(),
-            );
-            channel.commit_trace(extension_lde_tree.root());
+            let (extension_lde, extension_polys, extension_lde_tree) =
+                self.build_trace_commitment(&extension_matrix, trace_domain, lde_domain);
+            channel.commit_extension_trace(extension_lde_tree.root());
             // TODO: this approach could be better
             extension_trace_tree = Some(extension_lde_tree);
             trace_lde.append(extension_lde);
             trace_polys.append(extension_polys);
         }
 
+        // TODO: don't re-evaluate. Just keep matrix of trace values
         #[cfg(debug_assertions)]
-        air.validate(&challenges, &trace_polys.evaluate(air.trace_domain()));
+        air.validate(&challenges, &trace_polys.evaluate(trace_domain));
 
         let boundary_constraint_evals =
             self.evaluate_constraints(&challenges, air.boundary_constraints(), &trace_lde);
@@ -209,13 +210,29 @@ pub trait Prover {
         let terminal_constraint_evals =
             self.evaluate_constraints(&challenges, air.terminal_constraints(), &trace_lde);
 
-        let (composition_lde, composition_poly, composition_lde_tree) = self
+        let (constraint_lde, constraint_poly, constraint_lde_tree) = self
             .build_constraint_commitment(
                 boundary_constraint_evals,
                 transition_constraint_evals,
                 terminal_constraint_evals,
                 &air,
             );
+
+        channel.commit_constraints(constraint_lde_tree.root());
+
+        // TODO: add extension field support
+        let z = channel.get_ood_point::<Self::Fp>();
+
+        channel.send_ood_trace_states([
+            trace_polys.evaluate_cols(z),
+            trace_polys.evaluate_cols(z * trace_domain.group_gen),
+        ]);
+
+        channel.send_ood_constraint_states([
+            trace_polys.evaluate_cols(z),
+            trace_polys.evaluate_cols(z * trace_domain.group_gen),
+        ]);
+        // let random_coset = air.trace_domain().get_coset(z).unwrap();
 
         Ok(Proof {
             options,
