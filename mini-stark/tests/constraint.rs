@@ -19,7 +19,6 @@ use mini_stark::constraint::Challenge;
 use mini_stark::constraint::Column;
 use mini_stark::Constraint;
 use mini_stark::Matrix;
-use std::cmp::max;
 
 #[test]
 fn constraint_with_challenges() {
@@ -146,7 +145,7 @@ fn evaluate_permutation_constraint() {
         .iter()
         .scan(Fp::one(), |product, v| {
             let ret = *product;
-            *product *= (challenge - v);
+            *product *= challenge - v;
             Some(ret)
         })
         .collect::<Vec<Fp>>();
@@ -154,7 +153,7 @@ fn evaluate_permutation_constraint() {
         .iter()
         .scan(Fp::one(), |product, v| {
             let ret = *product;
-            *product *= (challenge - v);
+            *product *= challenge - v;
             Some(ret)
         })
         .collect::<Vec<Fp>>();

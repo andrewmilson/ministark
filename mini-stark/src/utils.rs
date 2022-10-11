@@ -1,9 +1,7 @@
 use crate::merkle::MerkleTree;
 use crate::Column;
-use ark_ff::BigInteger;
 use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
-use ark_poly::EvaluationDomain;
 use digest::Digest;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::GpuFft;
@@ -119,7 +117,7 @@ impl<F: GpuField> Matrix<F> {
             let device = command_queue.device();
             let command_buffer = command_queue.new_command_buffer();
             let mut accumulator_buffer = buffer_mut_no_copy(device, &mut accumulator);
-            let mut adder = AddAssignStage::<F>::new(library, n);
+            let adder = AddAssignStage::<F>::new(library, n);
             for column in self.0.iter() {
                 let column_buffer = buffer_no_copy(command_queue.device(), column);
                 adder.encode(command_buffer, &mut accumulator_buffer, &column_buffer);

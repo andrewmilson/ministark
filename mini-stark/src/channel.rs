@@ -1,10 +1,7 @@
 use crate::challenges::Challenges;
 use crate::random::PublicCoin;
 use crate::Air;
-use anyhow::Result;
-// use ark_ff::Field;
 use ark_serialize::CanonicalSerialize;
-use ark_serialize::SerializationError;
 use digest::Digest;
 use digest::Output;
 use fast_poly::GpuField;

@@ -1,4 +1,3 @@
-use crate::challenges;
 use crate::challenges::Challenges;
 use crate::channel::ProverChannel;
 use crate::merkle::MerkleTree;
@@ -18,11 +17,8 @@ use ark_poly::Polynomial;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::GpuIfft;
 use fast_poly::plan::PLANNER;
-use fast_poly::stage::AddAssignStage;
 use fast_poly::stage::MulPowStage;
-use fast_poly::utils::buffer_mut_no_copy;
 use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
 use sha2::Sha256;

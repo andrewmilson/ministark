@@ -1,14 +1,9 @@
 //! Implementation is adapted from the multivariable polynomial in arkworks.
 
-use crate::challenges;
-use crate::challenges::Challenges;
 use crate::Matrix;
 use ark_ff::One;
 use ark_ff::Zero;
-use ark_poly::EvaluationDomain;
-use ark_poly::Radix2EvaluationDomain;
 use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::Planner;
 use fast_poly::plan::PLANNER;
 use fast_poly::stage::MulPowStage;
 use fast_poly::utils::buffer_mut_no_copy;
