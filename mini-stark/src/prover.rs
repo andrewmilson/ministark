@@ -113,24 +113,6 @@ pub trait Prover {
         let terminal_divisor = air.terminal_constraint_divisor();
         let transition_divisor = air.transition_constraint_divisor();
 
-        let n = air.trace_domain().size();
-        let transition_coeffs = transition_constraint_evals.interpolate_columns(air.lde_domain());
-        for (i, coeffs) in transition_coeffs.iter().enumerate() {
-            let poly = DensePolynomial::from_coefficients_slice(coeffs);
-            for (j, x) in air.trace_domain().elements().enumerate() {
-                if j == n - 1 {
-                    continue;
-                }
-                let y = poly.evaluate(&x);
-                assert!(y.is_zero(), "poly {i} mismatch at {j}\nvalue:{y}");
-            }
-            // println!(
-            //     "Quitient pre:{} after:{}",
-            //     reg_poly.degree(),
-            //     div_poly.degree()
-            // );
-        }
-
         let all_quotients = Matrix::join(vec![
             self.generate_quotients(boundary_constraint_evals, &boundary_divisor),
             self.generate_quotients(transition_constraint_evals, &transition_divisor),
@@ -230,57 +212,6 @@ pub trait Prover {
             self.evaluate_constraints(&challenges, air.transition_constraints(), &trace_lde);
         let terminal_constraint_evals =
             self.evaluate_constraints(&challenges, air.terminal_constraints(), &trace_lde);
-
-        {
-            // TODO: remove,
-            let trace_domain = air.trace_domain();
-            let tmp_poly = trace_lde.interpolate_columns(air.lde_domain());
-            let ip_poly = DensePolynomial::from_coefficients_slice(&tmp_poly[1]);
-            let curr_instr_poly = DensePolynomial::from_coefficients_slice(&tmp_poly[2]);
-            let next_instr_poly = DensePolynomial::from_coefficients_slice(&tmp_poly[3]);
-            let permutation_poly = DensePolynomial::from_coefficients_slice(&tmp_poly[16]);
-            let ip = ip_poly.evaluate(&trace_domain.element(0));
-            println!("Ip: {}", ip);
-            let curr_instr = curr_instr_poly.evaluate(&trace_domain.element(0));
-            println!("CurrInstr: {}", curr_instr);
-            let next_instr = next_instr_poly.evaluate(&trace_domain.element(0));
-            println!("NextInstr: {}", next_instr);
-            let instr_permutation = permutation_poly.evaluate(&trace_domain.element(0));
-            println!("InstructionPermutation: {}", instr_permutation);
-            let instr_permutation_next = permutation_poly.evaluate(&trace_domain.element(1));
-            println!("InstructionPermutation (next): {}", instr_permutation_next);
-            let a = challenges[0];
-            let b = challenges[1];
-            let c = challenges[2];
-            let alpha = challenges[6];
-            // println!(
-            //     "Evaluation: {}",
-            //     instr_permutation * (alpha - a * ip - b * curr_instr - c * next_instr)
-            //         - instr_permutation_next
-            // )
-
-            // - instr_permutation_next
-            // + alpha * instr_permutation
-            // -
-
-            // alpha * instr_permutation
-            // - a * instr_permutation * ip
-            // - b * instr_permutation * curr_instr
-            // - c * instr_permutation * next_instr
-            // - instr_permutation_next
-            println!(
-                "Evaluation: {}",
-                instr_permutation * (alpha - a * ip - b * curr_instr - c * next_instr)
-                    - instr_permutation_next
-            )
-
-            // println!("Testing opcode eval");
-            // for opcode in OpCode::VALUES {
-            //     let factor = &instr - F::from(opcode as u64);
-            //     // TODO: mul assign
-            //     accumulator = accumulator * factor;
-            // }
-        }
 
         let (composition_lde, composition_poly, composition_lde_tree) = self
             .build_constraint_commitment(
