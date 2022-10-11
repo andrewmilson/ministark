@@ -1,5 +1,6 @@
 #![feature(allocator_api)]
 
+use crate::vm::OpCode;
 use air::BrainfuckAir;
 use air::ExecutionInfo;
 use ark_ff_optimized::fp64::Fp;
@@ -86,6 +87,11 @@ impl Prover for BrainfuckProver {
 }
 
 fn main() {
+    println!("OPCODES::::::");
+    for opcode in OpCode::VALUES {
+        println!("{}", Fp::from(opcode as u64));
+    }
+
     let now = Instant::now();
     let program = compile(HELLO_WORLD_SOURCE);
     let mut output = Vec::new();

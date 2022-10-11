@@ -198,6 +198,42 @@ fn evaluate_permutation_constraint() {
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
 }
 
+#[test]
+fn evaluate_zerofier_constraint() {
+    // TODO: clean up this testcase
+    let n = 2048;
+    let challenges = &[Fp::from(999), Fp::from(43)];
+    let curr_instr = 0;
+    let permutation = 1;
+    let alpha = 0;
+    let a = 1;
+    let instr = Fp::from(b'+');
+    let constraint = curr_instr.curr()
+        * (permutation.curr() * (alpha.get_challenge() - a.get_challenge() * curr_instr.curr())
+            - permutation.next())
+        + (curr_instr.curr() - instr) * (permutation.curr() - permutation.next());
+    let blowup = 16;
+    let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
+    let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
+    let curr_instr_column = vec![instr; n].to_vec_in(PageAlignedAllocator);
+    let permutation_column = (0..n)
+        .scan(Fp::one(), |acc, i| {
+            let ret = *acc;
+            *acc *= challenges[alpha] - challenges[a] * curr_instr_column[i];
+            Some(ret)
+        })
+        .collect::<Vec<Fp>>()
+        .to_vec_in(PageAlignedAllocator);
+    let matrix = Matrix::new(vec![curr_instr_column, permutation_column]);
+    let poly_matrix = matrix.interpolate_columns(trace_domain);
+    let lde_matrix = poly_matrix.evaluate(lde_domain);
+
+    let constraint_eval = constraint.evaluate_symbolic(challenges, blowup, &lde_matrix);
+
+    let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
+    assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
+}
+
 /// Generates a matrix of fibbonacci sequence across two columns i.e.
 /// ┌───────┬───────┐
 /// │ Col 0 | Col 1 │

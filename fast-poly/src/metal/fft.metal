@@ -105,7 +105,7 @@ MulPow(device FieldT *dst [[ buffer(0) ]],
     FieldT acc = src_val;
     
     // TODO: optimize
-    for (unsigned i = 1; i < 16 && i < exponent; i++) {
+    for (unsigned i = 1; i < exponent; i++) {
         acc = acc * src_val;
     }
 

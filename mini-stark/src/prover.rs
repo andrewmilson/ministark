@@ -231,6 +231,57 @@ pub trait Prover {
         let terminal_constraint_evals =
             self.evaluate_constraints(&challenges, air.terminal_constraints(), &trace_lde);
 
+        {
+            // TODO: remove,
+            let trace_domain = air.trace_domain();
+            let tmp_poly = trace_lde.interpolate_columns(air.lde_domain());
+            let ip_poly = DensePolynomial::from_coefficients_slice(&tmp_poly[1]);
+            let curr_instr_poly = DensePolynomial::from_coefficients_slice(&tmp_poly[2]);
+            let next_instr_poly = DensePolynomial::from_coefficients_slice(&tmp_poly[3]);
+            let permutation_poly = DensePolynomial::from_coefficients_slice(&tmp_poly[16]);
+            let ip = ip_poly.evaluate(&trace_domain.element(0));
+            println!("Ip: {}", ip);
+            let curr_instr = curr_instr_poly.evaluate(&trace_domain.element(0));
+            println!("CurrInstr: {}", curr_instr);
+            let next_instr = next_instr_poly.evaluate(&trace_domain.element(0));
+            println!("NextInstr: {}", next_instr);
+            let instr_permutation = permutation_poly.evaluate(&trace_domain.element(0));
+            println!("InstructionPermutation: {}", instr_permutation);
+            let instr_permutation_next = permutation_poly.evaluate(&trace_domain.element(1));
+            println!("InstructionPermutation (next): {}", instr_permutation_next);
+            let a = challenges[0];
+            let b = challenges[1];
+            let c = challenges[2];
+            let alpha = challenges[6];
+            // println!(
+            //     "Evaluation: {}",
+            //     instr_permutation * (alpha - a * ip - b * curr_instr - c * next_instr)
+            //         - instr_permutation_next
+            // )
+
+            // - instr_permutation_next
+            // + alpha * instr_permutation
+            // -
+
+            // alpha * instr_permutation
+            // - a * instr_permutation * ip
+            // - b * instr_permutation * curr_instr
+            // - c * instr_permutation * next_instr
+            // - instr_permutation_next
+            println!(
+                "Evaluation: {}",
+                instr_permutation * (alpha - a * ip - b * curr_instr - c * next_instr)
+                    - instr_permutation_next
+            )
+
+            // println!("Testing opcode eval");
+            // for opcode in OpCode::VALUES {
+            //     let factor = &instr - F::from(opcode as u64);
+            //     // TODO: mul assign
+            //     accumulator = accumulator * factor;
+            // }
+        }
+
         let (composition_lde, composition_poly, composition_lde_tree) = self
             .build_constraint_commitment(
                 boundary_constraint_evals,

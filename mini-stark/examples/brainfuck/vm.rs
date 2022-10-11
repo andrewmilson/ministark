@@ -9,8 +9,6 @@ use crate::BrainfuckTrace;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
-// use ark_ff_optimized::fp64::Fp;
-use fast_poly::allocator::PageAlignedAllocator;
 use mini_stark::Matrix;
 use mini_stark::TraceInfo;
 
@@ -245,6 +243,9 @@ pub fn simulate(
     pad_input_rows(&mut input_rows, padding_len);
     pad_output_rows(&mut output_rows, padding_len);
 
+    println!("Processor row:");
+    print_row(&processor_rows[0]);
+
     let processor_base_trace = Matrix::new(into_columns(processor_rows));
     let memory_base_trace = Matrix::new(into_columns(memory_rows));
     let instruction_base_trace = Matrix::new(into_columns(instruction_rows));
@@ -260,6 +261,13 @@ pub fn simulate(
         input_base_trace,
         output_base_trace,
     )
+}
+
+fn print_row(row: &[Fp]) {
+    for val in row {
+        print!("{val}, ");
+    }
+    println!()
 }
 
 fn pad_processor_rows(rows: &mut Vec<Vec<Fp>>, n: usize) {

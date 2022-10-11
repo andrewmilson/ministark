@@ -91,12 +91,13 @@ impl Variables {
     }
 
     /// Returns the combined degree of all variables
-    fn degree(&self) -> usize {
+    fn degree(&self, include_challenges: bool) -> usize {
         self.0
             .iter()
             .filter(|element| match element.0 {
-                // challenges are just delayed constants so they don't contribute to the degree
-                Element::Challenge(_) => false,
+                // challenges are symbolic constants so they don't necessarily
+                // contribute to the degree.
+                Element::Challenge(_) => include_challenges,
                 Element::Curr(_) | Element::Next(_) => true,
             })
             .fold(0, |sum, element| sum + element.1)
@@ -149,8 +150,8 @@ impl PartialOrd for Variables {
     /// is given by exponent weight in lower-numbered variables
     /// ie. `e1 > e2`, `e1^2 > e1 * e2`, etc.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.degree() != other.degree() {
-            Some(self.degree().cmp(&other.degree()))
+        if self.degree(true) != other.degree(true) {
+            Some(self.degree(true).cmp(&other.degree(true)))
         } else {
             // Iterate through all variables and return the corresponding ordering
             // if they differ in variable numbering or power
@@ -200,7 +201,7 @@ impl<F: GpuField> Term<F> {
     }
 
     fn degree(&self) -> usize {
-        self.1.degree()
+        self.1.degree(false)
     }
 }
 
@@ -261,7 +262,7 @@ impl<F: GpuField> Constraint<F> {
         combined_terms
     }
 
-    fn evaluate_challenges(&self, challenges: &[F]) -> Self {
+    pub fn evaluate_challenges(&self, challenges: &[F]) -> Self {
         Constraint::new(
             self.0
                 .iter()
@@ -271,14 +272,16 @@ impl<F: GpuField> Constraint<F> {
     }
 
     pub fn evaluate(&self, challenges: &[F], current_row: &[F], next_row: &[F]) -> F {
+        let partial = self.evaluate_challenges(challenges);
         let mut result = F::zero();
-        for Term(coeff, vars) in self.0.iter() {
+        for Term(coeff, vars) in partial.0.iter() {
             let mut scratch = *coeff;
             for &(element, power) in &vars.0 {
                 let val = match element {
                     Element::Curr(index) => current_row[index],
                     Element::Next(index) => next_row[index],
-                    Element::Challenge(index) => challenges[index],
+                    // Element::Challenge(index) => challenges[index],
+                    _ => unreachable!(),
                 };
                 scratch *= val.pow([power as u64]);
             }
@@ -508,7 +511,7 @@ impl<F: GpuField> Sub<F> for Constraint<F> {
     type Output = Constraint<F>;
 
     fn sub(self, rhs: F) -> Self::Output {
-        self + Constraint::from(-rhs)
+        self - Constraint::from(rhs)
     }
 }
 
@@ -516,7 +519,7 @@ impl<F: GpuField> Sub<&F> for &Constraint<F> {
     type Output = Constraint<F>;
 
     fn sub(self, rhs: &F) -> Self::Output {
-        self + Constraint::from(-*rhs)
+        self - Constraint::from(*rhs)
     }
 }
 
