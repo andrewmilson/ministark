@@ -219,13 +219,6 @@ pub trait Air {
             let curr_row = &window[0];
             let next_row = &window[1];
 
-            if i == 0 {
-                println!("Curr:");
-                print_row(curr_row);
-                println!("Next:");
-                print_row(next_row);
-            }
-
             for (j, constraint) in self.terminal_constraints().iter().enumerate() {
                 let eval = constraint.evaluate(challenges, curr_row, next_row);
                 assert!(eval.is_zero(), "transition {j} mismatch at row {i}");

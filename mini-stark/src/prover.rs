@@ -203,7 +203,7 @@ pub trait Prover {
             trace_polys.append(extension_polys);
         }
 
-        // TODO: expensive. wrap in debug feature
+        #[cfg(debug_assertions)]
         air.validate(&challenges, &trace_polys.evaluate(air.trace_domain()));
 
         let boundary_constraint_evals =
@@ -220,9 +220,6 @@ pub trait Prover {
                 terminal_constraint_evals,
                 &air,
             );
-
-        let poly = DensePolynomial::from_coefficients_vec(composition_poly.0[0].to_vec());
-        println!("Poly degree is: {}", poly.degree());
 
         Ok(Proof {
             options,

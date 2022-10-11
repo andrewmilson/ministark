@@ -107,32 +107,17 @@ impl ProcessorExtensionColumn {
         use ProcessorBaseColumn::*;
         use ProcessorExtensionColumn::*;
 
-        // TODO: fix
-        let first_constraint = CurrInstr.curr()
-            * (InstructionPermutation.curr()
-                * (Alpha.get_challenge()
-                    - A.get_challenge() * Ip.curr()
-                    - B.get_challenge() * CurrInstr.curr()
-                    - C.get_challenge() * NextInstr.curr())
-                - InstructionPermutation.next())
-            + instr_zerofier(CurrInstr.curr())
-                * (InstructionPermutation.curr() - InstructionPermutation.next());
-        println!("{:?}", first_constraint);
-
-        let first_constraint_part: Constraint<F> = InstructionPermutation.curr()
-            * (Alpha.get_challenge()
-                - A.get_challenge() * Ip.curr()
-                - B.get_challenge() * CurrInstr.curr()
-                - C.get_challenge() * NextInstr.curr())
-            - InstructionPermutation.next();
-        println!("PART:{:?}", first_constraint_part);
-
         vec![
-            CurrInstr.curr() * first_constraint_part,
             // running product for instruction table permutation
-            instr_zerofier(CurrInstr.curr())
-                * (InstructionPermutation.curr() - InstructionPermutation.next()),
-            first_constraint,
+            CurrInstr.curr()
+                * (InstructionPermutation.curr()
+                    * (Alpha.get_challenge()
+                        - A.get_challenge() * Ip.curr()
+                        - B.get_challenge() * CurrInstr.curr()
+                        - C.get_challenge() * NextInstr.curr())
+                    - InstructionPermutation.next())
+                + instr_zerofier(CurrInstr.curr())
+                    * (InstructionPermutation.curr() - InstructionPermutation.next()),
             // running product for memory table permutation
             CurrInstr.curr()
                 * (MemoryPermutation.curr()
