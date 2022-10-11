@@ -20,19 +20,7 @@ pub enum Challenge {
 
 impl mini_stark::constraint::Challenge for Challenge {
     fn index(&self) -> usize {
-        match self {
-            Self::A => 0,
-            Self::B => 1,
-            Self::C => 2,
-            Self::D => 3,
-            Self::E => 4,
-            Self::F => 5,
-            Self::Alpha => 6,
-            Self::Beta => 7,
-            Self::Gamma => 8,
-            Self::Delta => 9,
-            Self::Eta => 10,
-        }
+        *self as usize
     }
 }
 

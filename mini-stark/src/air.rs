@@ -1,4 +1,7 @@
+use crate::challenges::Challenges;
+use crate::constraint::Element;
 use crate::Constraint;
+use crate::Matrix;
 use crate::ProofOptions;
 use crate::TraceInfo;
 use ark_ff::batch_inversion;
@@ -32,12 +35,13 @@ pub trait Air {
         self.trace_info().trace_len
     }
 
+    // Constraint evaluation blowup factor
     fn ce_blowup_factor(&self) -> usize {
         // the blowup factor is the maximum of one or the degree of the highest
         // degree transition constraint.
         let highest_degree = self
             .transition_constraints()
-            .into_iter()
+            .iter()
             .map(|constraint| constraint.degree())
             .max()
             .unwrap_or(0);
@@ -145,16 +149,79 @@ pub trait Air {
     fn num_challenges(&self) -> usize {
         // TODO: change get_challenge_indices to a constraint iterator and extract the
         // constraint with the highest index
-        [
+        self.all_constraint_elements()
+            .iter()
+            .filter_map(|element| match element {
+                Element::Challenge(index) => Some(index + 1),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn all_constraint_elements(&self) -> Vec<Element> {
+        // TODO: change get_challenge_indices to a constraint iterator and extract the
+        // constraint with the highest index
+        let mut indicies = [
             self.boundary_constraints(),
             self.transition_constraints(),
             self.terminal_constraints(),
         ]
         .into_iter()
         .flatten()
-        .flat_map(|constraint| constraint.get_challenge_indices())
-        .max()
-        .map(|max| max + 1)
-        .unwrap_or(0)
+        .flat_map(|constraint| constraint.get_elements())
+        .collect::<Vec<Element>>();
+        indicies.sort();
+        indicies.dedup();
+        indicies
+    }
+
+    fn validate(&self, challenges: &Challenges<Self::Fp>, full_trace: &Matrix<Self::Fp>) {
+        let mut col_indicies = vec![false; full_trace.num_cols()];
+        let mut challenge_indicies = vec![false; challenges.len()];
+        for element in self.all_constraint_elements() {
+            match element {
+                Element::Curr(i) | Element::Next(i) => col_indicies[i] = true,
+                Element::Challenge(i) => challenge_indicies[i] = true,
+            }
+        }
+        for (index, exists) in col_indicies.into_iter().enumerate() {
+            if !exists {
+                // TODO: make assertion
+                println!("WARN: no constraints for column {index}");
+            }
+        }
+        for (index, exists) in challenge_indicies.into_iter().enumerate() {
+            if !exists {
+                // TODO: make assertion
+                println!("WARN: challenge at index {index} never used");
+            }
+        }
+
+        let trace_rows = full_trace.rows();
+        let first_row = trace_rows.first().unwrap();
+        let last_row = trace_rows.last().unwrap();
+
+        // check boundary constraints
+        for (i, constraint) in self.boundary_constraints().iter().enumerate() {
+            let eval = constraint.evaluate(challenges, first_row, &[]);
+            assert!(eval.is_zero(), "boundary {i} mismatch");
+        }
+
+        // check terminal constraints
+        for (i, constraint) in self.terminal_constraints().iter().enumerate() {
+            let eval = constraint.evaluate(challenges, last_row, &[]);
+            assert!(eval.is_zero(), "terminal {i} mismatch");
+        }
+
+        // check transition constraints
+        for (i, window) in trace_rows.windows(2).enumerate() {
+            let curr_row = &window[0];
+            let next_row = &window[1];
+            for (j, constraint) in self.terminal_constraints().iter().enumerate() {
+                let eval = constraint.evaluate(challenges, curr_row, next_row);
+                assert!(eval.is_zero(), "transition {j} mismatch at row {i}");
+            }
+        }
     }
 }

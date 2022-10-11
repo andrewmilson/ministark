@@ -16,6 +16,28 @@ pub struct ExecutionInfo {
     pub output: Vec<usize>,
 }
 
+// Quitient pre:32767 after:20470
+// Quitient pre:32767 after:16376
+// Quitient pre:32767 after:16376
+// Quitient pre:32767 after:0
+// Quitient pre:32767 after:4094
+// Quitient pre:32767 after:4094
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:32767 13
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:2047
+// Quitient pre:32767 after:32767
+// Quitient pre:32767 after:32767
+// Quitient pre:0 after:0
+// Quitient pre:32767 after:0 21
+
 pub struct BrainfuckAir {
     options: ProofOptions,
     trace_info: TraceInfo,
@@ -36,6 +58,7 @@ impl Air for BrainfuckAir {
             execution_info,
             transition_constraints: vec![
                 tables::ProcessorBaseColumn::transition_constraints(),
+                tables::ProcessorExtensionColumn::transition_constraints(),
                 tables::MemoryBaseColumn::transition_constraints(),
                 tables::MemoryExtensionColumn::transition_constraints(),
                 tables::InstructionBaseColumn::transition_constraints(),

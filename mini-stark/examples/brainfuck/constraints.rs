@@ -8,6 +8,7 @@ use crate::tables::MemoryExtensionColumn;
 use crate::tables::OutputBaseColumn;
 use crate::tables::OutputExtensionColumn;
 use crate::tables::ProcessorBaseColumn;
+use crate::tables::ProcessorExtensionColumn;
 use crate::vm::OpCode;
 use ark_ff::Zero;
 use fast_poly::GpuField;
@@ -90,6 +91,59 @@ impl ProcessorBaseColumn {
             Cycle.next() - Cycle.curr() - one,
             MemVal.curr() * &mem_val_is_zero,
             MemValInv.curr() * &mem_val_is_zero,
+        ]
+    }
+}
+
+impl ProcessorExtensionColumn {
+    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use Challenge::Alpha;
+        use Challenge::Beta;
+        use Challenge::Delta;
+        use Challenge::Gamma;
+        use Challenge::A;
+        use Challenge::B;
+        use Challenge::C;
+        use ProcessorBaseColumn::*;
+        use ProcessorExtensionColumn::*;
+        vec![
+            // running product for instruction table permutation
+            CurrInstr.curr()
+                * (InstructionPermutation.curr()
+                    * (Alpha.get_challenge()
+                        - A.get_challenge() * Ip.curr()
+                        - B.get_challenge() * CurrInstr.curr()
+                        - C.get_challenge() * NextInstr.curr())
+                    - InstructionPermutation.next())
+                + instr_zerofier(CurrInstr.curr())
+                    * (InstructionPermutation.curr() - InstructionPermutation.next()),
+            // running product for memory table permutation
+            CurrInstr.curr()
+                * (MemoryPermutation.curr()
+                    * (Beta.get_challenge()
+                        - Challenge::D.get_challenge() * Cycle.curr()
+                        - Challenge::E.get_challenge() * Mp.curr()
+                        - Challenge::F.get_challenge() * MemVal.curr())
+                    - MemoryPermutation.next())
+                * instr_zerofier(CurrInstr.curr())
+                * (MemoryPermutation.curr() - MemoryPermutation.next()),
+            // running evaluation for input tape
+            // TODO: think can remove CurrInstr.curr() from the start here.
+            CurrInstr.curr()
+                * if_not_instr(OpCode::Read, CurrInstr.curr())
+                * (InputEvaluation.next()
+                    - Gamma.get_challenge() * InputEvaluation.curr()
+                    - MemVal.next())
+                + if_instr(OpCode::Read, CurrInstr.curr())
+                    * (InputEvaluation.next() - InputEvaluation.curr()),
+            // running evaluation for output tape
+            CurrInstr.curr()
+                * if_not_instr(OpCode::Write, CurrInstr.curr())
+                * (OutputEvaluation.next()
+                    - OutputEvaluation.curr() * Delta.get_challenge()
+                    - MemVal.curr())
+                + if_instr(OpCode::Write, CurrInstr.curr())
+                    * (OutputEvaluation.next() - OutputEvaluation.curr()),
         ]
     }
 }
@@ -257,4 +311,11 @@ fn if_not_instr<F: GpuField>(
         }
     }
     accumulator
+}
+
+fn if_instr<F: GpuField>(
+    instr: OpCode,
+    indeterminate: impl Borrow<Constraint<F>>,
+) -> Constraint<F> {
+    indeterminate.borrow() - F::from(instr as u64)
 }

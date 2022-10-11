@@ -4,7 +4,6 @@ mod air;
 pub mod challenges;
 mod channel;
 pub mod constraint;
-mod domain;
 mod merkle;
 mod prover;
 mod random;

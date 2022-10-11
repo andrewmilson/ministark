@@ -113,16 +113,32 @@ pub trait Prover {
         terminal_constraint_evals: Matrix<Self::Fp>,
         air: &Self::Air,
     ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
-        println!("NUM COLS: {}", transition_constraint_evals.num_rows());
-
         let boundary_divisor = air.boundary_constraint_divisor();
-        let transition_divisor = air.transition_constraint_divisor();
         let terminal_divisor = air.terminal_constraint_divisor();
+        let transition_divisor = air.transition_constraint_divisor();
+
+        let n = air.trace_domain().size();
+        let transition_coeffs = transition_constraint_evals.interpolate_columns(air.lde_domain());
+        for (i, coeffs) in transition_coeffs.iter().enumerate() {
+            let poly = DensePolynomial::from_coefficients_slice(coeffs);
+            for (j, x) in air.trace_domain().elements().enumerate() {
+                if j == n - 1 {
+                    continue;
+                }
+                let y = poly.evaluate(&x);
+                assert!(y.is_zero(), "poly {i} mismatch at {j}\nvalue:{y}");
+            }
+            // println!(
+            //     "Quitient pre:{} after:{}",
+            //     reg_poly.degree(),
+            //     div_poly.degree()
+            // );
+        }
 
         let all_quotients = Matrix::join(vec![
-            self.generate_quotients(boundary_constraint_evals, boundary_divisor),
-            self.generate_quotients(transition_constraint_evals, transition_divisor),
-            self.generate_quotients(terminal_constraint_evals, terminal_divisor),
+            self.generate_quotients(boundary_constraint_evals, &boundary_divisor),
+            self.generate_quotients(transition_constraint_evals, &transition_divisor),
+            self.generate_quotients(terminal_constraint_evals, &terminal_divisor),
         ]);
 
         let eval_matrix = all_quotients.sum_columns();
@@ -139,7 +155,7 @@ pub trait Prover {
         trace_lde: &Matrix<Self::Fp>,
     ) -> Matrix<Self::Fp> {
         let trace_step = self.options().blowup_factor as usize;
-        Matrix::new(
+        Matrix::join(
             constraints
                 .iter()
                 .map(|constraint| constraint.evaluate_symbolic(challenges, trace_step, trace_lde))
@@ -150,13 +166,13 @@ pub trait Prover {
     fn generate_quotients(
         &self,
         mut all_evaluations: Matrix<Self::Fp>,
-        divisor: Vec<Self::Fp, PageAlignedAllocator>,
+        divisor: &Vec<Self::Fp, PageAlignedAllocator>,
     ) -> Matrix<Self::Fp> {
         let library = &PLANNER.library;
         let command_queue = &PLANNER.command_queue;
         let command_buffer = command_queue.new_command_buffer();
         let multiplier = MulPowStage::<Self::Fp>::new(library, divisor.len(), 0);
-        let divisor_buffer = buffer_no_copy(command_queue.device(), &divisor);
+        let divisor_buffer = buffer_no_copy(command_queue.device(), divisor);
         // TODO: let's move GPU stuff out of here and make it readable in here.
         for evaluations in &mut all_evaluations.0 {
             let mut evaluations_buffer = buffer_no_copy(command_queue.device(), evaluations);
@@ -177,14 +193,9 @@ pub trait Prover {
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
         {
-            let blowup_factor = options.blowup_factor as usize;
-            let transition_constraint_degree = air
-                .transition_constraints()
-                .iter()
-                .map(|constraint| constraint.degree())
-                .max()
-                .unwrap_or_default();
-            assert!(transition_constraint_degree <= blowup_factor, "constraint degree {transition_constraint_degree} is larger than the lde blowup factor {blowup_factor}");
+            let ce_blowup_factor = air.ce_blowup_factor();
+            let lde_blowup_factor = air.lde_blowup_factor();
+            assert!(ce_blowup_factor <= lde_blowup_factor, "constraint evaluation blowup factor {ce_blowup_factor} is larger than the lde blowup factor {lde_blowup_factor}");
         }
 
         let (base_trace_lde, base_trace_polys, base_trace_lde_tree) =
@@ -213,6 +224,9 @@ pub trait Prover {
             trace_lde.append(extension_lde);
             trace_polys.append(extension_polys);
         }
+
+        // TODO: expensive. wrap in debug feature
+        air.validate(&challenges, &trace_polys.evaluate(air.trace_domain()));
 
         let boundary_constraint_evals =
             self.evaluate_constraints(&challenges, air.boundary_constraints(), &trace_lde);

@@ -8,7 +8,9 @@ use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
 use ark_poly::Polynomial;
 use ark_poly::Radix2EvaluationDomain;
+use ark_std::rand::seq::SliceRandom;
 use ark_std::rand::Rng;
+use ark_std::UniformRand;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
 use mini_stark::constraint::are_eq;
@@ -17,24 +19,34 @@ use mini_stark::constraint::Challenge;
 use mini_stark::constraint::Column;
 use mini_stark::Constraint;
 use mini_stark::Matrix;
-
-enum TestChallenge {
-    Alpha,
-}
-
-impl Challenge for TestChallenge {
-    fn index(&self) -> usize {
-        *self as usize
-    }
-}
+use std::cmp::max;
 
 #[test]
 fn constraint_with_challenges() {
-    let constraint = (TestChallenge::Alpha.get_challenge() - 0.curr()) * 1.curr();
+    let constraint = (0.get_challenge() - 0.curr()) * 1.curr();
 
     assert!(constraint
         .evaluate(&[Fp::one()], &[Fp::one(), Fp::from(100)], &[])
         .is_zero());
+}
+
+#[test]
+fn symbolic_evaluation_with_challenges() {
+    let n = 2048;
+    let constraint = (0.curr() - 0.get_challenge()) * (0.curr() - 1.get_challenge());
+    let blowup = constraint.degree();
+    let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
+    let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
+    let alpha = Fp::from(3);
+    let beta = Fp::from(7);
+    let matrix = gen_binary_valued_matrix(n, alpha, beta);
+    let poly_matrix = matrix.interpolate_columns(trace_domain);
+    let lde_matrix = poly_matrix.evaluate(lde_domain);
+
+    let constraint_eval = constraint.evaluate_symbolic(&[alpha, beta], blowup, &lde_matrix);
+
+    let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
+    assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
 }
 
 #[test]
@@ -94,13 +106,14 @@ fn evaluate_fibonacci_constraint() {
         are_eq(1.next(), 0.next() + 1.curr()),
     ];
 
-    let constraint_evals = constraints
-        .into_iter()
-        .map(|constraint| constraint.evaluate_symbolic(&[], 1, &lde_matrix))
-        .collect();
+    let constraint_evals = Matrix::join(
+        constraints
+            .into_iter()
+            .map(|constraint| constraint.evaluate_symbolic(&[], 1, &lde_matrix))
+            .collect(),
+    );
 
-    let constraint_evals_matrix = Matrix::new(constraint_evals);
-    let constraint_evals_poly = constraint_evals_matrix.interpolate_columns(lde_domain);
+    let constraint_evals_poly = constraint_evals.interpolate_columns(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_evals_poly);
 }
 
@@ -111,14 +124,78 @@ fn evaluate_binary_constraint() {
     let blowup = constraint.degree();
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
-    let matrix = gen_binary_valued_matrix(n);
+    let matrix = gen_binary_valued_matrix(n, Fp::zero(), Fp::one());
     let poly_matrix = matrix.interpolate_columns(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 
-    let constraint_eval = constraint.evaluate_symbolic(&[], 1, &lde_matrix);
+    let constraint_eval = constraint.evaluate_symbolic(&[], blowup, &lde_matrix);
 
-    let constraint_eval_matrix = Matrix::new(vec![constraint_eval]);
-    let constraint_eval_poly = constraint_eval_matrix.interpolate_columns(lde_domain);
+    let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
+    assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
+}
+
+#[test]
+fn evaluate_permutation_constraint() {
+    let n = 2048;
+    let mut rng = ark_std::test_rng();
+    let original_col = (0..n).map(|_| Fp::rand(&mut rng)).collect::<Vec<Fp>>();
+    let mut shuffled_col = original_col.clone();
+    shuffled_col.shuffle(&mut rng);
+    let challenge = Fp::rand(&mut rng); // verifier challenge
+    let original_product = original_col
+        .iter()
+        .scan(Fp::one(), |product, v| {
+            let ret = *product;
+            *product *= (challenge - v);
+            Some(ret)
+        })
+        .collect::<Vec<Fp>>();
+    let shuffled_product = shuffled_col
+        .iter()
+        .scan(Fp::one(), |product, v| {
+            let ret = *product;
+            *product *= (challenge - v);
+            Some(ret)
+        })
+        .collect::<Vec<Fp>>();
+    let matrix = Matrix::new(vec![
+        original_col.to_vec_in(PageAlignedAllocator),
+        shuffled_col.to_vec_in(PageAlignedAllocator),
+        original_product.to_vec_in(PageAlignedAllocator),
+        shuffled_product.to_vec_in(PageAlignedAllocator),
+    ]);
+    let alpha = 0; // first verifier challenge
+    let original_col = 0;
+    let shuffled_col = 1;
+    let original_product = 2;
+    let shuffled_product = 3;
+    let constraints = vec![
+        original_product.curr() * (alpha.get_challenge() - original_col.curr())
+            - original_product.next(),
+        shuffled_product.curr() * (alpha.get_challenge() - shuffled_col.curr())
+            - shuffled_product.next(),
+    ];
+    let blowup = 2;
+    let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
+    let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
+    let poly_matrix = matrix.interpolate_columns(trace_domain);
+    let lde_matrix = poly_matrix.evaluate(lde_domain);
+
+    let constraint_evals = Matrix::join(
+        constraints
+            .into_iter()
+            .map(|constraint| constraint.evaluate_symbolic(&[challenge], blowup, &lde_matrix))
+            .collect(),
+    );
+
+    let last_original_val = matrix.0[original_col].last().unwrap();
+    let last_shuffled_val = matrix.0[shuffled_col].last().unwrap();
+    let last_original_product = matrix.0[original_product].last().unwrap();
+    let last_shuffled_product = matrix.0[shuffled_product].last().unwrap();
+    let final_original_product = *last_original_product * (challenge - last_original_val);
+    let final_shuffled_product = *last_shuffled_product * (challenge - last_shuffled_val);
+    assert_eq!(final_original_product, final_shuffled_product);
+    let constraint_eval_poly = constraint_evals.interpolate_columns(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
 }
 
@@ -150,30 +227,30 @@ fn gen_fib_matrix<F: GpuField>(n: usize) -> Matrix<F> {
     Matrix::new(columns)
 }
 
-/// Generates a single column matrix of zero and one values
+/// Generates a single column matrix of consisting of two values i.e.
 /// ┌───────┐
 /// │ Col 0 │
 /// ├───────┤
-/// │ 0     │
+/// │ 3     │
 /// ├───────┤
-/// │ 1     │
+/// │ 7     │
 /// ├───────┤
-/// │ 0     │
+/// │ 3     │
 /// ├───────┤
-/// │ 0     │
+/// │ 3     │
 /// ├───────┤
-/// │ 1     │
+/// │ 7     │
 /// ├───────┤
 /// │ ...   │
 /// └───────┘
-fn gen_binary_valued_matrix<F: GpuField>(n: usize) -> Matrix<F> {
+fn gen_binary_valued_matrix<F: GpuField>(n: usize, v1: F, v2: F) -> Matrix<F> {
     let mut rng = ark_std::test_rng();
     let mut col = Vec::with_capacity_in(n, PageAlignedAllocator);
     for _ in 0..n {
         if rng.gen() {
-            col.push(F::one())
+            col.push(v1)
         } else {
-            col.push(F::zero());
+            col.push(v2);
         }
     }
     Matrix::new(vec![col])

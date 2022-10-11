@@ -27,7 +27,7 @@ use std::ops::Sub;
 /// - a column in the current cycle
 /// - a column in the next cycle
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-enum Element {
+pub enum Element {
     Curr(usize),
     Next(usize),
     Challenge(usize),
@@ -50,6 +50,12 @@ pub trait Challenge {
     // TODO: terrible name. Needs refactoring
     fn get_challenge<F: GpuField>(&self) -> Constraint<F> {
         Constraint::from(Element::Challenge(self.index()))
+    }
+}
+
+impl Challenge for usize {
+    fn index(&self) -> usize {
+        *self
     }
 }
 
@@ -118,14 +124,8 @@ impl Variables {
         combined_variables
     }
 
-    fn get_challenge_indices(&self) -> Vec<usize> {
-        self.0
-            .iter()
-            .filter_map(|element| match element.0 {
-                Element::Challenge(index) => Some(index),
-                _ => None,
-            })
-            .collect()
+    fn get_elements(&self) -> Vec<Element> {
+        self.0.iter().map(|element| element.0).collect()
     }
 }
 
@@ -224,12 +224,12 @@ impl<'a, 'b, F: GpuField> Mul<&'a Term<F>> for &'b Term<F> {
 pub struct Constraint<F>(Vec<Term<F>>);
 
 impl<F: GpuField> Constraint<F> {
-    pub fn get_challenge_indices(&self) -> Vec<usize> {
+    pub fn get_elements(&self) -> Vec<Element> {
         let mut indices = self
             .0
             .iter()
-            .flat_map(|term| term.1.get_challenge_indices())
-            .collect::<Vec<usize>>();
+            .flat_map(|term| term.1.get_elements())
+            .collect::<Vec<Element>>();
         indices.sort();
         indices.dedup();
         indices
@@ -297,21 +297,16 @@ impl<F: GpuField> Constraint<F> {
         challenges: &[F],
         trace_step: usize,
         lde_matrix: &Matrix<F>,
-    ) -> Vec<F, PageAlignedAllocator> {
+    ) -> Matrix<F> {
         let n = lde_matrix.num_rows();
         let constraint_without_challenges = self.evaluate_challenges(challenges).0;
-        let num_terms = constraint_without_challenges.len();
-        if num_terms == 0 {
-            let mut ret = Vec::with_capacity_in(n, PageAlignedAllocator);
-            ret.resize(n, F::zero());
-            return ret;
-        }
+        assert!(!constraint_without_challenges.is_empty());
         let library = &PLANNER.library;
         let command_queue = &PLANNER.command_queue;
         let command_buffer = command_queue.new_command_buffer();
         let mut term_evaluations = Vec::new();
-        let mut curr_multiplier = MulPowStage::<F>::new(library, n, 0);
-        let mut next_multiplier = MulPowStage::<F>::new(library, n, trace_step);
+        let curr_multiplier = MulPowStage::<F>::new(library, n, 0);
+        let next_multiplier = MulPowStage::<F>::new(library, n, trace_step);
         for term in constraint_without_challenges {
             let mut scratch = Vec::with_capacity_in(n, PageAlignedAllocator);
             scratch.resize(n, term.0);
@@ -329,20 +324,7 @@ impl<F: GpuField> Constraint<F> {
         }
         command_buffer.commit();
         command_buffer.wait_until_completed();
-        // TODO: refactor this mess
-        let mut evaluations_iter = term_evaluations.into_iter();
-        let mut evaluation = evaluations_iter.next().unwrap();
-        for term_evaluation in evaluations_iter {
-            // TODO: can optimize using num cpus.
-            ark_std::cfg_chunks_mut!(evaluation, 2048)
-                .zip(ark_std::cfg_chunks!(term_evaluation, 2048))
-                .for_each(|(evals_chunk, term_evals_chunk)| {
-                    for i in 0..evals_chunk.len() {
-                        evals_chunk[i] += term_evals_chunk[i];
-                    }
-                });
-        }
-        evaluation
+        Matrix::new(term_evaluations).sum_columns()
     }
 }
 

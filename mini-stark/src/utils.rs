@@ -151,6 +151,20 @@ impl<F: GpuField> Matrix<F> {
             });
         MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
     }
+
+    pub fn get_row(&self, row: usize) -> Option<Vec<F>> {
+        if row < self.num_rows() {
+            Some(self.iter().map(|col| col[row]).collect())
+        } else {
+            None
+        }
+    }
+
+    pub fn rows(&self) -> Vec<Vec<F>> {
+        (0..self.num_rows())
+            .map(|row| self.get_row(row).unwrap())
+            .collect()
+    }
 }
 
 impl<F: GpuField> Clone for Matrix<F> {
