@@ -243,9 +243,6 @@ pub fn simulate(
     pad_input_rows(&mut input_rows, padding_len);
     pad_output_rows(&mut output_rows, padding_len);
 
-    println!("Processor row:");
-    print_row(&processor_rows[0]);
-
     let processor_base_trace = Matrix::new(into_columns(processor_rows));
     let memory_base_trace = Matrix::new(into_columns(memory_rows));
     let instruction_base_trace = Matrix::new(into_columns(instruction_rows));

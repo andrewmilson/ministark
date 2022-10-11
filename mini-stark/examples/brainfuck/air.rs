@@ -1,10 +1,7 @@
 use crate::tables;
-use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
 use ark_serialize::CanonicalSerialize;
-use mini_stark::constraint::are_eq;
 use mini_stark::Air;
-use mini_stark::Column;
 use mini_stark::Constraint;
 use mini_stark::ProofOptions;
 use mini_stark::TraceInfo;
@@ -15,28 +12,6 @@ pub struct ExecutionInfo {
     pub input: Vec<usize>,
     pub output: Vec<usize>,
 }
-
-// Quitient pre:32767 after:20470
-// Quitient pre:32767 after:16376
-// Quitient pre:32767 after:16376
-// Quitient pre:32767 after:0
-// Quitient pre:32767 after:4094
-// Quitient pre:32767 after:4094
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:32767 13
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:2047
-// Quitient pre:32767 after:32767
-// Quitient pre:32767 after:32767
-// Quitient pre:0 after:0
-// Quitient pre:32767 after:0 21
 
 pub struct BrainfuckAir {
     options: ProofOptions,
