@@ -1,5 +1,6 @@
 #![feature(test, allocator_api, const_try, int_log, int_roundings)]
 
+use allocator::PageAlignedAllocator;
 use ark_ff::FftField;
 use ark_ff_optimized::fp64;
 
@@ -27,3 +28,7 @@ impl GpuField for fp64::Fp {
         "fp18446744069414584321".to_owned()
     }
 }
+
+/// Shared vec between GPU and CPU.
+/// Requirement is that the vec's memory is page aligned.
+pub type GpuVec<T> = Vec<T, PageAlignedAllocator>;

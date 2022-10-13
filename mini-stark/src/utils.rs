@@ -14,6 +14,7 @@ use fast_poly::stage::AddAssignStage;
 use fast_poly::utils::buffer_mut_no_copy;
 use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
+use fast_poly::GpuVec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::ops::Deref;
@@ -23,11 +24,27 @@ use std::ops::IndexMut;
 use std::time::Instant;
 
 /// Matrix is an array of columns.
-pub struct Matrix<F>(pub Vec<Vec<F, PageAlignedAllocator>>);
+pub struct Matrix<F>(pub Vec<GpuVec<F>>);
 
 impl<F: GpuField> Matrix<F> {
-    pub fn new(cols: Vec<Vec<F, PageAlignedAllocator>>) -> Self {
+    pub fn new(cols: Vec<GpuVec<F>>) -> Self {
         Matrix(cols)
+    }
+
+    pub fn from_rows(rows: Vec<Vec<F>>) -> Self {
+        let num_rows = rows.len();
+        let num_cols = rows.first().map(|first| first.len()).unwrap_or(0);
+        let mut cols = (0..num_cols)
+            .map(|_| Vec::with_capacity_in(num_rows, PageAlignedAllocator))
+            .collect::<Vec<GpuVec<F>>>();
+        // TODO: parallelise
+        for row in rows {
+            debug_assert_eq!(row.len(), num_cols);
+            for (col, value) in cols.iter_mut().zip(row) {
+                col.push(value)
+            }
+        }
+        Matrix::new(cols)
     }
 
     // TODO: perhaps bring naming of rows and cols in line with
@@ -195,7 +212,7 @@ impl<F: GpuField> DerefMut for Matrix<F> {
 }
 
 impl<F: GpuField> Deref for Matrix<F> {
-    type Target = Vec<Vec<F, PageAlignedAllocator>>;
+    type Target = Vec<GpuVec<F>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -203,7 +220,7 @@ impl<F: GpuField> Deref for Matrix<F> {
 }
 
 impl<F: GpuField, C: Column> Index<C> for Matrix<F> {
-    type Output = Vec<F, PageAlignedAllocator>;
+    type Output = GpuVec<F>;
 
     fn index(&self, col: C) -> &Self::Output {
         &self.0[col.index()]

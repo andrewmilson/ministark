@@ -6,13 +6,14 @@ use ark_ff_optimized::fp64::Fp;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::Planner;
 use fast_poly::plan::PLANNER;
+use fast_poly::GpuVec;
 use objc::rc::autoreleasepool;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_pcg::Pcg64;
 use test::Bencher;
 
-fn gen_pcg_input<F: Field>(n: usize) -> Vec<F, PageAlignedAllocator> {
+fn gen_pcg_input<F: Field>(n: usize) -> GpuVec<F> {
     let mut rng = Pcg64::seed_from_u64(n.try_into().unwrap());
     let mut res = Vec::new_in(PageAlignedAllocator);
     res.resize(n, F::zero());

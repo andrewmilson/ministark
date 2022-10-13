@@ -18,6 +18,7 @@ use ark_ff_optimized::fp64::Fp;
 use ark_std::rand;
 use ark_std::UniformRand;
 use fast_poly::allocator::PageAlignedAllocator;
+use fast_poly::GpuVec;
 use mini_stark::challenges::Challenges;
 // use mini_stark::constraint::Challenge as _;
 use mini_stark::Matrix;
@@ -308,7 +309,7 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fp>, base_matrix: &Matrix<Fp>) 
     Matrix::new(into_columns(extension_rows))
 }
 
-pub fn into_columns(rows: Vec<Vec<Fp>>) -> Vec<Vec<Fp, PageAlignedAllocator>> {
+pub fn into_columns(rows: Vec<Vec<Fp>>) -> Vec<GpuVec<Fp>> {
     if rows.is_empty() {
         Vec::new()
     } else {

@@ -34,6 +34,7 @@ impl<D: Digest> PublicCoin<D> {
         F::rand(&mut self.draw_rng())
     }
 
+    // TODO: make this generic
     pub fn draw_rng(&mut self) -> ChaCha20Rng {
         let mut seed: [u8; 32] = Default::default();
         seed.copy_from_slice(&self.next()[0..32]);

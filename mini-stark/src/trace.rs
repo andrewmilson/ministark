@@ -44,6 +44,8 @@ impl TraceInfo {
     }
 }
 
+// TODO: docs: An execution trace of a computation, or the trace in short, is a
+// sequence of machine states, one per clock cycle source: https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab
 pub trait Trace {
     const NUM_BASE_COLUMNS: usize;
     const NUM_EXTENSION_COLUMNS: usize = 0;

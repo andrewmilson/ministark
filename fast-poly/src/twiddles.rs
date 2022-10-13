@@ -48,12 +48,7 @@ macro_rules! batch_iter_mut {
 /// TODO: Generate of the GPU https://kieber-emmons.medium.com/9e60b974d62
 ///
 /// [Inverse](FftDirection::Inverse) twiddles are normalized by `1 / n`.
-pub fn fill_twiddles<F: FftField>(dst: &mut [F], n: usize, direction: FftDirection) {
-    let n = n as u64;
-    let mut root = F::get_root_of_unity(n).unwrap();
-    if direction == FftDirection::Inverse {
-        root.inverse_in_place();
-    }
+pub fn fill_twiddles<F: FftField>(dst: &mut [F], root: F) {
     batch_iter_mut!(dst, 1024, |batch: &mut [F], batch_offset: usize| {
         batch[0] = root.pow([batch_offset as u64]);
         for i in 1..batch.len() {

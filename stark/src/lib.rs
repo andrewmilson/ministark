@@ -188,7 +188,8 @@ impl<P: Config> BrainFuckStark<P> {
 
         let randomizer_codewords = {
             let n = ceil_power_of_two(self.max_degree());
-            let polynomial = DensePolynomial::rand(n, &mut rng);
+            let coeffs = (0..n).map(|_| P::Fx::rand(&mut rng)).collect();
+            let polynomial = DensePolynomial::from_coefficients_vec(coeffs);
             vec![polynomial.evaluate_over_domain(self.fri_domain())]
         };
 
@@ -369,6 +370,8 @@ impl<P: Config> BrainFuckStark<P> {
                 .all_quotient_degree_bounds(&challenges, &terminals),
         ]
         .concat();
+
+        println!("THIS IS IT\n\n\n\n\n{:?}\n\n\n\n\n", quotient_degree_bounds);
 
         // Instruction permutation
         quotient_codewords.push(permutation_argument::quotient(

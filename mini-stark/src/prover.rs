@@ -1,5 +1,6 @@
 use crate::challenges::Challenges;
 use crate::channel::ProverChannel;
+use crate::constraint_evaluator::ConstraintEvaluator;
 use crate::merkle::MerkleTree;
 use crate::utils::Timer;
 use crate::Air;
@@ -8,9 +9,13 @@ use crate::Matrix;
 use crate::Trace;
 use crate::TraceInfo;
 use ark_ff::One;
+use ark_ff::UniformRand;
 use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
+use ark_poly::Polynomial;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
@@ -98,64 +103,32 @@ pub trait Prover {
     }
 
     /// builds a commitment to the combined constraint quotient evaluations.
-    /// Output is of the form `(combined_lde, combined_poly, lde_merkle_tree)`
+    /// Output is of the form `(lde, poly, lde_merkle_tree)`
     fn build_constraint_commitment(
         &self,
-        boundary_constraint_evals: Matrix<Self::Fp>,
-        transition_constraint_evals: Matrix<Self::Fp>,
-        terminal_constraint_evals: Matrix<Self::Fp>,
+        all_quotients: Matrix<Self::Fp>,
         air: &Self::Air,
     ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
-        let boundary_divisor = air.boundary_constraint_divisor();
-        let terminal_divisor = air.terminal_constraint_divisor();
-        let transition_divisor = air.transition_constraint_divisor();
-
-        let all_quotients = Matrix::join(vec![
-            self.generate_quotients(boundary_constraint_evals, &boundary_divisor),
-            self.generate_quotients(transition_constraint_evals, &transition_divisor),
-            self.generate_quotients(terminal_constraint_evals, &terminal_divisor),
-        ]);
-
         let eval_matrix = all_quotients.sum_columns();
         let poly_matrix = eval_matrix.interpolate_columns(air.lde_domain());
-        let merkle_tree = eval_matrix.commit_to_rows();
 
-        (eval_matrix, poly_matrix, merkle_tree)
-    }
-
-    fn evaluate_constraints(
-        &self,
-        challenges: &Challenges<Self::Fp>,
-        constraints: &[Constraint<Self::Fp>],
-        trace_lde: &Matrix<Self::Fp>,
-    ) -> Matrix<Self::Fp> {
-        let trace_step = self.options().blowup_factor as usize;
-        Matrix::join(
-            constraints
-                .iter()
-                .map(|constraint| constraint.evaluate_symbolic(challenges, trace_step, trace_lde))
+        let num_composed_columns = poly_matrix.num_rows() / air.trace_len();
+        let transposed_eval = Matrix::from_rows(
+            eval_matrix.0[0]
+                .chunks(num_composed_columns)
+                .map(|chunk| chunk.to_vec())
                 .collect(),
-        )
-    }
+        );
+        let transposed_poly = Matrix::from_rows(
+            poly_matrix.0[0]
+                .chunks(num_composed_columns)
+                .map(|chunk| chunk.to_vec())
+                .collect(),
+        );
 
-    fn generate_quotients(
-        &self,
-        mut all_evaluations: Matrix<Self::Fp>,
-        divisor: &Vec<Self::Fp, PageAlignedAllocator>,
-    ) -> Matrix<Self::Fp> {
-        let library = &PLANNER.library;
-        let command_queue = &PLANNER.command_queue;
-        let command_buffer = command_queue.new_command_buffer();
-        let multiplier = MulPowStage::<Self::Fp>::new(library, divisor.len(), 0);
-        let divisor_buffer = buffer_no_copy(command_queue.device(), divisor);
-        // TODO: let's move GPU stuff out of here and make it readable in here.
-        for evaluations in &mut all_evaluations.0 {
-            let mut evaluations_buffer = buffer_no_copy(command_queue.device(), evaluations);
-            multiplier.encode(command_buffer, &mut evaluations_buffer, &divisor_buffer, 0);
-        }
-        command_buffer.commit();
-        command_buffer.wait_until_completed();
-        all_evaluations
+        let merkle_tree = transposed_eval.commit_to_rows();
+
+        (transposed_eval, transposed_poly, merkle_tree)
     }
 
     fn generate_proof(&self, trace: Self::Trace) -> Result<Proof, ProvingError> {
@@ -203,36 +176,15 @@ pub trait Prover {
         #[cfg(debug_assertions)]
         air.validate(&challenges, &trace_polys.evaluate(trace_domain));
 
-        let boundary_constraint_evals =
-            self.evaluate_constraints(&challenges, air.boundary_constraints(), &trace_lde);
-        let transition_constraint_evals =
-            self.evaluate_constraints(&challenges, air.transition_constraints(), &trace_lde);
-        let terminal_constraint_evals =
-            self.evaluate_constraints(&challenges, air.terminal_constraints(), &trace_lde);
+        let challenge_coeffs = channel.get_constraint_composition_coeffs();
+        let constraint_evaluator = ConstraintEvaluator::new(&air, challenge_coeffs);
+        let composed_evaluations = constraint_evaluator.evaluate(&challenges, &trace_lde);
+        let composition_poly = composed_evaluations.interpolate_columns(lde_domain);
 
-        let (constraint_lde, constraint_poly, constraint_lde_tree) = self
-            .build_constraint_commitment(
-                boundary_constraint_evals,
-                transition_constraint_evals,
-                terminal_constraint_evals,
-                &air,
-            );
+        let coeffs = DensePolynomial::from_coefficients_slice(&composition_poly.0[0]);
+        println!("degree is: {}", coeffs.degree());
 
-        channel.commit_constraints(constraint_lde_tree.root());
-
-        // TODO: add extension field support
-        let z = channel.get_ood_point::<Self::Fp>();
-
-        channel.send_ood_trace_states([
-            trace_polys.evaluate_cols(z),
-            trace_polys.evaluate_cols(z * trace_domain.group_gen),
-        ]);
-
-        channel.send_ood_constraint_states([
-            trace_polys.evaluate_cols(z),
-            trace_polys.evaluate_cols(z * trace_domain.group_gen),
-        ]);
-        // let random_coset = air.trace_domain().get_coset(z).unwrap();
+        // build_constraint_commitment
 
         Ok(Proof {
             options,

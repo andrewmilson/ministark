@@ -66,7 +66,7 @@ impl Config for StarkConfig {
     type Fp = Fp;
     type Fx = Fp;
 
-    const EXPANSION_FACTOR: usize = 4;
+    const EXPANSION_FACTOR: usize = 16;
     const SECURITY_LEVEL: usize = 128;
     const NUM_RANDOMIZERS: usize = 0;
 }
@@ -81,7 +81,7 @@ fn main() {
         output: output_matrix,
         memory: memory_matrix,
     } = brainfuck::stark::simulate::<Fp>(&program, &mut std::io::empty(), &mut output);
-    println!("Output: {}", String::from_utf8(output));
+    println!("Output: {}", String::from_utf8(output.clone()).unwrap());
 
     let running_time = processor_matrix.len();
     println!("Running time: {running_time}");

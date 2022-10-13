@@ -1,17 +1,22 @@
 use crate::challenges::Challenges;
 use crate::random::PublicCoin;
 use crate::Air;
+use ark_ff::UniformRand;
 use ark_serialize::CanonicalSerialize;
+use ark_std::rand::Rng;
 use digest::Digest;
 use digest::Output;
 use fast_poly::GpuField;
+use rand_chacha::ChaCha20Rng;
 
 pub struct ProverChannel<'a, A: Air, D: Digest> {
     air: &'a A,
-    public_coin: PublicCoin<D>,
+    pub public_coin: PublicCoin<D>,
     base_trace_commitment: Output<D>,
     extension_trace_commitment: Option<Output<D>>,
     constraint_commitment: Output<D>,
+    ood_trace_states: (Vec<A::Fp>, Vec<A::Fp>),
+    ood_constraint_evaluations: Vec<A::Fp>,
 }
 
 // impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
@@ -32,6 +37,8 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
             extension_trace_commitment: None,
             base_trace_commitment: Default::default(),
             constraint_commitment: Default::default(),
+            ood_trace_states: Default::default(),
+            ood_constraint_evaluations: Default::default(),
         }
     }
 
@@ -54,9 +61,24 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         self.public_coin.draw()
     }
 
-    pub fn send_ood_trace_states<F: GpuField>(&mut self, states: [Vec<F>; 2]) -> F {}
+    // TODO: make this generic
+    pub fn get_constraint_composition_coeffs(&mut self) -> Vec<(A::Fp, A::Fp)> {
+        let mut rng = self.public_coin.draw_rng();
+        (0..self.air.num_constraints())
+            .map(|_| (A::Fp::rand(&mut rng), A::Fp::rand(&mut rng)))
+            .collect()
+    }
 
-    pub fn send_ood_constraint_states<F: GpuField>(&mut self, states: [Vec<F>; 2]) -> F {}
+    pub fn send_ood_trace_states(&mut self, evals: Vec<A::Fp>, next_evals: Vec<A::Fp>) {
+        self.ood_trace_states = (evals.clone(), next_evals.clone());
+        self.public_coin.reseed(evals);
+        self.public_coin.reseed(next_evals);
+    }
+
+    pub fn send_ood_constraint_evaluations(&mut self, evals: Vec<A::Fp>) {
+        self.ood_constraint_evaluations = evals.clone();
+        self.public_coin.reseed(evals);
+    }
 
     pub fn get_challenges<F: GpuField>(&mut self, num_challenges: usize) -> Challenges<F> {
         let mut rng = self.public_coin.draw_rng();

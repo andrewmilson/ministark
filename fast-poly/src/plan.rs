@@ -10,6 +10,7 @@ use crate::utils::buffer_mut_no_copy;
 use crate::utils::copy_to_private_buffer;
 use crate::FftDirection;
 use crate::GpuField;
+use crate::GpuVec;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
@@ -59,7 +60,7 @@ impl<'a, F: GpuField> FftEncoder<'a, F> {
 pub struct GpuFft<'a, F: GpuField>(FftEncoder<'a, F>);
 
 impl<'a, F: GpuField> GpuFft<'a, F> {
-    pub fn encode(&mut self, buffer: &mut Vec<F, PageAlignedAllocator>) {
+    pub fn encode(&mut self, buffer: &mut GpuVec<F>) {
         assert!(self.0.n >= buffer.len());
         buffer.resize(self.0.n, F::zero());
         let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), buffer);
@@ -82,7 +83,7 @@ impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuFft<'a, F> {
 pub struct GpuIfft<'a, F: GpuField>(FftEncoder<'a, F>);
 
 impl<'a, F: GpuField> GpuIfft<'a, F> {
-    pub fn encode(&mut self, input: &mut Vec<F, PageAlignedAllocator>) {
+    pub fn encode(&mut self, input: &mut GpuVec<F>) {
         assert_eq!(self.0.n, input.len());
         let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), input);
         self.0.encode_butterfly_stages(&mut input_buffer);
@@ -110,8 +111,8 @@ impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuIfft<'a, F> {
 // impl<'a, F: GpuField> MulPow<'a, F> {
 //     fn encode(
 //         &mut self,
-//         dst: &mut Vec<F, PageAlignedAllocator>,
-//         src: &mut Vec<F, PageAlignedAllocator>,
+//         dst: &mut GpuVec<F>,
+//         src: &mut GpuVec<F>,
 //     ) {
 //         assert_eq!(dst.len(), src.len());
 //         let mut dst_buffer = buffer_mut_no_copy(self.command_queue.device(),
@@ -158,10 +159,15 @@ impl Planner {
         let n = domain.size();
         assert!(n >= 2048);
 
+        let mut root = F::get_root_of_unity(n as u64).unwrap();
+        if direction == FftDirection::Inverse {
+            root.inverse_in_place().unwrap();
+        }
+
         // generate twiddles buffer
         let mut twiddles = Vec::with_capacity_in(n, PageAlignedAllocator);
         twiddles.resize(n / 2, F::zero());
-        fill_twiddles(&mut twiddles, n, direction);
+        fill_twiddles(&mut twiddles, root);
         bit_reverse(&mut twiddles);
         let twiddles_buffer = copy_to_private_buffer(&self.command_queue, &twiddles);
 

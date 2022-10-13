@@ -200,7 +200,7 @@ where
 
         // TODO: move to params.
         let eval_domain = codewords[0].domain();
-        let interp_domain = GeneralEvaluationDomain::new_subgroup(self.height()).unwrap();
+        let interp_domain = GeneralEvaluationDomain::new(self.height()).unwrap();
         // Evaluations of the polynomial 1/((x - o^0)...(x - o^(n-1))) over the FRI
         // domain (x - o^0)...(x - o^(n-1)) = x^n - 1
         let mut subgroup_zerofier_inv = eval_domain
@@ -265,7 +265,7 @@ where
         }
 
         let eval_domain = codewords[0].domain();
-        let interp_domain = Radix2EvaluationDomain::<F>::new_subgroup(self.height()).unwrap();
+        let interp_domain = Radix2EvaluationDomain::<F>::new(self.height()).unwrap();
         let last_interp_x = interp_domain.element(self.height() - 1);
         // evaluations of the polynomial (x - o^(n-1)). Note that o^(n-1) is the
         // inverse of `o`.

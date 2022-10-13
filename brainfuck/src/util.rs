@@ -64,7 +64,7 @@ pub(crate) fn interpolate_columns<F: FftField, const WIDTH: usize>(
     matrix: &[[F; WIDTH]],
 ) -> Vec<DensePolynomial<F>> {
     assert!(matrix.len().is_power_of_two());
-    let domain = GeneralEvaluationDomain::new_subgroup(matrix.len()).unwrap();
+    let domain = GeneralEvaluationDomain::new(matrix.len()).unwrap();
     let mut polynomials = Vec::new();
     for col_idx in 0..WIDTH {
         let column = matrix.iter().map(|row| row[col_idx]).collect::<Vec<F>>();

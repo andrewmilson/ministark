@@ -13,6 +13,8 @@ use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
+use fast_poly::GpuVec;
+use std::ops::Deref;
 
 pub trait Air {
     type Fp: GpuField;
@@ -35,17 +37,24 @@ pub trait Air {
         self.trace_info().trace_len
     }
 
-    // Constraint evaluation blowup factor
+    /// Constraint evaluation blowup factor
+    /// Must be a power of two greater than or equal to the highest transition
+    /// constraint degree.
     fn ce_blowup_factor(&self) -> usize {
-        // the blowup factor is the maximum of one or the degree of the highest
-        // degree transition constraint.
         let highest_degree = self
             .transition_constraints()
             .iter()
             .map(|constraint| constraint.degree())
             .max()
             .unwrap_or(0);
-        std::cmp::max(highest_degree, 1)
+        ceil_power_of_two(highest_degree)
+    }
+
+    /// Returns a degree that all constraints polynomials must be normalized to.
+    fn composition_degree(&self) -> usize {
+        let trace_len = self.trace_len();
+        let ce_domain_size = trace_len * self.ce_blowup_factor();
+        ce_domain_size - 1
     }
 
     fn lde_blowup_factor(&self) -> usize {
@@ -85,8 +94,10 @@ pub trait Air {
         &[]
     }
 
-    fn transition_constraint_divisor(&self) -> Vec<Self::Fp, PageAlignedAllocator> {
+    fn transition_constraint_divisor(&self) -> Divisor<Self::Fp> {
         let trace_domain = self.trace_domain();
+        // ((x - o^0)...(x - o^(n-1)) has degree n - 1
+        let degree = trace_domain.size() - 1;
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
         // TODO: make this easier to understand
@@ -97,38 +108,38 @@ pub trait Air {
         // dot product of the zerofier evaluations and the evaluations of the polynomial
         // (x - o^(n-1)). Note that o^(n-1) is the inverse of `o`.
         let last_trace_x = trace_domain.group_gen_inv;
-        let mut divisor = Vec::with_capacity_in(n, PageAlignedAllocator);
-        divisor.resize(n, Self::Fp::zero());
+        let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
+        lde.resize(n, Self::Fp::zero());
         // TODO: make parallel
         for (i, lde_x) in lde_domain.elements().enumerate() {
-            divisor[i] = trace_domain.evaluate_vanishing_polynomial(lde_x);
+            lde[i] = trace_domain.evaluate_vanishing_polynomial(lde_x);
         }
-        batch_inversion(&mut divisor);
+        batch_inversion(&mut lde);
         // TODO: make parallel
         for (i, lde_x) in lde_domain.elements().enumerate() {
-            divisor[i] *= lde_x - last_trace_x;
+            lde[i] *= lde_x - last_trace_x;
         }
-        divisor
+        Divisor { lde, degree }
     }
 
-    fn boundary_constraint_divisor(&self) -> Vec<Self::Fp, PageAlignedAllocator> {
+    fn boundary_constraint_divisor(&self) -> Divisor<Self::Fp> {
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
         // TODO: make this easier to understand
         // Evaluations of the polynomial `1/(x - o^0)` over the FRI domain
         // Context: boundary constraints have to be 0 in the first row.
         let first_trace_x = Self::Fp::one();
-        let mut divisor = Vec::with_capacity_in(n, PageAlignedAllocator);
-        divisor.resize(n, Self::Fp::zero());
+        let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
+        lde.resize(n, Self::Fp::zero());
         // TODO: make parallel
         for (i, lde_x) in lde_domain.elements().enumerate() {
-            divisor[i] = lde_x - first_trace_x;
+            lde[i] = lde_x - first_trace_x;
         }
-        batch_inversion(&mut divisor);
-        divisor
+        batch_inversion(&mut lde);
+        Divisor { lde, degree: 1 }
     }
 
-    fn terminal_constraint_divisor(&self) -> Vec<Self::Fp, PageAlignedAllocator> {
+    fn terminal_constraint_divisor(&self) -> Divisor<Self::Fp> {
         let trace_domain = self.trace_domain();
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
@@ -136,14 +147,14 @@ pub trait Air {
         // Evaluations of the polynomial `1/(x - o^(n-1))` over the FRI domain
         // Context: terminal constraints have to be 0 in the last row.
         let last_trace_x = trace_domain.group_gen_inv;
-        let mut divisor = Vec::with_capacity_in(n, PageAlignedAllocator);
-        divisor.resize(n, Self::Fp::zero());
+        let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
+        lde.resize(n, Self::Fp::zero());
         // TODO: make parallel
         for (i, lde_x) in lde_domain.elements().enumerate() {
-            divisor[i] = lde_x - last_trace_x;
+            lde[i] = lde_x - last_trace_x;
         }
-        batch_inversion(&mut divisor);
-        divisor
+        batch_inversion(&mut lde);
+        Divisor { lde, degree: 1 }
     }
 
     fn num_challenges(&self) -> usize {
@@ -176,6 +187,7 @@ pub trait Air {
         indicies
     }
 
+    #[cfg(debug_assertions)]
     fn validate(&self, challenges: &Challenges<Self::Fp>, full_trace: &Matrix<Self::Fp>) {
         let mut col_indicies = vec![false; full_trace.num_cols()];
         let mut challenge_indicies = vec![false; challenges.len()];
@@ -183,6 +195,8 @@ pub trait Air {
             match element {
                 Element::Curr(i) | Element::Next(i) => col_indicies[i] = true,
                 Element::Challenge(i) => challenge_indicies[i] = true,
+                // TODO: more reason to remove X here. X should just be treated as a regular column
+                Element::X => unreachable!(),
             }
         }
         for (index, exists) in col_indicies.into_iter().enumerate() {
@@ -225,6 +239,26 @@ pub trait Air {
             }
         }
     }
+
+    fn num_constraints(&self) -> usize {
+        //Vec<(Self::Fp, Self::Fp)> {
+        self.boundary_constraints().len()
+            + self.transition_constraints().len()
+            + self.terminal_constraints().len()
+    }
+}
+
+pub struct Divisor<F> {
+    pub lde: GpuVec<F>,
+    pub degree: usize,
+}
+
+impl<F: GpuField> Deref for Divisor<F> {
+    type Target = GpuVec<F>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.lde
+    }
 }
 
 fn print_row<F: GpuField>(row: &[F]) {
@@ -232,4 +266,13 @@ fn print_row<F: GpuField>(row: &[F]) {
         print!("{val}, ");
     }
     println!()
+}
+
+/// Rounds the input value up the the nearest power of two
+fn ceil_power_of_two(value: usize) -> usize {
+    if value.is_power_of_two() {
+        value
+    } else {
+        value.next_power_of_two()
+    }
 }

@@ -23,6 +23,7 @@ use std::ops::Sub;
 /// - a column in the next cycle
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Element {
+    X,
     Curr(usize),
     Next(usize),
     Challenge(usize),
@@ -98,7 +99,7 @@ impl Variables {
                 // challenges are symbolic constants so they don't necessarily
                 // contribute to the degree.
                 Element::Challenge(_) => include_challenges,
-                Element::Curr(_) | Element::Next(_) => true,
+                _ => true,
             })
             .fold(0, |sum, element| sum + element.1)
     }
@@ -128,17 +129,16 @@ impl Variables {
 impl core::fmt::Debug for Variables {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         for variable in self.0.iter() {
+            write!(f, " * ");
             let power = variable.1;
-            let (symbol, index) = match variable.0 {
-                Element::Curr(index) => ("x", index),
-                Element::Next(index) => ("x'", index),
-                Element::Challenge(index) => ("c", index),
+            match variable.0 {
+                Element::Curr(index) => write!(f, "x_{}", index),
+                Element::Next(index) => write!(f, "x'_{}", index),
+                Element::Challenge(index) => write!(f, "c_{}", index),
+                Element::X => write!(f, "x"),
             };
-
-            if power.is_one() {
-                write!(f, " * {symbol}_{index}")?;
-            } else {
-                write!(f, " * {symbol}_{index}^{power}")?;
+            if !power.is_one() {
+                write!(f, "^{power}")?;
             }
         }
         Ok(())
@@ -220,6 +220,19 @@ impl<'a, 'b, F: GpuField> Mul<&'a Term<F>> for &'b Term<F> {
 pub struct Constraint<F>(Vec<Term<F>>);
 
 impl<F: GpuField> Constraint<F> {
+    pub fn pow(&self, mut exp: usize) -> Self {
+        let mut res = Constraint::from(F::one());
+        let mut acc = self.clone();
+        while exp > 0 {
+            if exp & 1 == 1 {
+                res = &res * &acc;
+            }
+            acc = &acc * &acc;
+            exp >>= 1;
+        }
+        res
+    }
+
     pub fn get_elements(&self) -> Vec<Element> {
         let mut indices = self
             .0
@@ -290,13 +303,14 @@ impl<F: GpuField> Constraint<F> {
         result
     }
 
+    // TODO: don't make this coupled to "trace"
     pub fn evaluate_symbolic(
         &self,
         challenges: &[F],
         trace_step: usize,
-        lde_matrix: &Matrix<F>,
+        trace_lde: &Matrix<F>,
     ) -> Matrix<F> {
-        let n = lde_matrix.num_rows();
+        let n = trace_lde.num_rows();
         let constraint_without_challenges = self.evaluate_challenges(challenges).0;
         assert!(!constraint_without_challenges.is_empty());
         let library = &PLANNER.library;
@@ -315,7 +329,7 @@ impl<F: GpuField> Constraint<F> {
                     Element::Next(col_index) => (col_index, &next_multiplier),
                     _ => unreachable!(),
                 };
-                let column_buffer = buffer_no_copy(command_queue.device(), &lde_matrix[*col_index]);
+                let column_buffer = buffer_no_copy(command_queue.device(), &trace_lde[*col_index]);
                 multiplier.encode(command_buffer, &mut scratch_buffer, &column_buffer, *power);
             }
             term_evaluations.push(scratch);
