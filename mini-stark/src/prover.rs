@@ -106,29 +106,25 @@ pub trait Prover {
     /// Output is of the form `(lde, poly, lde_merkle_tree)`
     fn build_constraint_commitment(
         &self,
-        all_quotients: Matrix<Self::Fp>,
+        composed_evaluations: Matrix<Self::Fp>,
+        composition_poly: Matrix<Self::Fp>,
         air: &Self::Air,
     ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
-        let eval_matrix = all_quotients.sum_columns();
-        let poly_matrix = eval_matrix.interpolate_columns(air.lde_domain());
-
-        let num_composed_columns = poly_matrix.num_rows() / air.trace_len();
-        let transposed_eval = Matrix::from_rows(
-            eval_matrix.0[0]
+        let num_composed_columns = composition_poly.num_rows() / air.trace_len();
+        let transposed_evals = Matrix::from_rows(
+            composed_evaluations.0[0]
                 .chunks(num_composed_columns)
                 .map(|chunk| chunk.to_vec())
                 .collect(),
         );
         let transposed_poly = Matrix::from_rows(
-            poly_matrix.0[0]
+            composition_poly.0[0]
                 .chunks(num_composed_columns)
                 .map(|chunk| chunk.to_vec())
                 .collect(),
         );
-
-        let merkle_tree = transposed_eval.commit_to_rows();
-
-        (transposed_eval, transposed_poly, merkle_tree)
+        let merkle_tree = transposed_evals.commit_to_rows();
+        (transposed_evals, transposed_poly, merkle_tree)
     }
 
     fn generate_proof(&self, trace: Self::Trace) -> Result<Proof, ProvingError> {
@@ -163,13 +159,13 @@ pub trait Prover {
         let mut extension_trace_tree = None;
 
         if let Some(extension_matrix) = trace.build_extension_columns(&challenges) {
-            let (extension_lde, extension_polys, extension_lde_tree) =
+            let (extension_trace_lde, extension_trace_polys, extension_trace_lde_tree) =
                 self.build_trace_commitment(&extension_matrix, trace_domain, lde_domain);
-            channel.commit_extension_trace(extension_lde_tree.root());
+            channel.commit_extension_trace(extension_trace_lde_tree.root());
             // TODO: this approach could be better
-            extension_trace_tree = Some(extension_lde_tree);
-            trace_lde.append(extension_lde);
-            trace_polys.append(extension_polys);
+            extension_trace_tree = Some(extension_trace_lde_tree);
+            trace_lde.append(extension_trace_lde);
+            trace_polys.append(extension_trace_polys);
         }
 
         // TODO: don't re-evaluate. Just keep matrix of trace values
@@ -179,12 +175,17 @@ pub trait Prover {
         let challenge_coeffs = channel.get_constraint_composition_coeffs();
         let constraint_evaluator = ConstraintEvaluator::new(&air, challenge_coeffs);
         let composed_evaluations = constraint_evaluator.evaluate(&challenges, &trace_lde);
-        let composition_poly = composed_evaluations.interpolate_columns(lde_domain);
+        let mut composition_poly = composed_evaluations.interpolate_columns(lde_domain);
 
-        let coeffs = DensePolynomial::from_coefficients_slice(&composition_poly.0[0]);
-        println!("degree is: {}", coeffs.degree());
+        // TODO: Clean up
+        let composition_degree = composition_poly.column_degrees()[0];
+        assert_eq!(composition_degree, air.composition_degree());
+        composition_poly.0[0].truncate(composition_degree + 1);
 
-        // build_constraint_commitment
+        let (composition_trace_lde, composition_trace_poly, composition_trace_lde_tree) =
+            self.build_constraint_commitment(composed_evaluations, composition_poly, &air);
+
+        // let z = channel.get_ood_point();
 
         Ok(Proof {
             options,

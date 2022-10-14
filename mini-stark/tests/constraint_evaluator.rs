@@ -13,8 +13,6 @@ use mini_stark::Matrix;
 
 #[test]
 fn degree_adjustor() {
-    println!("{:?}", Fp::one());
-
     let n = 2048;
     let ce_domain = Radix2EvaluationDomain::new_coset(n, Fp::GENERATOR).unwrap();
     let lde_domain = Radix2EvaluationDomain::new_coset(n * 4, Fp::GENERATOR).unwrap();

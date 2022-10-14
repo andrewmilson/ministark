@@ -192,6 +192,19 @@ impl<F: GpuField> Matrix<F> {
             .map(|row| self.get_row(row).unwrap())
             .collect()
     }
+
+    pub fn column_degrees(&self) -> Vec<usize> {
+        self.0
+            .iter()
+            .map(|col| {
+                let mut num_leading_zeros = 0;
+                while col.last().map_or(false, |c| c.is_zero()) {
+                    num_leading_zeros += 1;
+                }
+                col.len() - num_leading_zeros - 1
+            })
+            .collect()
+    }
 }
 
 impl<F: GpuField> Clone for Matrix<F> {

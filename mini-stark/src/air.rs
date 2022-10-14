@@ -109,10 +109,9 @@ pub trait Air {
         // (x - o^(n-1)). Note that o^(n-1) is the inverse of `o`.
         let last_trace_x = trace_domain.group_gen_inv;
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        lde.resize(n, Self::Fp::zero());
         // TODO: make parallel
-        for (i, lde_x) in lde_domain.elements().enumerate() {
-            lde[i] = trace_domain.evaluate_vanishing_polynomial(lde_x);
+        for lde_x in lde_domain.elements() {
+            lde.push(trace_domain.evaluate_vanishing_polynomial(lde_x));
         }
         batch_inversion(&mut lde);
         // TODO: make parallel
@@ -130,10 +129,9 @@ pub trait Air {
         // Context: boundary constraints have to be 0 in the first row.
         let first_trace_x = Self::Fp::one();
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        lde.resize(n, Self::Fp::zero());
         // TODO: make parallel
-        for (i, lde_x) in lde_domain.elements().enumerate() {
-            lde[i] = lde_x - first_trace_x;
+        for lde_x in lde_domain.elements() {
+            lde.push(lde_x - first_trace_x);
         }
         batch_inversion(&mut lde);
         Divisor { lde, degree: 1 }
@@ -148,10 +146,9 @@ pub trait Air {
         // Context: terminal constraints have to be 0 in the last row.
         let last_trace_x = trace_domain.group_gen_inv;
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        lde.resize(n, Self::Fp::zero());
         // TODO: make parallel
-        for (i, lde_x) in lde_domain.elements().enumerate() {
-            lde[i] = lde_x - last_trace_x;
+        for lde_x in lde_domain.elements() {
+            lde.push(lde_x - last_trace_x);
         }
         batch_inversion(&mut lde);
         Divisor { lde, degree: 1 }

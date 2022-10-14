@@ -121,6 +121,7 @@ impl<'a, A: Air> ConstraintEvaluator<'a, A> {
         for (constraint, quotient, divisor) in
             boundary_iter.chain(transition_iter).chain(terminal_iter)
         {
+            // TODO: handle case when degree is 0?
             let trace_degree = air.trace_len() - 1;
             let evaluation_degree = constraint.degree() * trace_degree - divisor.degree;
             let target_degree = air.composition_degree();
@@ -161,28 +162,6 @@ impl<'a, A: Air> ConstraintEvaluator<'a, A> {
                 beta_cols.push(beta_col);
             }
 
-            let beta_coeffs = Matrix::new(
-                alpha_cols
-                    .iter()
-                    .map(|col| col.to_vec_in(PageAlignedAllocator))
-                    .collect(),
-            )
-            .interpolate_columns(lde_domain);
-            let alpha_coeffs = Matrix::new(
-                alpha_cols
-                    .iter()
-                    .map(|col| col.to_vec_in(PageAlignedAllocator))
-                    .collect(),
-            )
-            .interpolate_columns(lde_domain);
-
-            for (alpha_col, beta_col) in zip(&beta_coeffs.0, &alpha_coeffs.0) {
-                let alpha_poly = DensePolynomial::from_coefficients_slice(alpha_col);
-                let beta_poly = DensePolynomial::from_coefficients_slice(beta_col);
-                println!("alpha degree is: {}", alpha_poly.degree());
-                println!("beta degree is: {}", beta_poly.degree());
-            }
-
             let alpha_col = Matrix::new(alpha_cols).sum_columns();
             let mut beta_col = Matrix::new(beta_cols).sum_columns();
             for (v, x) in zip(&mut beta_col.0[0], lde_domain.elements()) {
@@ -196,11 +175,6 @@ impl<'a, A: Air> ConstraintEvaluator<'a, A> {
                     .collect(),
             )
             .interpolate_columns(lde_domain);
-
-            for beta_col in &beta_coeffs.0 {
-                let beta_poly = DensePolynomial::from_coefficients_slice(beta_col);
-                println!("BETA degree is: {}", beta_poly.degree());
-            }
 
             accumulator.append(alpha_col);
             accumulator.append(beta_col);
