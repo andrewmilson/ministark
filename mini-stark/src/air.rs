@@ -185,7 +185,11 @@ pub trait Air {
     }
 
     #[cfg(debug_assertions)]
-    fn validate(&self, challenges: &Challenges<Self::Fp>, full_trace: &Matrix<Self::Fp>) {
+    fn validate_constraints(
+        &self,
+        challenges: &Challenges<Self::Fp>,
+        full_trace: &Matrix<Self::Fp>,
+    ) {
         let mut col_indicies = vec![false; full_trace.num_cols()];
         let mut challenge_indicies = vec![false; challenges.len()];
         for element in self.all_constraint_elements() {

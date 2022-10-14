@@ -1,13 +1,12 @@
 use crate::challenges::Challenges;
+use crate::composer::DeepCompositionCoeffs;
 use crate::random::PublicCoin;
 use crate::Air;
 use ark_ff::UniformRand;
 use ark_serialize::CanonicalSerialize;
-use ark_std::rand::Rng;
 use digest::Digest;
 use digest::Output;
 use fast_poly::GpuField;
-use rand_chacha::ChaCha20Rng;
 use std::ops::Deref;
 
 pub struct ProverChannel<'a, A: Air, D: Digest> {
@@ -68,6 +67,39 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         (0..self.air.num_constraints())
             .map(|_| (A::Fp::rand(&mut rng), A::Fp::rand(&mut rng)))
             .collect()
+    }
+
+    // TODO: make this generic
+    /// Output is of the form `(trace_coeffs, composition_coeffs,
+    /// degree_adjustment_coeffs)`
+    pub fn get_deep_composition_coeffs(&mut self) -> DeepCompositionCoeffs<A::Fp> {
+        let mut rng = self.public_coin.draw_rng();
+
+        // execution trace coeffs
+        let trace_info = self.air.trace_info();
+        let num_execution_trace_cols =
+            trace_info.num_base_columns + trace_info.num_extension_columns;
+        let mut execution_trace_coeffs = Vec::new();
+        for _ in 0..num_execution_trace_cols {
+            execution_trace_coeffs.push((
+                A::Fp::rand(&mut rng),
+                A::Fp::rand(&mut rng),
+                A::Fp::rand(&mut rng),
+            ));
+        }
+
+        // composition trace coeffs
+        let num_composition_trace_cols = self.air.ce_blowup_factor();
+        let mut composition_trace_coeffs = Vec::new();
+        for _ in 0..num_composition_trace_cols {
+            composition_trace_coeffs.push(A::Fp::rand(&mut rng));
+        }
+
+        DeepCompositionCoeffs {
+            trace: execution_trace_coeffs,
+            constraints: composition_trace_coeffs,
+            degree: (A::Fp::rand(&mut rng), A::Fp::rand(&mut rng)),
+        }
     }
 
     pub fn send_ood_trace_states(&mut self, evals: Vec<A::Fp>, next_evals: Vec<A::Fp>) {

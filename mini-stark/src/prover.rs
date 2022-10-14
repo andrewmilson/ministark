@@ -1,13 +1,13 @@
-use crate::challenges::Challenges;
 use crate::channel::ProverChannel;
-use crate::constraint_evaluator::ConstraintEvaluator;
+use crate::composer::ConstraintComposer;
+use crate::composer::DeepPolyComposer;
 use crate::merkle::MerkleTree;
 use crate::utils::Timer;
 use crate::Air;
-use crate::Constraint;
 use crate::Matrix;
 use crate::Trace;
 use crate::TraceInfo;
+use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::UniformRand;
 use ark_ff::Zero;
@@ -18,13 +18,8 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Polynomial;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::PLANNER;
-use fast_poly::stage::MulPowStage;
-use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
 use sha2::Sha256;
-use std::time::Instant;
 
 // TODO: include ability to specify:
 // - base field
@@ -102,36 +97,6 @@ pub trait Prover {
         (trace_lde, trace_polys, merkle_tree)
     }
 
-    /// builds a commitment to the combined constraint quotient evaluations.
-    /// Output is of the form `(lde, poly, lde_merkle_tree)`
-    fn build_constraint_commitment(
-        &self,
-        composed_evaluations: Matrix<Self::Fp>,
-        mut composition_poly: Matrix<Self::Fp>,
-        air: &Self::Air,
-    ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
-        // TODO: Clean up
-        let composition_poly_degree = composition_poly.column_degrees()[0];
-        assert_eq!(composition_poly_degree, air.composition_degree());
-        composition_poly.0[0].truncate(composition_poly_degree + 1);
-
-        let num_composed_columns = composition_poly.num_rows() / air.trace_len();
-        let transposed_evals = Matrix::from_rows(
-            composed_evaluations.0[0]
-                .chunks(num_composed_columns)
-                .map(|chunk| chunk.to_vec())
-                .collect(),
-        );
-        let transposed_poly = Matrix::from_rows(
-            composition_poly.0[0]
-                .chunks(num_composed_columns)
-                .map(|chunk| chunk.to_vec())
-                .collect(),
-        );
-        let merkle_tree = transposed_evals.commit_to_rows();
-        (transposed_evals, transposed_poly, merkle_tree)
-    }
-
     fn generate_proof(&self, trace: Self::Trace) -> Result<Proof, ProvingError> {
         let _timer = Timer::new("proof generation");
 
@@ -142,6 +107,7 @@ pub trait Prover {
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
         {
+            // TODO: move into validation section
             let ce_blowup_factor = air.ce_blowup_factor();
             let lde_blowup_factor = air.lde_blowup_factor();
             assert!(ce_blowup_factor <= lde_blowup_factor, "constraint evaluation blowup factor {ce_blowup_factor} is larger than the lde blowup factor {lde_blowup_factor}");
@@ -153,45 +119,54 @@ pub trait Prover {
             self.build_trace_commitment(trace.base_columns(), trace_domain, lde_domain);
 
         channel.commit_base_trace(base_trace_lde_tree.root());
-        // let num_challenges = 20;
-        // TODO:
         let num_challenges = air.num_challenges();
-        println!("NUM CHALLENGE: {num_challenges}");
         let challenges = channel.get_challenges::<Self::Fp>(num_challenges);
 
-        let mut trace_lde = base_trace_lde;
-        let mut trace_polys = base_trace_polys;
+        #[cfg(debug_assertions)]
+        let mut execution_trace = trace.base_columns().clone();
+        let mut execution_trace_lde = base_trace_lde;
+        let mut execution_trace_polys = base_trace_polys;
         let mut extension_trace_tree = None;
 
-        if let Some(extension_matrix) = trace.build_extension_columns(&challenges) {
+        if let Some(extension_trace) = trace.build_extension_columns(&challenges) {
             let (extension_trace_lde, extension_trace_polys, extension_trace_lde_tree) =
-                self.build_trace_commitment(&extension_matrix, trace_domain, lde_domain);
+                self.build_trace_commitment(&extension_trace, trace_domain, lde_domain);
             channel.commit_extension_trace(extension_trace_lde_tree.root());
-            // TODO: this approach could be better
+            #[cfg(debug_assertions)]
+            execution_trace.append(extension_trace);
+            execution_trace_lde.append(extension_trace_lde);
+            execution_trace_polys.append(extension_trace_polys);
             extension_trace_tree = Some(extension_trace_lde_tree);
-            trace_lde.append(extension_trace_lde);
-            trace_polys.append(extension_trace_polys);
         }
 
-        // TODO: don't re-evaluate. Just keep matrix of trace values
         #[cfg(debug_assertions)]
-        air.validate(&challenges, &trace_polys.evaluate(trace_domain));
+        air.validate_constraints(&challenges, &execution_trace);
 
-        let challenge_coeffs = channel.get_constraint_composition_coeffs();
-        let constraint_evaluator = ConstraintEvaluator::new(&air, challenge_coeffs);
-        let composed_evaluations = constraint_evaluator.evaluate(&challenges, &trace_lde);
-        let composition_poly = composed_evaluations.interpolate_columns(lde_domain);
-
-        let (composition_trace_lde, composition_trace_poly, composition_trace_lde_tree) =
-            self.build_constraint_commitment(composed_evaluations, composition_poly, &air);
+        let composition_coeffs = channel.get_constraint_composition_coeffs();
+        let constraint_coposer = ConstraintComposer::new(&air, composition_coeffs);
+        // TODO: move commitment here
+        let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =
+            constraint_coposer.build_commitment(&challenges, &execution_trace_lde);
         channel.commit_composition_trace(composition_trace_lde_tree.root());
 
+        let g = trace_domain.group_gen;
         let z = channel.get_ood_point();
-        channel.send_ood_trace_states(
-            trace_polys.evaluate_cols(z),
-            trace_polys.evaluate_cols(z * trace_domain.group_gen),
+        let ood_execution_trace_evals = execution_trace_polys.evaluate_at(z);
+        let ood_execution_trace_evals_next = execution_trace_polys.evaluate_at(z * g);
+        channel.send_ood_trace_states(ood_execution_trace_evals, ood_execution_trace_evals_next);
+        let z_n = z.pow([execution_trace_polys.num_cols() as u64]);
+        let ood_composition_trace_evals = composition_trace_polys.evaluate_at(z_n);
+        channel.send_ood_constraint_evaluations(ood_composition_trace_evals);
+
+        let deep_coeffs = channel.get_deep_composition_coeffs();
+        let deep_poly_composer = DeepPolyComposer::new(&air, deep_coeffs, z);
+        deep_poly_composer.add_execution_trace_polys(
+            execution_trace_polys,
+            ood_execution_trace_evals,
+            ood_execution_trace_evals_next,
         );
-        channel.send_ood_constraint_evaluations(composition_trace_poly.evaluate_cols(z));
+        deep_poly_composer
+            .add_composition_trace_polys(composition_trace_polys, ood_composition_trace_evals);
 
         Ok(Proof {
             options,

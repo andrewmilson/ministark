@@ -3,8 +3,8 @@
 mod air;
 pub mod challenges;
 mod channel;
+mod composer;
 pub mod constraint;
-mod constraint_evaluator;
 mod merkle;
 mod prover;
 mod random;

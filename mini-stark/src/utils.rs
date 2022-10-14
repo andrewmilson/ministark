@@ -170,7 +170,7 @@ impl<F: GpuField> Matrix<F> {
         MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
     }
 
-    pub fn evaluate_cols(&self, x: F) -> Vec<F> {
+    pub fn evaluate_at(&self, x: F) -> Vec<F> {
         let mut evaluations = Vec::new();
         for col in &self.0 {
             // TODO: perf
