@@ -20,7 +20,7 @@ impl<D: Digest> PublicCoin<D> {
         }
     }
 
-    pub fn reseed(&mut self, item: impl CanonicalSerialize) {
+    pub fn reseed(&mut self, item: &impl CanonicalSerialize) {
         let mut data = Vec::new();
         item.serialize_compressed(&mut data).unwrap();
         let mut hasher = D::new();

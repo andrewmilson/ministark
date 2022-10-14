@@ -173,6 +173,7 @@ impl<F: GpuField> Matrix<F> {
     pub fn evaluate_cols(&self, x: F) -> Vec<F> {
         let mut evaluations = Vec::new();
         for col in &self.0 {
+            // TODO: perf
             let polynomial = DensePolynomial::from_coefficients_slice(col);
             evaluations.push(polynomial.evaluate(&x));
         }

@@ -107,9 +107,14 @@ pub trait Prover {
     fn build_constraint_commitment(
         &self,
         composed_evaluations: Matrix<Self::Fp>,
-        composition_poly: Matrix<Self::Fp>,
+        mut composition_poly: Matrix<Self::Fp>,
         air: &Self::Air,
     ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
+        // TODO: Clean up
+        let composition_poly_degree = composition_poly.column_degrees()[0];
+        assert_eq!(composition_poly_degree, air.composition_degree());
+        composition_poly.0[0].truncate(composition_poly_degree + 1);
+
         let num_composed_columns = composition_poly.num_rows() / air.trace_len();
         let transposed_evals = Matrix::from_rows(
             composed_evaluations.0[0]
@@ -175,17 +180,18 @@ pub trait Prover {
         let challenge_coeffs = channel.get_constraint_composition_coeffs();
         let constraint_evaluator = ConstraintEvaluator::new(&air, challenge_coeffs);
         let composed_evaluations = constraint_evaluator.evaluate(&challenges, &trace_lde);
-        let mut composition_poly = composed_evaluations.interpolate_columns(lde_domain);
-
-        // TODO: Clean up
-        let composition_degree = composition_poly.column_degrees()[0];
-        assert_eq!(composition_degree, air.composition_degree());
-        composition_poly.0[0].truncate(composition_degree + 1);
+        let composition_poly = composed_evaluations.interpolate_columns(lde_domain);
 
         let (composition_trace_lde, composition_trace_poly, composition_trace_lde_tree) =
             self.build_constraint_commitment(composed_evaluations, composition_poly, &air);
+        channel.commit_composition_trace(composition_trace_lde_tree.root());
 
-        // let z = channel.get_ood_point();
+        let z = channel.get_ood_point();
+        channel.send_ood_trace_states(
+            trace_polys.evaluate_cols(z),
+            trace_polys.evaluate_cols(z * trace_domain.group_gen),
+        );
+        channel.send_ood_constraint_evaluations(composition_trace_poly.evaluate_cols(z));
 
         Ok(Proof {
             options,
