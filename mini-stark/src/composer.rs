@@ -13,6 +13,8 @@ use fast_poly::stage::MulPowStage;
 use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
 use fast_poly::GpuVec;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use sha2::Sha256;
 use std::collections::BTreeMap;
 use std::iter::zip;
@@ -200,13 +202,20 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
 pub struct DeepPolyComposer<'a, A: Air> {
     air: &'a A,
-    coeffs: DeepCompositionCoeffs<A::Fp>,
+    composition_coeffs: DeepCompositionCoeffs<A::Fp>,
     z: A::Fp,
+    poly: GpuVec<A::Fp>,
 }
 
 impl<'a, A: Air> DeepPolyComposer<'a, A> {
-    pub fn new(air: &'a A, coeffs: DeepCompositionCoeffs<A::Fp>, z: A::Fp) -> Self {
-        DeepPolyComposer { air, coeffs, z }
+    pub fn new(air: &'a A, composition_coeffs: DeepCompositionCoeffs<A::Fp>, z: A::Fp) -> Self {
+        let poly = Vec::with_capacity_in(air.trace_len(), PageAlignedAllocator);
+        DeepPolyComposer {
+            air,
+            composition_coeffs,
+            z,
+            poly,
+        }
     }
 
     pub fn add_execution_trace_polys(
@@ -225,22 +234,64 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         t2_composition.resize(n, A::Fp::zero());
 
         for (i, poly) in polys.iter().enumerate() {
-            let (alpha, beta, _) = self.coeffs.trace.pop().unwrap();
+            let (alpha, beta, _) = self.composition_coeffs.trace.pop().unwrap();
             let ood_eval = ood_evals[i];
             let ood_eval_next = ood_evals_next[i];
 
-            // compute T' += (T - T(z)) * alpha
             acc_trace_poly::<A::Fp>(&mut t1_composition, poly, ood_eval, alpha);
-            
-            // compute T'' += (T - T(z * g)) * beta
             acc_trace_poly::<A::Fp>(&mut t2_composition, poly, ood_eval_next, beta);
         }
 
-        
+        // TODO: multithread
+        synthetic_divide(&mut t1_composition, 1, self.z);
+        synthetic_divide(&mut t2_composition, 1, next_z);
+
+        assert!(self.poly.is_empty());
+        for (t1, t2) in t1_composition.into_iter().zip(t2_composition) {
+            self.poly.push(t1 + t2)
+        }
+
+        // TODO:
+        // Check that the degree has reduced by 1 as a result of the divisions
+        assert!(self.poly.last().unwrap().is_zero());
     }
 
+    pub fn add_composition_trace_polys(&mut self, mut polys: Matrix<A::Fp>, ood_evals: Vec<A::Fp>) {
+        let z_n = self.z.pow([polys.num_cols() as u64]);
 
-    pub fn add_composition_trace_polys(&mut self, polys: Matrix<A::Fp>, ood_evals: Vec<A::Fp>) {}
+        ark_std::cfg_iter_mut!(polys.0)
+            .zip(ood_evals)
+            .for_each(|(poly, ood_eval)| {
+                poly[0] -= ood_eval;
+                synthetic_divide(poly, 1, z_n);
+            });
+
+        for poly in polys.0.into_iter() {
+            let alpha = self.composition_coeffs.constraints.pop().unwrap();
+            for (lhs, rhs) in self.poly.iter_mut().zip(poly) {
+                *lhs += rhs * alpha;
+            }
+        }
+
+        // Check that the degree has reduced by 1 as a result of the divisions
+        assert!(self.poly.last().unwrap().is_zero());
+    }
+
+    pub fn into_deep_poly(mut self) -> Matrix<A::Fp> {
+        let (alpha, beta) = self.composition_coeffs.degree;
+        // TODO: messy. make gpu
+        // Adjust the degree
+        // P(x) * (alpha + x * beta)
+        let mut last = A::Fp::zero();
+        for coeff in &mut self.poly {
+            let tmp = *coeff;
+            *coeff *= alpha;
+            *coeff += last * beta;
+            last = tmp;
+        }
+
+        Matrix::new(vec![self.poly])
+    }
 }
 
 pub struct DeepCompositionCoeffs<F> {
@@ -264,7 +315,25 @@ fn acc_trace_poly<F: GpuField>(acc: &mut [F], poly: &[F], value: F, k: F) {
     // P(x) * k
     ark_std::cfg_iter_mut!(acc)
         .zip(poly)
-        .for_each(|(v, coeff)| *v += coeff * k)
+        .for_each(|(v, coeff)| *v += k * coeff);
     // -value * k
     acc[0] -= value * k;
+}
+
+// calculates `p / (x^a - b)` using synthetic division
+// https://en.wikipedia.org/wiki/Synthetic_division
+// remainder is discarded. code copied from Winterfell STARK
+fn synthetic_divide<F: GpuField>(coeffs: &mut [F], a: usize, b: F) {
+    assert!(!a.is_zero());
+    assert!(!b.is_zero());
+    assert!(coeffs.len() > a);
+    if a == 1 {
+        let mut c = F::zero();
+        for coeff in coeffs.iter_mut().rev() {
+            *coeff += b * c;
+            core::mem::swap(coeff, &mut c);
+        }
+    } else {
+        todo!()
+    }
 }

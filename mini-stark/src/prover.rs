@@ -1,6 +1,8 @@
 use crate::channel::ProverChannel;
 use crate::composer::ConstraintComposer;
 use crate::composer::DeepPolyComposer;
+use crate::fri::FriOptions;
+use crate::fri::FriProver;
 use crate::merkle::MerkleTree;
 use crate::utils::Timer;
 use crate::Air;
@@ -8,14 +10,7 @@ use crate::Matrix;
 use crate::Trace;
 use crate::TraceInfo;
 use ark_ff::Field;
-use ark_ff::One;
-use ark_ff::UniformRand;
-use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
-use ark_poly::univariate::DensePolynomial;
-use ark_poly::DenseUVPolynomial;
-use ark_poly::EvaluationDomain;
-use ark_poly::Polynomial;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::GpuField;
@@ -25,7 +20,6 @@ use sha2::Sha256;
 // - base field
 // - extension field
 // - hashing function
-// - determine if grinding factor is appropriate
 // - fri folding factor
 // - fri max remainder size
 #[derive(Debug, Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]
@@ -33,14 +27,31 @@ pub struct ProofOptions {
     pub num_queries: u8,
     // would be nice to make this clear as LDE blowup factor vs constraint blowup factor
     pub blowup_factor: u8,
+    pub grinding_factor: u8,
 }
 
 impl ProofOptions {
-    pub fn new(num_queries: u8, blowup_factor: u8) -> Self {
+    pub const MIN_NUM_QUERIES: u8 = 1;
+    pub const MAX_NUM_QUERIES: u8 = 128;
+    pub const MIN_BLOWUP_FACTOR: u8 = 2;
+    pub const MAX_BLOWUP_FACTOR: u8 = 64;
+
+    pub fn new(num_queries: u8, blowup_factor: u8, grinding_factor: u8) -> Self {
+        assert!(num_queries >= Self::MIN_NUM_QUERIES);
+        assert!(num_queries <= Self::MAX_NUM_QUERIES);
+        assert!(blowup_factor.is_power_of_two());
+        assert!(blowup_factor >= Self::MIN_BLOWUP_FACTOR);
+        assert!(blowup_factor <= Self::MAX_BLOWUP_FACTOR);
         ProofOptions {
             num_queries,
             blowup_factor,
+            grinding_factor,
         }
+    }
+
+    pub fn into_fri_options(self) -> FriOptions {
+        // TODO: move fri params into struct
+        FriOptions::new(self.blowup_factor.into(), 2, 64)
     }
 }
 
@@ -153,13 +164,13 @@ pub trait Prover {
         let z = channel.get_ood_point();
         let ood_execution_trace_evals = execution_trace_polys.evaluate_at(z);
         let ood_execution_trace_evals_next = execution_trace_polys.evaluate_at(z * g);
-        channel.send_ood_trace_states(ood_execution_trace_evals, ood_execution_trace_evals_next);
+        channel.send_ood_trace_states(&ood_execution_trace_evals, &ood_execution_trace_evals_next);
         let z_n = z.pow([execution_trace_polys.num_cols() as u64]);
         let ood_composition_trace_evals = composition_trace_polys.evaluate_at(z_n);
-        channel.send_ood_constraint_evaluations(ood_composition_trace_evals);
+        channel.send_ood_constraint_evaluations(&ood_composition_trace_evals);
 
         let deep_coeffs = channel.get_deep_composition_coeffs();
-        let deep_poly_composer = DeepPolyComposer::new(&air, deep_coeffs, z);
+        let mut deep_poly_composer = DeepPolyComposer::new(&air, deep_coeffs, z);
         deep_poly_composer.add_execution_trace_polys(
             execution_trace_polys,
             ood_execution_trace_evals,
@@ -167,6 +178,15 @@ pub trait Prover {
         );
         deep_poly_composer
             .add_composition_trace_polys(composition_trace_polys, ood_composition_trace_evals);
+        let deep_composition_poly = deep_poly_composer.into_deep_poly();
+        let deep_composition_lde = deep_composition_poly.evaluate(lde_domain);
+
+        let mut fri_prover = FriProver::<Self::Fp, Sha256>::new(air.options().into_fri_options());
+        fri_prover.build_layers(&mut channel, deep_composition_lde);
+        channel.grind_fri_commitments();
+
+        let fri_query_positions = channel.get_fri_query_positions();
+        fri_prover.build_proof(&fri_query_positions);
 
         Ok(Proof {
             options,

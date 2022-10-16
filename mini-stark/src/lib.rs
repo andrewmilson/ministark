@@ -1,10 +1,11 @@
-#![feature(allocator_api, let_chains)]
+#![feature(allocator_api, let_chains, array_windows, array_chunks)]
 
 mod air;
 pub mod challenges;
 mod channel;
 mod composer;
 pub mod constraint;
+mod fri;
 mod merkle;
 mod prover;
 mod random;

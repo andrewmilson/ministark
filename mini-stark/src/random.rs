@@ -6,7 +6,7 @@ use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
 pub struct PublicCoin<D: Digest> {
-    seed: Output<D>,
+    pub seed: Output<D>,
     counter: usize,
 }
 
