@@ -98,8 +98,12 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
     }
 
     pub fn into_proof(self, positions: &[usize]) -> FriProof<F> {
-        let Some((last_layer, layers)) = self.layers.split_last() else { unreachable!() };
         let folding_factor = self.options.folding_factor;
+        let (last_layer, layers) = match self.layers.split_last() {
+            Some((last_layer, layers)) => (last_layer, layers),
+            None => unreachable!(),
+        };
+
         let mut domain_size = self.layers[0].evaluations.len();
         let mut proof_layers = Vec::new();
         let mut positions = positions.to_vec();
