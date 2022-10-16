@@ -1,4 +1,4 @@
-#![feature(allocator_api, let_chains, array_windows, array_chunks)]
+#![feature(allocator_api, let_chains, array_windows, array_chunks, let_else)]
 
 mod air;
 pub mod challenges;

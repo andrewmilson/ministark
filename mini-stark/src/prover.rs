@@ -186,7 +186,7 @@ pub trait Prover {
         channel.grind_fri_commitments();
 
         let fri_query_positions = channel.get_fri_query_positions();
-        fri_prover.build_proof(&fri_query_positions);
+        fri_prover.into_proof(&fri_query_positions);
 
         Ok(Proof {
             options,

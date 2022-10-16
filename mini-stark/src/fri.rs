@@ -1,5 +1,8 @@
+use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
+use crate::utils::interleave;
 use crate::Matrix;
+use ark_poly::evaluations;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
@@ -61,15 +64,29 @@ struct FriLayer<F: GpuField, D: Digest> {
     evaluations: Vec<F>,
 }
 
-pub struct FriProof {
-    layers: Vec<FriProofLayer>,
-    remainder: Vec<u8>,
-    // num_partitions: u8,
+#[derive(CanonicalSerialize)]
+pub struct FriProof<F: GpuField> {
+    layers: Vec<FriProofLayer<F>>,
+    remainder: Vec<F>,
 }
 
-pub struct FriProofLayer {
-    values: Vec<u8>,
-    paths: Vec<u8>,
+impl<F: GpuField> FriProof<F> {
+    pub fn new(layers: Vec<FriProofLayer<F>>, remainder: Vec<F>) -> Self {
+        FriProof { layers, remainder }
+    }
+}
+
+#[derive(CanonicalSerialize)]
+pub struct FriProofLayer<F: GpuField> {
+    values: Vec<F>,
+    proofs: Vec<MerkleProof>,
+}
+
+impl<F: GpuField> FriProofLayer<F> {
+    pub fn new<const N: usize>(values: Vec<[F; N]>, proofs: Vec<MerkleProof>) -> Self {
+        let values = values.into_iter().flatten().collect();
+        FriProofLayer { values, proofs }
+    }
 }
 
 impl<F: GpuField, D: Digest> FriProver<F, D> {
@@ -80,8 +97,38 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         }
     }
 
-    pub fn build_proof(&mut self, positions: &[usize]) -> FriProof {
-        todo!()
+    pub fn into_proof(self, positions: &[usize]) -> FriProof<F> {
+        let Some((last_layer, layers)) = self.layers.split_last() else { unreachable!() };
+        let folding_factor = self.options.folding_factor;
+        let mut domain_size = self.layers[0].evaluations.len();
+        let mut proof_layers = Vec::new();
+        let mut positions = positions.to_vec();
+        for layer in layers {
+            let num_eval_chunks = domain_size / folding_factor;
+            positions = fold_positions(&positions, num_eval_chunks);
+            domain_size = num_eval_chunks;
+
+            proof_layers.push(match folding_factor {
+                2 => query_layer::<F, D, 2>(layer, &positions),
+                4 => query_layer::<F, D, 4>(layer, &positions),
+                6 => query_layer::<F, D, 6>(layer, &positions),
+                8 => query_layer::<F, D, 8>(layer, &positions),
+                16 => query_layer::<F, D, 16>(layer, &positions),
+                _ => unimplemented!("folding factor {folding_factor} is not supported"),
+            });
+        }
+
+        // layers store interlaved evaluations so they need to be un-interleaved
+        let last_evals = &last_layer.evaluations;
+        let mut remainder = vec![F::zero(); last_evals.len()];
+        let num_eval_chunks = last_evals.len() / folding_factor;
+        for i in 0..num_eval_chunks {
+            for j in 0..folding_factor {
+                remainder[i + num_eval_chunks * j] = last_evals[i * folding_factor + j];
+            }
+        }
+
+        FriProof::new(proof_layers, remainder)
     }
 
     pub fn build_layers(
@@ -107,7 +154,7 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         channel: &mut impl ProverChannel<F, Digest = D>,
         evaluations: &mut GpuVec<F>,
     ) {
-        let chunked_evals = evaluations.array_chunks().copied().collect::<Vec<[F; N]>>();
+        let chunked_evals = interleave::<F, N>(&evaluations);
         let hashed_evals = ark_std::cfg_iter!(chunked_evals)
             .map(|chunk| {
                 let mut buff = Vec::new();
@@ -160,4 +207,40 @@ fn apply_drp<F: GpuField, const N: usize>(
         });
 
     drp.to_vec_in(PageAlignedAllocator)
+}
+
+fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {
+    let mut res = positions
+        .iter()
+        .map(|pos| pos % max)
+        .collect::<Vec<usize>>();
+    res.sort();
+    res.dedup();
+    res
+}
+
+fn query_layer<F: GpuField, D: Digest, const N: usize>(
+    layer: &FriLayer<F, D>,
+    positions: &[usize],
+) -> FriProofLayer<F> {
+    let proofs = positions
+        .iter()
+        .map(|pos| {
+            layer
+                .tree
+                .prove(*pos)
+                .expect("failed to generate Merkle proof")
+        })
+        .collect::<Vec<MerkleProof>>();
+    // let chunked_evals = layer
+    //     .evaluations
+    //     .array_chunks::<N>()
+    //     .collect::<Vec<&[F; N]>>();
+    let mut values = Vec::<[F; N]>::new();
+    for &position in positions {
+        let i = position * N;
+        let chunk = &layer.evaluations[i..i + N];
+        values.push(chunk.try_into().unwrap());
+    }
+    FriProofLayer::new(values, proofs)
 }
