@@ -155,8 +155,14 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         channel: &mut impl ProverChannel<F, Digest = D>,
         evaluations: &mut GpuVec<F>,
     ) {
-        let chunked_evals = interleave::<F, N>(&evaluations);
-        let hashed_evals = ark_std::cfg_iter!(chunked_evals)
+        // Each layer requires decommitting to `folding_factor` many evaluations e.g.
+        // `folding_factor = 2` decommits to an evaluation for LHS_i and one for RHS_i
+        // (0 ≤ i < n/2) which requires two merkle paths if the evaluations are
+        // committed to in their natural order. If we instead commit to interleaved
+        // evaluations i.e. [[LHS0, RHS0], [LHS1, RHS1], ...] LHS_i and RHS_i
+        // only require a single merkle path for their decommitment.
+        let interleaved_evals = interleave::<F, N>(&evaluations);
+        let hashed_evals = ark_std::cfg_iter!(interleaved_evals)
             .map(|chunk| {
                 let mut buff = Vec::new();
                 chunk.serialize_compressed(&mut buff).unwrap();
@@ -170,11 +176,16 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         channel.commit_fri_layer(evals_merkle_tree.root());
 
         let alpha = channel.draw_fri_alpha();
-        *evaluations = apply_drp(&chunked_evals, self.options.domain_offset(), alpha);
+        *evaluations = apply_drp(
+            &evaluations,
+            self.options.domain_offset(),
+            alpha,
+            self.options.folding_factor,
+        );
 
         self.layers.push(FriLayer {
             tree: evals_merkle_tree,
-            evaluations: chunked_evals.into_iter().flatten().collect(),
+            evaluations: interleaved_evals.into_iter().flatten().collect(),
         })
     }
 }
@@ -187,34 +198,96 @@ pub trait ProverChannel<F: GpuField> {
     fn draw_fri_alpha(&mut self) -> F;
 }
 
-// Apply degree respecting projection
-pub fn apply_drp<F: GpuField, const N: usize>(
-    values: &[[F; N]],
+//
+// Example of a degree respecting projection for `folding_factor = 2`:
+// 1. Begin with evaluations we wish to generate a DRP of:
+//    ┌─────────┬───┬───┬───┬───┬───┬───┬───┬───┐
+//    │ i       │ 0 │ 1 │ 2 │ 3 │ 4 │ 5 │ 6 │ 7 │
+//    ├─────────┼───┼───┼───┼───┼───┼───┼───┼───┤
+//    │ eval[i] │ 9 │ 2 │ 3 │ 5 │ 9 │ 2 │ 3 │ 5 │
+//    └─────────┴───┴───┴───┴───┴───┴───┴───┴───┘
+// 2. interpolate evals over the evaluation domain to obtain `f(x)`:
+//    ┌──────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┐
+//    │ x    │ o*Ω^0 │ o*Ω^1 │ o*Ω^2 │ o*Ω^3 │ o*Ω^4 │ o*Ω^5 │ o*Ω^6 │ o*Ω^7 │
+//    ├──────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+//    │ f(x) │ 9     │ 2     │ 3     │ 5     │ 9     │ 2     │ 3     │ 5     │
+//    └──────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
+//    ┌────────────────────────────────────────────────────┐
+//    │ f(x) = c0 * x^0 + c1 * x^1 + c2 * x^2 + c3 * x^3 + │
+//    │       c4 * x^4 + c5 * x^5 + c6 * x^6 + c7 * x^7    │
+//    └────────────────────────────────────────────────────┘
+// 3. group odd and even coefficients of f(x):
+//    ┌────────────────────────────────────────────┐
+//    │ f(x) = f_e(x) + x * f_o(x)                 │
+//    ├────────────────────────────────────────────┤
+//    │ f_e(x) = c0 + c2 * x + c4 * x^2 + c6 * x^3 │
+//    │ f_o(x) = c1 + c3 * x + c5 * x^2 + c7 * x^3 │
+//    └────────────────────────────────────────────┘
+// 4. compute a random linear combination of f_e(x) and f_o(x) using constant α:
+//    ┌─────────────────────────────┐
+//    │ f'(x) = f_e(x) + α * f_o(x) │
+//    └─────────────────────────────┘
+// 5. obtain the DRP by evaluating f'(x) over a new domain of half the size:
+//    ┌───────┬─────────┬─────────┬─────────┬─────────┐
+//    │ x     │ o^2*Ω^0 │ o^2*Ω^1 │ o^2*Ω^2 │ o^2*Ω^3 │
+//    ├───────┼─────────┼─────────┼─────────┼─────────┤
+//    │ f'(x) │ 82      │ 12      │ 57      │ 34      │
+//    └───────┴─────────┴─────────┴─────────┴─────────┘
+//    ┌────────┬────┬────┬────┬────┐
+//    │ i      │ 0  │ 1  │ 2  │ 3  │
+//    ├────────┼────┼────┼────┼────┤
+//    │ drp[i] │ 82 │ 12 │ 57 │ 34 │
+//    └────────┴────┴────┴────┴────┘
+pub fn apply_drp<F: GpuField>(
+    evals: &[F],
     domain_offset: F,
     alpha: F,
+    folding_factor: usize,
 ) -> GpuVec<F> {
-    // TODO: whole thing can use optimization
-    let n = values.len();
-    let domain = Radix2EvaluationDomain::new_coset(N, domain_offset).unwrap();
+    let n = evals.len();
+    let domain = Radix2EvaluationDomain::new_coset(n, domain_offset).unwrap();
+    let coeffs = domain.ifft(evals);
+    let alpha_powers = (0..folding_factor)
+        .map(|i| alpha.pow([i as u64]))
+        .collect::<Vec<F>>();
 
-    let mut drp = vec![F::zero(); n];
+    let projected_coeffs = ark_std::cfg_chunks!(coeffs, folding_factor)
+        .map(|chunk| {
+            chunk
+                .iter()
+                .zip(&alpha_powers)
+                .map(|(v, alpha)| *v * alpha)
+                .sum()
+        })
+        .collect::<Vec<F>>();
 
-    ark_std::cfg_iter_mut!(drp)
-        .zip(values)
-        .for_each(|(drp, values)| {
-            let mut coeffs = values.to_vec();
-            domain.ifft_in_place(&mut coeffs);
-            println!("<evals>");
-            prety_print(values);
-            println!("</evals>");
-            println!("<poly>");
-            prety_print(&coeffs);
-            println!("</poly>");
-            let poly = DensePolynomial::from_coefficients_vec(coeffs);
-            *drp = poly.evaluate(&alpha);
-        });
+    let projection_domain = Radix2EvaluationDomain::new_coset(
+        n / folding_factor,
+        domain_offset.pow([folding_factor as u64]),
+    )
+    .unwrap();
+    projection_domain
+        .fft(&projected_coeffs)
+        .to_vec_in(PageAlignedAllocator)
 
-    drp.to_vec_in(PageAlignedAllocator)
+    // let mut drp = vec![F::zero(); n];
+
+    // ark_std::cfg_iter_mut!(drp)
+    //     .zip(values)
+    //     .for_each(|(drp, values)| {
+    //         let mut coeffs = values.to_vec();
+    //         domain.ifft_in_place(&mut coeffs);
+    //         println!("<evals>");
+    //         prety_print(values);
+    //         println!("</evals>");
+    //         println!("<poly>");
+    //         prety_print(&coeffs);
+    //         println!("</poly>");
+    //         let poly = DensePolynomial::from_coefficients_vec(coeffs);
+    //         *drp = poly.evaluate(&alpha);
+    //     });
+
+    // drp.to_vec_in(PageAlignedAllocator)
 }
 
 fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {

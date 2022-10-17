@@ -265,13 +265,15 @@ impl<'a> Drop for Timer<'a> {
     }
 }
 
-pub fn interleave<T: Copy + Send + Sync + Default, const N: usize>(source: &[T]) -> Vec<[T; N]> {
-    let n = source.len() / N;
-    let mut res = vec![[T::default(); N]; n];
+pub fn interleave<T: Copy + Send + Sync + Default, const RADIX: usize>(
+    source: &[T],
+) -> Vec<[T; RADIX]> {
+    let n = source.len() / RADIX;
+    let mut res = vec![[T::default(); RADIX]; n];
     ark_std::cfg_iter_mut!(res)
         .enumerate()
         .for_each(|(i, element)| {
-            for j in 0..N {
+            for j in 0..RADIX {
                 element[j] = source[i + j * n]
             }
         });
