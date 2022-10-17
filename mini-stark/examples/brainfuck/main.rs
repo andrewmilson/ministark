@@ -3,6 +3,7 @@
 use air::BrainfuckAir;
 use air::ExecutionInfo;
 use ark_ff_optimized::fp64::Fp;
+use ark_serialize::CanonicalSerialize;
 use mini_stark::ProofOptions;
 use mini_stark::Prover;
 use mini_stark::Trace;
@@ -96,5 +97,10 @@ fn main() {
     let prover = BrainfuckProver::new(options);
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());
-    println!("Result: {:?}", proof.unwrap());
+    let mut proof_bytes = Vec::new();
+    proof
+        .unwrap()
+        .serialize_compressed(&mut proof_bytes)
+        .unwrap();
+    println!("Result: {:?}kb", proof_bytes.len() / 1024);
 }

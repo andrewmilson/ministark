@@ -22,7 +22,7 @@ pub enum MerkleTreeError {
     InvalidProof,
 }
 
-#[derive(CanonicalSerialize, CanonicalDeserialize)]
+#[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct MerkleProof(Vec<u8>);
 
 impl MerkleProof {

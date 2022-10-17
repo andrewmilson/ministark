@@ -5,12 +5,12 @@ pub mod challenges;
 mod channel;
 mod composer;
 pub mod constraint;
-mod fri;
+pub mod fri;
 mod merkle;
 mod prover;
 mod random;
 mod trace;
-mod utils;
+pub mod utils;
 
 pub use air::Air;
 pub use constraint::Column;

@@ -1,7 +1,10 @@
 use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
 use crate::fri;
+use crate::fri::FriProof;
+use crate::prover::Proof;
 use crate::random::PublicCoin;
+use crate::trace::Queries;
 use crate::Air;
 use ark_ff::BigInteger;
 use ark_ff::UniformRand;
@@ -146,12 +149,29 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     }
 
     pub fn get_fri_query_positions(&mut self) -> Vec<usize> {
+        // TODO: voulnerability if multiple positions are the same
         let num_queries = self.air.options().num_queries;
         let lde_domain_size = self.air.trace_len() * self.air.lde_blowup_factor();
         let mut rng = self.public_coin.draw_rng();
         (0..num_queries)
             .map(|_| rng.gen_range(0..lde_domain_size))
             .collect()
+    }
+
+    pub fn build_proof(
+        self,
+        trace_queries: Queries<A::Fp>,
+        fri_proof: FriProof<A::Fp>,
+    ) -> Proof<A::Fp> {
+        Proof {
+            options: *self.air.options(),
+            trace_info: self.air.trace_info().clone(),
+            base_trace_commitment: self.base_trace_commitment.to_vec(),
+            extension_trace_commitment: self.extension_trace_commitment.map(|o| o.to_vec()),
+            composition_trace_commitment: self.composition_trace_commitment.to_vec(),
+            fri_proof,
+            trace_queries,
+        }
     }
 }
 

@@ -1,8 +1,61 @@
 use crate::challenges::Challenges;
+use crate::merkle::MerkleProof;
+use crate::merkle::MerkleTree;
 use crate::Matrix;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use digest::Digest;
 use fast_poly::GpuField;
+
+#[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
+pub struct Queries<F: GpuField> {
+    pub execution_trace_values: Vec<F>,
+    pub composition_trace_values: Vec<F>,
+    pub base_trace_proofs: Vec<MerkleProof>,
+    pub extension_trace_proofs: Vec<MerkleProof>,
+    pub composition_trace_proofs: Vec<MerkleProof>,
+}
+
+impl<F: GpuField> Queries<F> {
+    pub fn new<D: Digest>(
+        execution_trace_lde: &Matrix<F>,
+        composition_trace_lde: &Matrix<F>,
+        base_commitment: MerkleTree<D>,
+        extension_commitment: Option<MerkleTree<D>>,
+        composition_commitment: MerkleTree<D>,
+        positions: &[usize],
+    ) -> Self {
+        let mut execution_trace_values = Vec::new();
+        let mut composition_trace_values = Vec::new();
+        let mut base_trace_proofs = Vec::new();
+        let mut extension_trace_proofs = Vec::new();
+        let mut composition_trace_proofs = Vec::new();
+        for &position in positions {
+            // execution trace
+            let execution_trace_row = execution_trace_lde.get_row(position).unwrap();
+            execution_trace_values.extend(execution_trace_row);
+            let base_proof = base_commitment.prove(position).unwrap();
+            base_trace_proofs.push(base_proof);
+            if let Some(extension_commitment) = &extension_commitment {
+                let extension_proof = extension_commitment.prove(position).unwrap();
+                extension_trace_proofs.push(extension_proof);
+            }
+
+            // composition trace
+            let composition_trace_row = composition_trace_lde.get_row(position).unwrap();
+            composition_trace_values.extend(composition_trace_row);
+            let composition_proof = composition_commitment.prove(position).unwrap();
+            composition_trace_proofs.push(composition_proof);
+        }
+        Queries {
+            execution_trace_values,
+            composition_trace_values,
+            base_trace_proofs,
+            extension_trace_proofs,
+            composition_trace_proofs,
+        }
+    }
+}
 
 /// Public metadata about a trace.
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]

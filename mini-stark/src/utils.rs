@@ -265,9 +265,7 @@ impl<'a> Drop for Timer<'a> {
     }
 }
 
-pub(crate) fn interleave<T: Copy + Send + Sync + Default, const N: usize>(
-    source: &[T],
-) -> Vec<[T; N]> {
+pub fn interleave<T: Copy + Send + Sync + Default, const N: usize>(source: &[T]) -> Vec<[T; N]> {
     let n = source.len() / N;
     let mut res = vec![[T::default(); N]; n];
     ark_std::cfg_iter_mut!(res)

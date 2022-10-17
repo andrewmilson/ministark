@@ -2,6 +2,7 @@
 
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
+use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
 use mini_stark::constraint::are_eq;
 use mini_stark::constraint::is_one;
@@ -193,10 +194,15 @@ fn gen_trace(len: usize) -> FibTrace {
 
 fn main() {
     let now = Instant::now();
-    let options = ProofOptions::new(32, 4);
+    let options = ProofOptions::new(32, 4, 8);
     let prover = FibProver::new(options);
     let trace = gen_trace(1048576 / 4);
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());
-    println!("Result: {:?}", proof.unwrap());
+    let mut proof_bytes = Vec::new();
+    proof
+        .unwrap()
+        .serialize_compressed(&mut proof_bytes)
+        .unwrap();
+    println!("Result: {:?}kb", proof_bytes.len() / 1024);
 }
