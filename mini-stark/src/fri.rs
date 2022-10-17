@@ -198,8 +198,8 @@ pub trait ProverChannel<F: GpuField> {
     fn draw_fri_alpha(&mut self) -> F;
 }
 
-//
-// Example of a degree respecting projection for `folding_factor = 2`:
+// Performs a degree respecting projection of evaluations of a polynomial.
+// Example for `folding_factor = 2`:
 // 1. Begin with evaluations we wish to generate a DRP of:
 //    ┌─────────┬───┬───┬───┬───┬───┬───┬───┬───┐
 //    │ i       │ 0 │ 1 │ 2 │ 3 │ 4 │ 5 │ 6 │ 7 │

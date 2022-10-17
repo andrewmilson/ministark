@@ -198,11 +198,12 @@ impl<F: GpuField> Matrix<F> {
         self.0
             .iter()
             .map(|col| {
-                let mut num_leading_zeros = 0;
-                while col.last().map_or(false, |c| c.is_zero()) {
-                    num_leading_zeros += 1;
+                for i in (0..col.len()).rev() {
+                    if !col[i].is_zero() {
+                        return i;
+                    }
                 }
-                col.len() - num_leading_zeros - 1
+                0
             })
             .collect()
     }
