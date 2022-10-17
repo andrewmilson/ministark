@@ -17,6 +17,7 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::GpuField;
 use sha2::Sha256;
+use std::time::Instant;
 
 // TODO: include ability to specify:
 // - base field
@@ -187,8 +188,10 @@ pub trait Prover {
         let deep_composition_poly = deep_poly_composer.into_deep_poly();
         let deep_composition_lde = deep_composition_poly.evaluate(lde_domain);
 
+        let now = Instant::now();
         let mut fri_prover = FriProver::<Self::Fp, Sha256>::new(air.options().into_fri_options());
         fri_prover.build_layers(&mut channel, deep_composition_lde);
+
         channel.grind_fri_commitments();
 
         let query_positions = channel.get_fri_query_positions();
@@ -202,6 +205,7 @@ pub trait Prover {
             composition_trace_lde_tree,
             &query_positions,
         );
+        println!("Fri in {:?}", now.elapsed());
 
         Ok(channel.build_proof(queries, fri_proof))
     }
