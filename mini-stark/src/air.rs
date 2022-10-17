@@ -231,7 +231,7 @@ pub trait Air {
 
         // check transition constraints
         for (i, [curr, next]) in trace_rows.array_windows::<2>().enumerate() {
-            for (j, constraint) in self.terminal_constraints().iter().enumerate() {
+            for (j, constraint) in self.transition_constraints().iter().enumerate() {
                 let eval = constraint.evaluate(challenges, curr, next);
                 assert!(eval.is_zero(), "transition {j} mismatch at row {i}");
             }

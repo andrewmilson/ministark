@@ -103,18 +103,23 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             zip(boundary_constraints, boundary_quotients.0).map(|(c, q)| (c, q, &boundary_divisor));
         let transition_iter = zip(transition_constraints, transition_quotients.0)
             .map(|(c, q)| (c, q, &transition_divisor));
-        let terminal_iter = zip(terminal_constraints, terminal_quotients.0)
-            .map(|(c, q)| (c, q, &transition_divisor));
+        let terminal_iter =
+            zip(terminal_constraints, terminal_quotients.0).map(|(c, q)| (c, q, &terminal_divisor));
 
         let composition_degree = air.composition_degree();
         let mut groups = BTreeMap::new();
-        for (constraint, quotient, divisor) in
-            boundary_iter.chain(transition_iter).chain(terminal_iter)
+        for (i, (constraint, quotient, divisor)) in boundary_iter
+            .chain(transition_iter)
+            .chain(terminal_iter)
+            .enumerate()
         {
             // TODO: handle case when degree is 0?
             let trace_degree = air.trace_len() - 1;
             let evaluation_degree = constraint.degree() * trace_degree - divisor.degree;
+            #[cfg(debug_assertions)]
+            self.validate_quotient_degree(&quotient, evaluation_degree);
             let degree_adjustment = composition_degree - evaluation_degree;
+
             let group = groups
                 .entry(degree_adjustment)
                 .or_insert_with(|| DegreeAdjustmentGroup {
@@ -197,6 +202,20 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let composition_trace_lde = composition_trace_polys.evaluate(self.air.lde_domain());
         let merkle_tree = composition_trace_lde.commit_to_rows();
         (composition_trace_lde, composition_trace_polys, merkle_tree)
+    }
+
+    /// Ensures the post-division degree of the polynomial matches the expected
+    #[cfg(debug_assertions)]
+    fn validate_quotient_degree(&self, quotient: &[A::Fp], expected_degree: usize) {
+        use ark_poly::univariate::DensePolynomial;
+        use ark_poly::DenseUVPolynomial;
+        use ark_poly::Polynomial;
+
+        let coeffs = self.air.lde_domain().ifft(quotient);
+        let poly = DensePolynomial::from_coefficients_vec(coeffs);
+
+        // TODO: set up errors
+        assert_eq!(expected_degree, poly.degree());
     }
 }
 

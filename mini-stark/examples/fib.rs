@@ -21,7 +21,7 @@ struct FibTrace(Matrix<Fp>);
 impl Trace for FibTrace {
     type Fp = Fp;
 
-    const NUM_BASE_COLUMNS: usize = 2;
+    const NUM_BASE_COLUMNS: usize = 8;
 
     fn len(&self) -> usize {
         println!("YOOO {}", self.0.num_rows());
@@ -66,6 +66,7 @@ impl FibAir {
     }
 
     fn generate_transition_constraints() -> Vec<Constraint<Fp>> {
+        println!("{:?}", are_eq(0.next::<Fp>(), 6.curr() * 7.curr()));
         vec![
             are_eq(0.next(), 6.curr() * 7.curr()),
             are_eq(1.next(), 7.curr() * 0.next()),
@@ -196,7 +197,16 @@ fn main() {
     let now = Instant::now();
     let options = ProofOptions::new(32, 4, 8);
     let prover = FibProver::new(options);
-    let trace = gen_trace(1048576 / 4);
+    let trace = gen_trace(1048576);
+
+    for val in trace.base_columns().get_row(0).unwrap() {
+        println!("{val},");
+    }
+
+    for val in trace.base_columns().get_row(1).unwrap() {
+        println!("{val},");
+    }
+
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());
     let mut proof_bytes = Vec::new();

@@ -15,7 +15,6 @@ use ark_ff::Field;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use digest::Output;
 use fast_poly::GpuField;
 use sha2::Sha256;
 
