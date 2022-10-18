@@ -41,14 +41,14 @@ fn bench_commitment<F: GpuField, D: Digest>(c: &mut Criterion, name: &str) {
             })
             .collect::<Vec<Output<D>>>();
 
-        group.bench_with_input(BenchmarkId::new("commitment", n), &n, |b, _| {
+        group.bench_with_input(BenchmarkId::new("new", n), &n, |b, _| {
             b.iter(|| MerkleTree::<D>::new(leaf_nodes.clone()))
         });
     }
 }
 
 fn bench_commitments(c: &mut Criterion) {
-    bench_commitment::<Fp, Sha256>(c, "Build Sha256 Merkle Tree");
+    bench_commitment::<Fp, Sha256>(c, "Sha256 Merkle Tree");
 }
 
 criterion_group!(benches, bench_commitments);
