@@ -7,7 +7,7 @@ edition = "2021"
 opt-level = 3
 
 [dependencies]
-metal = { path = "../../metal-rs" }
+metal = { git = "https://github.com/gfx-rs/metal-rs" }
 objc = "0.2.7"
 libc = "0.2"
 num-traits = "0.2.14"

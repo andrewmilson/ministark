@@ -5,7 +5,6 @@ use ark_ff_optimized::fp64::Fp;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
 use mini_stark::constraint::are_eq;
-use mini_stark::constraint::is_one;
 use mini_stark::Air;
 use mini_stark::Column;
 use mini_stark::Constraint;
@@ -24,7 +23,6 @@ impl Trace for FibTrace {
     const NUM_BASE_COLUMNS: usize = 8;
 
     fn len(&self) -> usize {
-        println!("YOOO {}", self.0.num_rows());
         self.0.num_rows()
     }
 
@@ -66,7 +64,6 @@ impl FibAir {
     }
 
     fn generate_transition_constraints() -> Vec<Constraint<Fp>> {
-        println!("{:?}", are_eq(0.next::<Fp>(), 6.curr() * 7.curr()));
         vec![
             are_eq(0.next(), 6.curr() * 7.curr()),
             are_eq(1.next(), 7.curr() * 0.next()),
@@ -198,14 +195,6 @@ fn main() {
     let options = ProofOptions::new(32, 4, 8);
     let prover = FibProver::new(options);
     let trace = gen_trace(1048576);
-
-    for val in trace.base_columns().get_row(0).unwrap() {
-        println!("{val},");
-    }
-
-    for val in trace.base_columns().get_row(1).unwrap() {
-        println!("{val},");
-    }
 
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());

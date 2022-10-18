@@ -1,4 +1,5 @@
 #![feature(allocator_api, let_chains, array_windows, array_chunks)]
+#![feature(generic_const_exprs)]
 
 mod air;
 pub mod challenges;

@@ -100,18 +100,10 @@ pub trait Prover {
         trace_domain: Radix2EvaluationDomain<Self::Fp>,
         lde_domain: Radix2EvaluationDomain<Self::Fp>,
     ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
-        let trace_polys = {
-            let _timer = Timer::new("trace interpolation");
-            trace.interpolate_columns(trace_domain)
-        };
-        let trace_lde = {
-            let _timer = Timer::new("trace low degree extension");
-            trace_polys.evaluate(lde_domain)
-        };
-        let merkle_tree = {
-            let _timer = Timer::new("trace commitment");
-            trace_lde.commit_to_rows()
-        };
+        let _timer = Timer::new("trace extension and commitment");
+        let trace_polys = trace.interpolate_columns(trace_domain);
+        let trace_lde = trace_polys.evaluate(lde_domain);
+        let merkle_tree = trace_lde.commit_to_rows();
         (trace_lde, trace_polys, merkle_tree)
     }
 

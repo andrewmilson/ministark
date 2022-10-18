@@ -12,20 +12,21 @@ use criterion::Criterion;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::GpuFft;
 use fast_poly::plan::GpuIfft;
+use fast_poly::GpuField;
 
 const BENCHMARK_INPUT_SIZES: [usize; 4] = [2048, 4096, 32768, 262144];
 
-fn bench_fft(c: &mut Criterion) {
+fn fft_bench<F: GpuField>(c: &mut Criterion, name: &str) {
     let mut rng = ark_std::test_rng();
-    let mut group = c.benchmark_group("Fast Fourier Transform");
+    let mut group = c.benchmark_group(name);
     group.sample_size(10);
 
     for n in BENCHMARK_INPUT_SIZES {
-        let vals = (0..n).map(|_| Fp::rand(&mut rng)).collect::<Vec<Fp>>();
-        let domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
-        let coset = domain.get_coset(Fp::GENERATOR).unwrap();
+        let vals = (0..n).map(|_| F::rand(&mut rng)).collect::<Vec<F>>();
+        let domain = Radix2EvaluationDomain::<F>::new(n).unwrap();
+        let coset = domain.get_coset(F::GENERATOR).unwrap();
 
-        group.bench_with_input(BenchmarkId::new("FFT", n), &n, |b, _| {
+        group.bench_with_input(BenchmarkId::new("GpuFft", n), &n, |b, _| {
             let mut coeffs = vals.to_vec_in(PageAlignedAllocator);
             b.iter(|| {
                 let mut fft = GpuFft::from(domain);
@@ -34,7 +35,7 @@ fn bench_fft(c: &mut Criterion) {
             })
         });
 
-        group.bench_with_input(BenchmarkId::new("FFT (coset)", n), &n, |b, _| {
+        group.bench_with_input(BenchmarkId::new("GpuFft (coset)", n), &n, |b, _| {
             let mut coeffs = vals.to_vec_in(PageAlignedAllocator);
             b.iter(|| {
                 let mut fft = GpuFft::from(coset);
@@ -43,7 +44,7 @@ fn bench_fft(c: &mut Criterion) {
             })
         });
 
-        group.bench_with_input(BenchmarkId::new("IFFT", n), &n, |b, _| {
+        group.bench_with_input(BenchmarkId::new("GpuIfft", n), &n, |b, _| {
             let mut evals = vals.to_vec_in(PageAlignedAllocator);
             b.iter(|| {
                 let mut fft = GpuIfft::from(domain);
@@ -52,7 +53,7 @@ fn bench_fft(c: &mut Criterion) {
             })
         });
 
-        group.bench_with_input(BenchmarkId::new("IFFT (coset)", n), &n, |b, _| {
+        group.bench_with_input(BenchmarkId::new("GpuIfft (coset)", n), &n, |b, _| {
             let mut evals = vals.to_vec_in(PageAlignedAllocator);
             b.iter(|| {
                 let mut fft = GpuIfft::from(coset);
@@ -65,5 +66,9 @@ fn bench_fft(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_fft);
+fn fft_benches(c: &mut Criterion) {
+    fft_bench::<Fp>(c, "FFT (64-bit prime field)");
+}
+
+criterion_group!(benches, fft_benches);
 criterion_main!(benches);

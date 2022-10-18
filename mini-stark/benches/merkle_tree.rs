@@ -15,7 +15,7 @@ use sha2::Sha256;
 
 const BENCHMARK_TREE_DEPTH: [usize; 4] = [14, 15, 16, 17];
 
-fn bench_commitment<F: GpuField, D: Digest>(c: &mut Criterion, name: &str) {
+fn build_merkle_tree_bench<F: GpuField, D: Digest>(c: &mut Criterion, name: &str) {
     let mut rng = ark_std::test_rng();
     let mut group = c.benchmark_group(name);
     group.sample_size(10);
@@ -40,9 +40,9 @@ fn bench_commitment<F: GpuField, D: Digest>(c: &mut Criterion, name: &str) {
     }
 }
 
-fn bench_commitments(c: &mut Criterion) {
-    bench_commitment::<Fp, Sha256>(c, "Sha256 Merkle Tree");
+fn build_merkle_tree_benches(c: &mut Criterion) {
+    build_merkle_tree_bench::<Fp, Sha256>(c, "build merkle tree (sha256)");
 }
 
-criterion_group!(benches, bench_commitments);
+criterion_group!(benches, build_merkle_tree_benches);
 criterion_main!(benches);

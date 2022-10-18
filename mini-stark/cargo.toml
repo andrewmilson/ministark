@@ -30,3 +30,9 @@ criterion = "0.4.0"
 name = "merkle_tree"
 path = "benches/merkle_tree.rs"
 harness = false
+
+[[bench]]
+name = "matrix"
+path = "benches/matrix.rs"
+# required-features = ["asm", "parallel"]
+harness = false

@@ -1,6 +1,7 @@
 use crate::air::Divisor;
 use crate::challenges::Challenges;
 use crate::merkle::MerkleTree;
+use crate::utils::Timer;
 use crate::Air;
 use crate::Constraint;
 use crate::Matrix;
@@ -72,14 +73,17 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     ) -> Matrix<A::Fp> {
         let air = self.air;
 
+        let _timer = Timer::new("genering divisors");
         let boundary_divisor = air.boundary_constraint_divisor();
         let transition_divisor = air.transition_constraint_divisor();
         let terminal_divisor = air.terminal_constraint_divisor();
+        drop(_timer);
 
         let boundary_constraints = air.boundary_constraints();
         let transition_constraints = air.transition_constraints();
         let terminal_constraints = air.terminal_constraints();
 
+        let _timer = Timer::new("generating quotients");
         let boundary_quotients = self.generate_quotients(
             challenges,
             boundary_constraints,
@@ -98,6 +102,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             trace_lde,
             &terminal_divisor,
         );
+        drop(_timer);
 
         let boundary_iter =
             zip(boundary_constraints, boundary_quotients.0).map(|(c, q)| (c, q, &boundary_divisor));
@@ -106,6 +111,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let terminal_iter =
             zip(terminal_constraints, terminal_quotients.0).map(|(c, q)| (c, q, &terminal_divisor));
 
+        let _timer = Timer::new("asjusting degree");
         let composition_degree = air.composition_degree();
         let mut groups = BTreeMap::new();
         for (constraint, quotient, divisor) in
@@ -139,28 +145,37 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
                 coeffs,
             } = group;
 
-            let mut alpha_cols = Vec::new();
-            let mut beta_cols = Vec::new();
-            for (column, (alpha, beta)) in zip(columns, coeffs) {
-                let mut alpha_col = Vec::with_capacity_in(column.len(), PageAlignedAllocator);
-                let mut beta_col = Vec::with_capacity_in(column.len(), PageAlignedAllocator);
-                for v in column {
-                    alpha_col.push(alpha * v);
-                    beta_col.push(beta * v);
-                }
-                alpha_cols.push(alpha_col);
-                beta_cols.push(beta_col);
-            }
+            let (alpha_cols, beta_cols) = ark_std::cfg_iter!(columns)
+                .zip(coeffs)
+                .map(|(column, (alpha, beta))| {
+                    let n = column.len();
+                    let mut alpha_col = Vec::with_capacity_in(n, PageAlignedAllocator);
+                    let mut beta_col = Vec::with_capacity_in(n, PageAlignedAllocator);
 
-            let alpha_col = Matrix::new(alpha_cols).sum_columns();
+                    for v in column {
+                        alpha_col.push(alpha * v);
+                        beta_col.push(beta * v);
+                    }
+
+                    (alpha_col, beta_col)
+                })
+                .unzip();
+
             let mut beta_col = Matrix::new(beta_cols).sum_columns();
-            for (v, x) in zip(&mut beta_col.0[0], lde_domain.elements()) {
-                *v *= x.pow([degree_adjustment as u64])
+
+            // TODO: make parallel. also this is hacky and needs to go
+            // modify domain to go from x to x^degree_adjustment
+            let mut adjust_domain = lde_domain;
+            adjust_domain.offset = adjust_domain.offset.pow([degree_adjustment as u64]);
+            adjust_domain.group_gen = adjust_domain.group_gen.pow([degree_adjustment as u64]);
+            for (v, x) in zip(&mut beta_col.0[0], adjust_domain.elements()) {
+                *v *= x
             }
 
-            accumulator.append(alpha_col);
+            accumulator.append(Matrix::new(alpha_cols));
             accumulator.append(beta_col);
         }
+        drop(_timer);
 
         accumulator.sum_columns()
     }
@@ -195,7 +210,9 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         challenges: &Challenges<A::Fp>,
         execution_trace_lde: &Matrix<A::Fp>,
     ) -> (Matrix<A::Fp>, Matrix<A::Fp>, MerkleTree<Sha256>) {
+        let _timer = Timer::new("constraint evaluation");
         let composed_evaluations = self.evaluate(challenges, execution_trace_lde);
+        drop(_timer);
         let composition_trace_polys = self.trace_polys(composed_evaluations);
         let composition_trace_lde = composition_trace_polys.evaluate(self.air.lde_domain());
         let merkle_tree = composition_trace_lde.commit_to_rows();

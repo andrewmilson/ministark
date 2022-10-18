@@ -5,6 +5,7 @@ use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
 use ark_poly::Polynomial;
+use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::GpuFft;
@@ -155,18 +156,38 @@ impl<F: GpuField> Matrix<F> {
 
         let mut row_hashes = Vec::with_capacity(num_rows);
         row_hashes.resize(num_rows, Default::default());
-        ark_std::cfg_iter_mut!(row_hashes)
-            .enumerate()
-            .for_each(|(row, row_hash)| {
-                let mut hasher = D::new();
-                // TODO: bad for single column matricies
-                for col in 0..num_cols {
-                    let mut bytes = Vec::new();
-                    self.0[col][row].serialize_compressed(&mut bytes).unwrap();
-                    hasher.update(&bytes);
-                }
-                *row_hash = hasher.finalize();
-            });
+        {
+            // let _timer = Timer::new("GENERATING LEAFS");
+            #[cfg(not(feature = "parallel"))]
+            let chunk_size = row_hashes.len();
+            #[cfg(feature = "parallel")]
+            let chunk_size = std::cmp::max(
+                row_hashes.len() / rayon::current_num_threads().next_power_of_two(),
+                128,
+            );
+
+            // println!("Chunk size {}", chunk_size);
+
+            ark_std::cfg_chunks_mut!(row_hashes, chunk_size)
+                .enumerate()
+                .for_each(|(chunk_offset, chunk)| {
+                    let offset = chunk_size * chunk_offset;
+
+                    let mut row_buffer = vec![F::zero(); self.num_cols()];
+                    let mut row_bytes = Vec::with_capacity(row_buffer.compressed_size());
+
+                    for (i, row_hash) in chunk.iter_mut().enumerate() {
+                        row_bytes.clear();
+                        self.read_row(offset + i, &mut row_buffer);
+                        row_buffer.serialize_compressed(&mut row_bytes).unwrap();
+
+                        *row_hash = D::new_with_prefix(&row_bytes).finalize();
+                    }
+                });
+        }
+
+        // let _timer = Timer::new("GENERATING TREE");
+
         MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
     }
 
@@ -185,6 +206,12 @@ impl<F: GpuField> Matrix<F> {
             Some(self.iter().map(|col| col[row]).collect())
         } else {
             None
+        }
+    }
+
+    fn read_row(&self, row_idx: usize, row: &mut [F]) {
+        for (column, value) in self.0.iter().zip(row.iter_mut()) {
+            *value = column[row_idx]
         }
     }
 

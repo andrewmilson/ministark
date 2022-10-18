@@ -66,7 +66,6 @@ impl Trace for BrainfuckTrace {
     const NUM_BASE_COLUMNS: usize = 35;
 
     fn len(&self) -> usize {
-        println!("YOOO {}", self.base_trace.num_rows());
         self.base_trace.num_rows()
     }
 
