@@ -23,10 +23,10 @@ use mini_stark::Matrix;
 #[test]
 fn constraint_with_challenges() {
     let constraint = (0.get_challenge() - 0.curr()) * 1.curr();
+    let challenges = [Fp::one()];
+    let col_values = [Fp::one(), Fp::from(100)];
 
-    assert!(constraint
-        .evaluate(&[Fp::one()], &[Fp::one(), Fp::from(100)], &[])
-        .is_zero());
+    assert!(constraint.evaluate(&challenges, &col_values, &[]).is_zero());
 }
 
 #[test]
