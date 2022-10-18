@@ -23,6 +23,7 @@ use mini_stark::challenges::Challenges;
 // use mini_stark::constraint::Challenge as _;
 use mini_stark::Matrix;
 use mini_stark::Trace;
+use rand::thread_rng;
 
 pub struct BrainfuckTrace {
     processor_base_trace: Matrix<Fp>,
@@ -82,6 +83,7 @@ impl Trace for BrainfuckTrace {
             ..
         } = self;
 
+        // TODO: use different method
         let mut rng = rand::thread_rng();
         let instr_initial = Fp::rand(&mut rng);
         let mem_initial = Fp::rand(&mut rng);

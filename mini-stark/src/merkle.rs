@@ -56,6 +56,7 @@ pub struct MerkleTree<D: Digest> {
 }
 
 impl<D: Digest> MerkleTree<D> {
+    // TODO: why not just commit to leaf values directly
     pub fn new(leaf_nodes: Vec<Output<D>>) -> Result<Self, MerkleTreeError> {
         let n = leaf_nodes.len();
         if n < 2 {

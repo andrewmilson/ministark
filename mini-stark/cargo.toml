@@ -14,6 +14,7 @@ ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
 fast-poly = { path = "../fast-poly" }
 anyhow = "1.0.65"
+rand = "0.8.5"
 thiserror = "1.0.37"
 rayon = { version = "1.5.3", optional = true }
 
@@ -22,8 +23,10 @@ default = []
 asm = [ "sha2/asm" ]
 parallel = [ "dep:rayon", "ark-std/parallel", "fast-poly/parallel" ]
 
-[patch.crates-io]
-ark-std = { git = "https://github.com/arkworks-rs/std" }
-ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
-ark-poly = { git = "https://github.com/arkworks-rs/algebra" }
-ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
+[dev-dependencies]
+criterion = "0.4.0"
+
+[[bench]]
+name = "merkle_tree"
+path = "benches/merkle_tree.rs"
+harness = false
