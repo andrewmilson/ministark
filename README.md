@@ -18,5 +18,5 @@ On top of the hardware acceleration I tried to take a shot at improving how AIR 
 ## Reference and thanks
 
 - [Anatomy of a STARK](https://aszepieniec.github.io/stark-anatomy/) by [Alan Szepieniec](https://twitter.com/aszepieniec?lang=en) - Probably the best practical resource I've read on STARKs to date. STARKs remained a mystery to me until I went through this word by word (it took a while to digest). Read through this and the magic of STARKs will start to make sense.
-- [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) by [Alan Szepieniec](https://twitter.com/aszepieniec?lang=en) - A practical STARK tutorial to create a STARK vm for the BF programming language. Runs through 
+- [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) by [Alan Szepieniec](https://twitter.com/aszepieniec?lang=en) - A practical STARK tutorial to create a STARK vm for the BF programming language. Is a sequel to Anatomy of a STARK and runs through table-lookup arguments
 - TODO: winterfel
