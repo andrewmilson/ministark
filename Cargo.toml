@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "fast-poly",
-    "optimized-fields",
     "mini-stark"
 ]
 
