@@ -1,10 +1,7 @@
 #![feature(allocator_api)]
 
-use ark_ff::FftField;
 use ark_ff::UniformRand;
 use ark_ff_optimized::fp64::Fp;
-use ark_poly::EvaluationDomain;
-use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use criterion::criterion_group;
 use criterion::criterion_main;
@@ -12,13 +9,9 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use digest::Digest;
 use digest::Output;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::GpuFft;
-use fast_poly::plan::GpuIfft;
 use fast_poly::GpuField;
 use mini_stark::merkle::MerkleTree;
 use sha2::Sha256;
-use std::hash;
 
 const BENCHMARK_TREE_DEPTH: [usize; 4] = [14, 15, 16, 17];
 
