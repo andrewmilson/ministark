@@ -6,7 +6,6 @@ use crate::prover::Proof;
 use crate::random::PublicCoin;
 use crate::trace::Queries;
 use crate::Air;
-use ark_ff::BigInteger;
 use ark_ff::UniformRand;
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;

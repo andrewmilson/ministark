@@ -1,7 +1,6 @@
 use super::GpuField;
 use crate::allocator::PageAlignedAllocator;
 use crate::utils::copy_to_private_buffer;
-use crate::FftDirection;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use std::marker::PhantomData;
@@ -28,8 +27,6 @@ pub struct FftGpuStage<E> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
-    num_boxes: u32,
-    variant: Variant,
     _phantom: PhantomData<E>,
 }
 
@@ -72,10 +69,8 @@ impl<F: GpuField> FftGpuStage<F> {
 
         FftGpuStage {
             pipeline,
-            num_boxes,
             threadgroup_dim,
             grid_dim,
-            variant,
             _phantom: PhantomData,
         }
     }
@@ -223,7 +218,6 @@ impl<F: GpuField> BitReverseGpuStage<F> {
 }
 
 pub struct MulPowStage<F> {
-    n: u32,
     shift: u32,
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
@@ -255,7 +249,6 @@ impl<F: GpuField> MulPowStage<F> {
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
         MulPowStage {
-            n,
             threadgroup_dim,
             pipeline,
             grid_dim,

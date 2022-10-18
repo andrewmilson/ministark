@@ -1,6 +1,7 @@
 #ifndef permute_h
 #define permute_h
 
+// TODO: Can use metal::log2 method
 constexpr int log2_floor(unsigned n)
 {
     int i = -(n == 0);

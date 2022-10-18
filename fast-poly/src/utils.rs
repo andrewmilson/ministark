@@ -1,6 +1,5 @@
 use crate::allocator::PageAlignedAllocator;
 use crate::allocator::PAGE_SIZE;
-use metal::CommandQueue;
 
 fn bit_reverse_index(n: usize, i: usize) -> usize {
     assert!(n.is_power_of_two());

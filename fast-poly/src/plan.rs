@@ -1,7 +1,6 @@
 use crate::allocator::PageAlignedAllocator;
 use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
-use crate::stage::MulPowStage;
 use crate::stage::ScaleAndNormalizeGpuStage;
 use crate::stage::Variant;
 use crate::twiddles::fill_twiddles;

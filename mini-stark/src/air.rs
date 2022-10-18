@@ -259,12 +259,13 @@ impl<F: GpuField> Deref for Divisor<F> {
     }
 }
 
-fn print_row<F: GpuField>(row: &[F]) {
-    for val in row {
-        print!("{val}, ");
-    }
-    println!()
-}
+// TODO: remove
+// fn print_row<F: GpuField>(row: &[F]) {
+//     for val in row {
+//         print!("{val}, ");
+//     }
+//     println!()
+// }
 
 /// Rounds the input value up the the nearest power of two
 fn ceil_power_of_two(value: usize) -> usize {

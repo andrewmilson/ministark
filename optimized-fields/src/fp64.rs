@@ -16,7 +16,6 @@ use ark_ff::PrimeField;
 use ark_ff::SqrtPrecomputation;
 use ark_ff::Zero;
 use std::marker::PhantomData;
-use std::ops::SubAssign;
 
 /// Field modulus `p = 2^64 - 2^32 + 1`
 const MODULUS: u64 = 18446744069414584321;

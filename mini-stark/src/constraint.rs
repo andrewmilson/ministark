@@ -129,13 +129,13 @@ impl Variables {
 impl core::fmt::Debug for Variables {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         for variable in self.0.iter() {
-            write!(f, " * ");
+            write!(f, " * ")?;
             let power = variable.1;
             match variable.0 {
-                Element::Curr(index) => write!(f, "x_{}", index),
-                Element::Next(index) => write!(f, "x'_{}", index),
-                Element::Challenge(index) => write!(f, "c_{}", index),
-                Element::X => write!(f, "x"),
+                Element::Curr(index) => write!(f, "x_{}", index)?,
+                Element::Next(index) => write!(f, "x'_{}", index)?,
+                Element::Challenge(index) => write!(f, "c_{}", index)?,
+                Element::X => write!(f, "x")?,
             };
             if !power.is_one() {
                 write!(f, "^{power}")?;

@@ -1,31 +1,17 @@
 #![feature(allocator_api, int_log)]
 
 use ark_ff::FftField;
-use ark_ff::Field;
 use ark_ff::One;
-use ark_ff::UniformRand;
 use ark_ff_optimized::fp64::Fp;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
-use ark_poly::Evaluations;
 use ark_poly::Polynomial;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::GpuFft;
 use fast_poly::plan::GpuIfft;
-use fast_poly::GpuVec;
 use objc::rc::autoreleasepool;
-use rand::SeedableRng;
-use rand_pcg::Pcg64;
-
-fn gen_pcg_input<F: Field>(n: usize) -> GpuVec<F> {
-    let mut rng = Pcg64::seed_from_u64(42); //n.try_into().unwrap());
-    let mut res = Vec::new_in(PageAlignedAllocator);
-    res.resize(n, F::zero());
-    res.iter_mut().for_each(|v| *v = F::rand(&mut rng));
-    res
-}
 
 #[test]
 fn fft() {

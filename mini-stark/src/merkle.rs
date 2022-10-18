@@ -6,7 +6,6 @@ use digest::Digest;
 use digest::Output;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::marker::PhantomData;
 use thiserror::Error;
 
 /// MerkleTree tree error

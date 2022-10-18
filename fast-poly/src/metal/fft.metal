@@ -53,11 +53,13 @@ FftSingle(device FieldT *vals [[ buffer(0) ]],
     vals[target_index + input_step] = p - q;
 }
 
-// Performs bit reversal 
+// Performs bit reversal.
+// A useful transformation after a Cooley-Tuckey FFT to put outputs in order.
 template<typename FieldT> kernel void
 BitReverse(device FieldT *vals [[ buffer(0) ]],
         unsigned i [[ thread_position_in_grid ]]) {
-    unsigned ri = reverse_bits(i) >> (32 - log2_floor(N));
+    // ctz(N) is essentially equal to log2(N) since N is a power of two
+    unsigned ri = reverse_bits(i) >> (sizeof(i) * 8 - ctz(N));
 
     if (i < ri) {
         // Swap positions
@@ -87,6 +89,7 @@ AddAssign(device FieldT *lhs_vals [[ buffer(0) ]],
     lhs_vals[i] = lhs + rhs;
 }
 
+// TODO: I want to move fft unrelated kernels into their own .metal
 // dst[i] *= src[i] ^ exponent
 // preconditions: 1 <= exponent <= 16
 template<typename FieldT> kernel void

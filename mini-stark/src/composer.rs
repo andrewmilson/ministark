@@ -108,10 +108,8 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
         let composition_degree = air.composition_degree();
         let mut groups = BTreeMap::new();
-        for (i, (constraint, quotient, divisor)) in boundary_iter
-            .chain(transition_iter)
-            .chain(terminal_iter)
-            .enumerate()
+        for (constraint, quotient, divisor) in
+            boundary_iter.chain(transition_iter).chain(terminal_iter)
         {
             // TODO: handle case when degree is 0?
             let trace_degree = air.trace_len() - 1;

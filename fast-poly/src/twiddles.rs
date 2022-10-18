@@ -1,6 +1,4 @@
-use crate::FftDirection;
 use ark_ff::FftField;
-use ark_ff::Field;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 

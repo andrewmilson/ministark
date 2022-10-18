@@ -121,7 +121,7 @@ pub trait Prover {
         let options = self.options();
         let trace_info = trace.info();
         let pub_inputs = self.get_pub_inputs(&trace);
-        let air = Self::Air::new(trace_info.clone(), pub_inputs, options);
+        let air = Self::Air::new(trace_info, pub_inputs, options);
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
         {
