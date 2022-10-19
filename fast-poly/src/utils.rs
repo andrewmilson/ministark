@@ -17,6 +17,8 @@ pub fn bit_reverse<T>(v: &mut [T]) {
     }
 }
 
+// Copies a cpu buffer to a gpu buffer
+// Never use on unified memory architechture devices (M1, M2 etc.)
 pub fn copy_to_private_buffer<T: Sized>(
     command_queue: &metal::CommandQueue,
     v: &Vec<T, PageAlignedAllocator>,

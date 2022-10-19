@@ -11,7 +11,7 @@ pub mod twiddles;
 pub mod utils;
 
 /// Represents a FFT direction
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 pub enum FftDirection {
     Forward,
     Inverse,

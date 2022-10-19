@@ -6,7 +6,7 @@ use crate::stage::Variant;
 use crate::twiddles::fill_twiddles;
 use crate::utils::bit_reverse;
 use crate::utils::buffer_mut_no_copy;
-use crate::utils::copy_to_private_buffer;
+use crate::utils::buffer_no_copy;
 use crate::FftDirection;
 use crate::GpuField;
 use crate::GpuVec;
@@ -14,13 +14,15 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
 
 pub struct FftEncoder<'a, F: GpuField> {
     n: usize,
     command_queue: Arc<metal::CommandQueue>,
-    twiddles_buffer: metal::Buffer,
+    twiddles_buffer: Box<metal::Buffer>,
     scale_and_normalize_stage: Option<ScaleAndNormalizeGpuStage<F>>,
     butterfly_stages: Vec<FftGpuStage<F>>,
     bit_reverse_stage: BitReverseGpuStage<F>,
@@ -126,6 +128,8 @@ pub static PLANNER: Lazy<Planner> = Lazy::new(Planner::default);
 pub struct Planner {
     pub library: metal::Library,
     pub command_queue: Arc<metal::CommandQueue>,
+    pub twiddles_cache:
+        Mutex<elsa::map::FrozenMap<(String, usize, FftDirection), Box<Box<metal::Buffer>>>>,
 }
 
 unsafe impl Send for Planner {}
@@ -138,7 +142,38 @@ impl Planner {
         Self {
             library,
             command_queue,
+            twiddles_cache: Default::default(),
         }
+    }
+
+    pub fn get_twiddles<F: GpuField>(
+        &self,
+        direction: FftDirection,
+        n: usize,
+    ) -> Box<metal::Buffer> {
+        let field_name = F::field_name();
+        let key = (field_name, n, direction);
+        let twiddles_cache = self.twiddles_cache.lock().unwrap();
+        if let Some(buffer) = twiddles_cache.get(&key) {
+            return buffer.clone();
+        }
+
+        let mut root = F::get_root_of_unity(n as u64).unwrap();
+        if direction == FftDirection::Inverse {
+            root.inverse_in_place().unwrap();
+        }
+
+        // generate twiddles buffer
+        let mut twiddles = Vec::with_capacity_in(n, PageAlignedAllocator);
+        twiddles.resize(n / 2, F::zero());
+        fill_twiddles(&mut twiddles, root);
+        bit_reverse(&mut twiddles);
+        let twiddles_buffer = buffer_no_copy(self.command_queue.device(), &twiddles);
+        std::mem::forget(twiddles);
+
+        twiddles_cache
+            .insert(key, Box::new(Box::new(twiddles_buffer)))
+            .clone()
     }
 
     pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> GpuFft<F> {
@@ -158,17 +193,7 @@ impl Planner {
         let n = domain.size();
         assert!(n >= 2048);
 
-        let mut root = F::get_root_of_unity(n as u64).unwrap();
-        if direction == FftDirection::Inverse {
-            root.inverse_in_place().unwrap();
-        }
-
-        // generate twiddles buffer
-        let mut twiddles = Vec::with_capacity_in(n, PageAlignedAllocator);
-        twiddles.resize(n / 2, F::zero());
-        fill_twiddles(&mut twiddles, root);
-        bit_reverse(&mut twiddles);
-        let twiddles_buffer = copy_to_private_buffer(&self.command_queue, &twiddles);
+        let twiddles_buffer = self.get_twiddles::<F>(direction, n);
 
         // in-place FFT requires a bit reversal
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);

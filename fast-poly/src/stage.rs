@@ -1,6 +1,7 @@
 use super::GpuField;
 use crate::allocator::PageAlignedAllocator;
-use crate::utils::copy_to_private_buffer;
+use crate::utils::buffer_no_copy;
+use crate::GpuVec;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use std::marker::PhantomData;
@@ -99,6 +100,7 @@ pub struct ScaleAndNormalizeGpuStage<F> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
+    scale_factors: GpuVec<F>,
     scale_factors_buffer: metal::Buffer,
     _phantom: PhantomData<F>,
 }
@@ -125,7 +127,7 @@ impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
         if !scale_factor.is_one() {
             Radix2EvaluationDomain::distribute_powers(&mut scale_factors, scale_factor);
         }
-        let scale_factors_buffer = copy_to_private_buffer(command_queue, &scale_factors);
+        let scale_factors_buffer = buffer_no_copy(command_queue.device(), &scale_factors);
 
         let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
@@ -134,6 +136,7 @@ impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
             pipeline,
             threadgroup_dim,
             grid_dim,
+            scale_factors,
             scale_factors_buffer,
             _phantom: PhantomData,
         }
