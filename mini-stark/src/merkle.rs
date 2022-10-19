@@ -98,24 +98,75 @@ impl<D: Digest> MerkleTree<D> {
     }
 }
 
+#[cfg(feature = "parallel")]
+fn build_merkle_nodes<D: Digest>(leaf_nodes: &[Output<D>]) -> Vec<Output<D>> {
+    let n = leaf_nodes.len();
+    let num_subtrees = std::cmp::min(rayon::current_num_threads().next_power_of_two(), n / 2);
+    let mut nodes = vec![Output::<D>::default(); n];
+
+    // code adapted from winterfell
+    rayon::scope(|s| {
+        for i in 0..num_subtrees {
+            let nodes = unsafe { &mut *(&mut nodes[..] as *mut [Output<D>]) };
+            s.spawn(move |_| {
+                // generate layer of nodes from leaf nodes
+                let batch_size = n / num_subtrees;
+                let leaf_offset = batch_size * i;
+                for j in (0..batch_size).step_by(2) {
+                    let mut hasher = D::new();
+                    hasher.update(&leaf_nodes[leaf_offset + j]);
+                    hasher.update(&leaf_nodes[leaf_offset + j + 1]);
+                    nodes[(n / 2) + (leaf_offset / 2) + (j / 2)] = hasher.finalize();
+                }
+
+                // generate remaining nodes
+                let mut batch_size = n / num_subtrees / 4;
+                let mut start_idx = n / 4 + batch_size * i;
+                while start_idx >= num_subtrees {
+                    for k in (start_idx..(start_idx + batch_size)).rev() {
+                        let mut hasher = D::new();
+                        hasher.update(&leaf_nodes[k * 2]);
+                        hasher.update(&leaf_nodes[k * 2 + 1]);
+                        nodes[k] = hasher.finalize();
+                    }
+                    start_idx /= 2;
+                    batch_size /= 2;
+                }
+            });
+        }
+    });
+
+    // finish the tip of the tree
+    for i in (1..num_subtrees).rev() {
+        let mut hasher = D::new();
+        hasher.update(&nodes[i * 2]);
+        hasher.update(&nodes[i * 2 + 1]);
+        nodes[i] = hasher.finalize();
+    }
+
+    nodes
+}
+
+#[cfg(not(feature = "parallel"))]
 fn build_merkle_nodes<D: Digest>(leaf_nodes: &[Output<D>]) -> Vec<Output<D>> {
     let n = leaf_nodes.len();
     let mut nodes = vec![Output::<D>::default(); n];
-    // generate first row of nodes (parents of leaves)
-    ark_std::cfg_iter_mut!(nodes[n / 2..])
-        .enumerate()
-        .for_each(|(i, node)| {
-            let mut hasher = D::new();
-            hasher.update(&leaf_nodes[2 * i]);
-            hasher.update(&leaf_nodes[2 * i + 1]);
-            *node = hasher.finalize();
-        });
-    // generate remainding nodes
+
+    // generate layer of nodes from leaf nodes
+    for i in 0..n / 2 {
+        let mut hasher = D::new();
+        hasher.update(&leaf_nodes[i * 2]);
+        hasher.update(&leaf_nodes[i * 2 + 1]);
+        nodes[n / 2 + i] = hasher.finalize();
+    }
+
+    // generate remaining nodes
     for i in (1..n / 2).rev() {
         let mut hasher = D::new();
-        hasher.update(&nodes[2 * i]);
-        hasher.update(&leaf_nodes[2 * i + 1]);
+        hasher.update(&nodes[i * 2]);
+        hasher.update(&nodes[i * 2 + 1]);
         nodes[i] = hasher.finalize();
     }
+
     nodes
 }

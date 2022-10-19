@@ -54,7 +54,7 @@ impl ProofOptions {
 
     pub fn into_fri_options(self) -> FriOptions {
         // TODO: move fri params into struct
-        FriOptions::new(self.blowup_factor.into(), 2, 64)
+        FriOptions::new(self.blowup_factor.into(), 8, 64)
     }
 }
 

@@ -9,6 +9,7 @@ use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
 use fast_poly::allocator::PageAlignedAllocator;
+use fast_poly::plan::GpuIfft;
 use fast_poly::GpuField;
 use fast_poly::GpuVec;
 #[cfg(feature = "parallel")]
@@ -235,7 +236,16 @@ pub fn apply_drp<F: GpuField>(
 ) -> GpuVec<F> {
     let n = evals.len();
     let domain = Radix2EvaluationDomain::new_coset(n, domain_offset).unwrap();
-    let coeffs = domain.ifft(evals);
+    let mut coeffs = if n >= 2048 {
+        let mut coeffs = evals.to_vec_in(PageAlignedAllocator);
+        let mut ifft = GpuIfft::from(domain);
+        ifft.encode(&mut coeffs);
+        ifft.execute();
+        coeffs
+    } else {
+        domain.ifft(&evals).to_vec_in(PageAlignedAllocator)
+    };
+
     let alpha_powers = (0..folding_factor)
         .map(|i| alpha.pow([i as u64]))
         .collect::<Vec<F>>();
