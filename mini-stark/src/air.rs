@@ -1,11 +1,13 @@
 use crate::challenges::Challenges;
 use crate::constraint::Element;
+use crate::utils::Timer;
 use crate::Constraint;
 use crate::Matrix;
 use crate::ProofOptions;
 use crate::TraceInfo;
 use ark_ff::batch_inversion;
 use ark_ff::FftField;
+use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
@@ -14,6 +16,8 @@ use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
 use fast_poly::GpuVec;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use std::ops::Deref;
 
 pub trait Air {
@@ -95,62 +99,130 @@ pub trait Air {
     }
 
     fn transition_constraint_divisor(&self) -> Divisor<Self::Fp> {
+        // let trace_domain = self.trace_domain();
+        // // ((x - o^0)...(x - o^(n-1)) has degree n - 1
+        // let degree = trace_domain.size() - 1;
+        // let lde_domain = self.lde_domain();
+        // let n = lde_domain.size();
+        // // TODO: make this easier to understand
+        // // Transition constraints apply to all rows of execution trace except the
+        // last // row. We need to change the inverse zerofier from being the
+        // // evaluations of the polynomial `1/((x - o^0)...(x - o^(n-1)))` to
+        // // `1/((x - o^0)...(x - o^(n-2)))`. This is achieved by performing the
+        // // dot product of the zerofier evaluations and the evaluations of the
+        // polynomial // (x - o^(n-1)). Note that o^(n-1) is the inverse of `o`.
+        // let last_trace_x = trace_domain.group_gen_inv;
+        // let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
+        // // TODO: make parallel
+        // for lde_x in lde_domain.elements() {
+        //     lde.push(trace_domain.evaluate_vanishing_polynomial(lde_x));
+        // }
+        // batch_inversion(&mut lde);
+        // // TODO: make parallel
+        // for (i, lde_x) in lde_domain.elements().enumerate() {
+        //     lde[i] *= lde_x - last_trace_x;
+        // }
+        // Divisor { lde, degree }
+
         let trace_domain = self.trace_domain();
-        // ((x - o^0)...(x - o^(n-1)) has degree n - 1
+        let last_trace_x = trace_domain.group_gen_inv;
         let degree = trace_domain.size() - 1;
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
-        // TODO: make this easier to understand
-        // Transition constraints apply to all rows of execution trace except the last
-        // row. We need to change the inverse zerofier from being the
-        // evaluations of the polynomial `1/((x - o^0)...(x - o^(n-1)))` to
-        // `1/((x - o^0)...(x - o^(n-2)))`. This is achieved by performing the
-        // dot product of the zerofier evaluations and the evaluations of the polynomial
-        // (x - o^(n-1)). Note that o^(n-1) is the inverse of `o`.
-        let last_trace_x = trace_domain.group_gen_inv;
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        // TODO: make parallel
-        for lde_x in lde_domain.elements() {
-            lde.push(trace_domain.evaluate_vanishing_polynomial(lde_x));
-        }
+        lde.resize(n, Self::Fp::zero());
+
+        #[cfg(feature = "parallel")]
+        let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
+        #[cfg(not(feature = "parallel"))]
+        let chunk_size = n;
+
+        // evaluates TODO over the lde domain
+        ark_std::cfg_chunks_mut!(lde, chunk_size)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                let mut lde_x = lde_domain.element(i * chunk_size);
+                chunk.iter_mut().for_each(|coeff| {
+                    *coeff = trace_domain.evaluate_vanishing_polynomial(lde_x);
+                    lde_x *= &lde_domain.group_gen
+                })
+            });
+
+        // change evaluations to `TODO`
         batch_inversion(&mut lde);
-        // TODO: make parallel
-        for (i, lde_x) in lde_domain.elements().enumerate() {
-            lde[i] *= lde_x - last_trace_x;
-        }
+
+        ark_std::cfg_chunks_mut!(lde, chunk_size)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                let mut lde_x = lde_domain.element(i * chunk_size);
+                chunk.iter_mut().for_each(|coeff| {
+                    *coeff *= lde_x - last_trace_x;
+                    lde_x *= &lde_domain.group_gen
+                })
+            });
+
         Divisor { lde, degree }
     }
 
     fn boundary_constraint_divisor(&self) -> Divisor<Self::Fp> {
+        let _timer = Timer::new("===BOUNDARY DIVISOR===");
+
+        let first_trace_x = Self::Fp::one();
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
-        // TODO: make this easier to understand
-        // Evaluations of the polynomial `1/(x - o^0)` over the FRI domain
-        // Context: boundary constraints have to be 0 in the first row.
-        let first_trace_x = Self::Fp::one();
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        // TODO: make parallel
-        for lde_x in lde_domain.elements() {
-            lde.push(lde_x - first_trace_x);
-        }
+        lde.resize(n, lde_domain.offset);
+
+        #[cfg(feature = "parallel")]
+        let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
+        #[cfg(not(feature = "parallel"))]
+        let chunk_size = n;
+
+        // evaluates (x - o^0) over the lde domain
+        ark_std::cfg_chunks_mut!(lde, chunk_size)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                let mut lde_x = lde_domain.group_gen.pow([(i * chunk_size) as u64]);
+                chunk.iter_mut().for_each(|coeff| {
+                    *coeff = *coeff * lde_x - first_trace_x;
+                    lde_x *= &lde_domain.group_gen
+                })
+            });
+
+        // change evaluations to `1 / (x - o^0)`
         batch_inversion(&mut lde);
+
         Divisor { lde, degree: 1 }
     }
 
     fn terminal_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let trace_domain = self.trace_domain();
+        let _timer = Timer::new("===TERMINAL DIVISOR===");
+
+        let last_trace_x = self.trace_domain().group_gen_inv();
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
-        // TODO: make this easier to understand
-        // Evaluations of the polynomial `1/(x - o^(n-1))` over the FRI domain
-        // Context: terminal constraints have to be 0 in the last row.
-        let last_trace_x = trace_domain.group_gen_inv;
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        // TODO: make parallel
-        for lde_x in lde_domain.elements() {
-            lde.push(lde_x - last_trace_x);
-        }
+        lde.resize(n, lde_domain.offset);
+
+        #[cfg(feature = "parallel")]
+        let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
+        #[cfg(not(feature = "parallel"))]
+        let chunk_size = n;
+
+        // evaluates (x - o^0) over the lde domain
+        ark_std::cfg_chunks_mut!(lde, chunk_size)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                let mut lde_x = lde_domain.group_gen.pow([(i * chunk_size) as u64]);
+                chunk.iter_mut().for_each(|coeff| {
+                    *coeff = *coeff * lde_x - last_trace_x;
+                    lde_x *= &lde_domain.group_gen
+                })
+            });
+
+        // change evaluations to `1 / (x - o^0)`
         batch_inversion(&mut lde);
+
         Divisor { lde, degree: 1 }
     }
 

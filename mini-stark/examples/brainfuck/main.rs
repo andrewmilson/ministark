@@ -88,7 +88,7 @@ impl Prover for BrainfuckProver {
 
 fn main() {
     let now = Instant::now();
-    let program = compile(HELLO_WORLD_SOURCE);
+    let program = compile(FIB_TO_55_SOURCE);
     let mut output = Vec::new();
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
     println!("Output: {}", String::from_utf8(output).unwrap());

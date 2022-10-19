@@ -48,7 +48,7 @@ impl MerkleProof {
 ///  / \     / \
 /// #   #   #   #  <- leaf nodes
 /// |   |   |   |
-/// +   +   +   +  <- values
+/// +   +   +   +  <- leaf values
 /// ```
 pub struct MerkleTree<D: Digest> {
     nodes: Vec<Output<D>>,

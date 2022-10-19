@@ -1,17 +1,13 @@
 #![feature(allocator_api)]
 
-use ark_ff::UniformRand;
 use ark_ff_optimized::fp64::Fp;
-use ark_serialize::CanonicalSerialize;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use digest::Digest;
-use digest::Output;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
-use mini_stark::merkle::MerkleTree;
 use mini_stark::Matrix;
 use sha2::Sha256;
 

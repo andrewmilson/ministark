@@ -8,6 +8,7 @@ use crate::Matrix;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
+use ark_poly::Radix2EvaluationDomain;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::PLANNER;
 use fast_poly::stage::MulPowStage;
@@ -163,6 +164,8 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
             let mut beta_col = Matrix::new(beta_cols).sum_columns();
 
+            let _timer = Timer::new("===DEG ADJUSTOR===");
+
             // TODO: make parallel. also this is hacky and needs to go
             // modify domain to go from x to x^degree_adjustment
             let mut adjust_domain = lde_domain;
@@ -171,6 +174,17 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             for (v, x) in zip(&mut beta_col.0[0], adjust_domain.elements()) {
                 *v *= x
             }
+
+            // TODO: multithreaded but not faster. hmmm..
+            // let adjust_offset = lde_domain.offset.pow([degree_adjustment as u64]);
+            // let adjust_group_gen = lde_domain.group_gen.pow([degree_adjustment as u64]);
+            // Radix2EvaluationDomain::distribute_powers_and_mul_by_const(
+            //     &mut beta_col.0[0],
+            //     adjust_group_gen,
+            //     adjust_offset,
+            // );
+
+            drop(_timer);
 
             accumulator.append(Matrix::new(alpha_cols));
             accumulator.append(beta_col);
