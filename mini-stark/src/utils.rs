@@ -94,33 +94,24 @@ impl<F: GpuField> Matrix<F> {
             })
             .collect();
 
-        let start = Instant::now();
         ifft.execute();
-        println!("THE Completion: {:?}", start.elapsed());
 
         Matrix::new(columns)
     }
 
     pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
-        let mut fft = {
-            let _timer = Timer::new("FFT eval creation");
-            GpuFft::from(domain)
-        };
-        let columns = {
-            let _timer = Timer::new("Actual evaluations");
-            self.0
-                .iter()
-                .map(|poly| {
-                    let mut evaluations = poly.to_vec_in(PageAlignedAllocator);
-                    fft.encode(&mut evaluations);
-                    evaluations
-                })
-                .collect()
-        };
+        let mut fft = GpuFft::from(domain);
+        let columns = self
+            .0
+            .iter()
+            .map(|poly| {
+                let mut evaluations = poly.to_vec_in(PageAlignedAllocator);
+                fft.encode(&mut evaluations);
+                evaluations
+            })
+            .collect();
 
-        let start = Instant::now();
         fft.execute();
-        println!("THE Completion: {:?}", start.elapsed());
 
         Matrix::new(columns)
     }

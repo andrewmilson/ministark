@@ -152,13 +152,16 @@ pub trait Prover {
         #[cfg(debug_assertions)]
         air.validate_constraints(&challenges, &execution_trace);
 
+        let _timer = Timer::new("Composition trace");
         let composition_coeffs = channel.get_constraint_composition_coeffs();
         let constraint_coposer = ConstraintComposer::new(&air, composition_coeffs);
         // TODO: move commitment here
         let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =
             constraint_coposer.build_commitment(&challenges, &execution_trace_lde);
         channel.commit_composition_trace(composition_trace_lde_tree.root());
+        drop(_timer);
 
+        let _timer = Timer::new("OOD evals");
         let g = trace_domain.group_gen;
         let z = channel.get_ood_point();
         let ood_execution_trace_evals = execution_trace_polys.evaluate_at(z);
@@ -167,8 +170,10 @@ pub trait Prover {
         let z_n = z.pow([execution_trace_polys.num_cols() as u64]);
         let ood_composition_trace_evals = composition_trace_polys.evaluate_at(z_n);
         channel.send_ood_constraint_evaluations(&ood_composition_trace_evals);
+        drop(_timer);
 
         let deep_coeffs = channel.get_deep_composition_coeffs();
+        let _timer = Timer::new("DEEP composition");
         let mut deep_poly_composer = DeepPolyComposer::new(&air, deep_coeffs, z);
         deep_poly_composer.add_execution_trace_polys(
             execution_trace_polys,
@@ -179,8 +184,9 @@ pub trait Prover {
             .add_composition_trace_polys(composition_trace_polys, ood_composition_trace_evals);
         let deep_composition_poly = deep_poly_composer.into_deep_poly();
         let deep_composition_lde = deep_composition_poly.evaluate(lde_domain);
+        drop(_timer);
 
-        let now = Instant::now();
+        let _timer = Timer::new("FRI");
         let mut fri_prover = FriProver::<Self::Fp, Sha256>::new(air.options().into_fri_options());
         fri_prover.build_layers(&mut channel, deep_composition_lde);
 
@@ -197,7 +203,7 @@ pub trait Prover {
             composition_trace_lde_tree,
             &query_positions,
         );
-        println!("Fri in {:?}", now.elapsed());
+        drop(_timer);
 
         Ok(channel.build_proof(queries, fri_proof))
     }

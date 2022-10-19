@@ -165,7 +165,7 @@ pub trait Air {
     }
 
     fn boundary_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let _timer = Timer::new("===BOUNDARY DIVISOR===");
+        // let _timer = Timer::new("===BOUNDARY DIVISOR===");
 
         let first_trace_x = Self::Fp::one();
         let lde_domain = self.lde_domain();
@@ -196,7 +196,7 @@ pub trait Air {
     }
 
     fn terminal_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let _timer = Timer::new("===TERMINAL DIVISOR===");
+        // let _timer = Timer::new("===TERMINAL DIVISOR===");
 
         let last_trace_x = self.trace_domain().group_gen_inv();
         let lde_domain = self.lde_domain();
