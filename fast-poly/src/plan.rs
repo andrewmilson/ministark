@@ -12,20 +12,18 @@ use crate::GpuField;
 use crate::GpuVec;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
-use elsa::sync::FrozenMap;
 use once_cell::sync::Lazy;
-use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
-use std::time::Instant;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
 
 pub struct FftEncoder<'a, F: GpuField> {
     n: usize,
     command_queue: Arc<metal::CommandQueue>,
-    twiddles_buffer: &'a metal::Buffer,
+    // twiddles_buffer references this memory
+    // field exists to keep the memory around
+    _twiddles: GpuVec<F>,
+    twiddles_buffer: metal::Buffer,
     scale_and_normalize_stage: Option<ScaleAndNormalizeGpuStage<F>>,
     butterfly_stages: Vec<FftGpuStage<F>>,
     bit_reverse_stage: BitReverseGpuStage<F>,
@@ -39,7 +37,7 @@ unsafe impl<'a, F: GpuField> Sync for FftEncoder<'a, F> {}
 impl<'a, F: GpuField> FftEncoder<'a, F> {
     fn encode_butterfly_stages(&self, input_buffer: &mut metal::Buffer) {
         for stage in &self.butterfly_stages {
-            stage.encode(self.command_buffer, input_buffer, self.twiddles_buffer);
+            stage.encode(self.command_buffer, input_buffer, &self.twiddles_buffer);
         }
     }
 
@@ -111,7 +109,6 @@ pub static PLANNER: Lazy<Planner> = Lazy::new(Planner::default);
 pub struct Planner {
     pub library: metal::Library,
     pub command_queue: Arc<metal::CommandQueue>,
-    pub twiddles_cache: FrozenMap<(String, usize, FftDirection), Box<metal::Buffer>>,
 }
 
 unsafe impl Send for Planner {}
@@ -124,31 +121,7 @@ impl Planner {
         Self {
             library,
             command_queue,
-            twiddles_cache: elsa::sync::FrozenMap::new(),
         }
-    }
-
-    pub fn get_twiddles<F: GpuField>(&self, direction: FftDirection, n: usize) -> &metal::Buffer {
-        let field_name = F::field_name();
-        let key = (field_name, n, direction);
-        if let Some(buffer) = self.twiddles_cache.get(&key) {
-            return buffer;
-        }
-
-        let mut root = F::get_root_of_unity(n as u64).unwrap();
-        if direction == FftDirection::Inverse {
-            root.inverse_in_place().unwrap();
-        }
-
-        // generate twiddles buffer
-        let mut twiddles = Vec::with_capacity_in(n, PageAlignedAllocator);
-        twiddles.resize(n / 2, F::zero());
-        fill_twiddles(&mut twiddles, root);
-        bit_reverse(&mut twiddles);
-        let twiddles_buffer = buffer_no_copy(self.command_queue.device(), &twiddles);
-        std::mem::forget(twiddles);
-
-        self.twiddles_cache.insert(key, Box::new(twiddles_buffer))
     }
 
     pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> GpuFft<F> {
@@ -168,7 +141,17 @@ impl Planner {
         let n = domain.size();
         assert!(n >= 2048);
 
-        let twiddles_buffer = self.get_twiddles::<F>(direction, n);
+        let mut root = F::get_root_of_unity(n as u64).unwrap();
+        if direction == FftDirection::Inverse {
+            root.inverse_in_place().unwrap();
+        }
+
+        // generate twiddles buffer
+        let mut _twiddles = Vec::with_capacity_in(n, PageAlignedAllocator);
+        _twiddles.resize(n / 2, F::zero());
+        fill_twiddles(&mut _twiddles, root);
+        bit_reverse(&mut _twiddles);
+        let twiddles_buffer = buffer_no_copy(self.command_queue.device(), &_twiddles);
 
         // in-place FFT requires a bit reversal
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);
@@ -211,6 +194,7 @@ impl Planner {
 
         FftEncoder {
             n,
+            _twiddles,
             twiddles_buffer,
             scale_and_normalize_stage,
             butterfly_stages,
