@@ -88,12 +88,12 @@ impl Prover for BrainfuckProver {
 
 fn main() {
     let now = Instant::now();
-    let program = compile(HELLO_WORLD_SOURCE);
+    let program = compile(FIB_TO_55_SOURCE);
     let mut output = Vec::new();
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
     println!("Output: {}", String::from_utf8(output).unwrap());
 
-    let options = ProofOptions::new(32, 16, 8);
+    let options = ProofOptions::new(32, 2, 8);
     let prover = BrainfuckProver::new(options);
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());

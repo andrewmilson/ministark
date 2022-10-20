@@ -73,7 +73,9 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     // TODO: make this generic
     pub fn get_constraint_composition_coeffs(&mut self) -> Vec<(A::Fp, A::Fp)> {
         let mut rng = self.public_coin.draw_rng();
-        (0..self.air.num_constraints())
+        // TODO: fix
+        // (0..self.air.num_constraints())
+        (0..500)
             .map(|_| (A::Fp::rand(&mut rng), A::Fp::rand(&mut rng)))
             .collect()
     }

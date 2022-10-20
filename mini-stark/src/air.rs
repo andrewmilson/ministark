@@ -51,7 +51,8 @@ pub trait Air {
             .map(|constraint| constraint.degree())
             .max()
             .unwrap_or(0);
-        ceil_power_of_two(highest_degree)
+        // ceil_power_of_two(highest_degree)
+        std::cmp::min(ceil_power_of_two(highest_degree), 2)
     }
 
     /// Returns a degree that all constraints polynomials must be normalized to.

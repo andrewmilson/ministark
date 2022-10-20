@@ -117,12 +117,13 @@ pub trait Prover {
         let air = Self::Air::new(trace_info, pub_inputs, options);
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
-        {
-            // TODO: move into validation section
-            let ce_blowup_factor = air.ce_blowup_factor();
-            let lde_blowup_factor = air.lde_blowup_factor();
-            assert!(ce_blowup_factor <= lde_blowup_factor, "constraint evaluation blowup factor {ce_blowup_factor} is larger than the lde blowup factor {lde_blowup_factor}");
-        }
+        // {
+        //     // TODO: move into validation section
+        //     let ce_blowup_factor = air.ce_blowup_factor();
+        //     let lde_blowup_factor = air.lde_blowup_factor();
+        //     assert!(ce_blowup_factor <= lde_blowup_factor, "constraint evaluation
+        // blowup factor {ce_blowup_factor} is larger than the lde blowup factor
+        // {lde_blowup_factor}"); }
 
         let trace_domain = air.trace_domain();
         let lde_domain = air.lde_domain();
@@ -150,19 +151,25 @@ pub trait Prover {
             extension_trace_tree = Some(extension_trace_lde_tree);
         }
 
-        let quadratic_constraints = Constraint::into_quadratic_constraints(
-            air.transition_constraints()
-                .iter()
-                .map(|constraint| constraint.evaluate_challenges(&challenges))
-                .collect(),
-        );
-
         #[cfg(debug_assertions)]
         air.validate_constraints(&challenges, &execution_trace);
 
+        let _timer = Timer::new("Quadratic constraints");
+        let quadratic_constraints = Constraint::into_quadratic_constraints(
+            &challenges,
+            air.transition_constraints(),
+            air.lde_blowup_factor(),
+            &mut execution_trace_lde,
+        );
+
+        drop(_timer);
+
+        println!("quad cons len {}", quadratic_constraints.len());
+
         let _timer = Timer::new("Composition trace");
         let composition_coeffs = channel.get_constraint_composition_coeffs();
-        let constraint_coposer = ConstraintComposer::new(&air, composition_coeffs);
+        let constraint_coposer =
+            ConstraintComposer::new(&air, composition_coeffs, quadratic_constraints);
         // TODO: move commitment here
         let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =
             constraint_coposer.build_commitment(&challenges, &execution_trace_lde);

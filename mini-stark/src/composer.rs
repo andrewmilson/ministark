@@ -24,13 +24,19 @@ use std::iter::zip;
 pub struct ConstraintComposer<'a, A: Air> {
     air: &'a A,
     composition_coeffs: Vec<(A::Fp, A::Fp)>,
+    quadratic_transition_constraints: Vec<Constraint<A::Fp>>,
 }
 
 impl<'a, A: Air> ConstraintComposer<'a, A> {
-    pub fn new(air: &'a A, composition_coeffs: Vec<(A::Fp, A::Fp)>) -> Self {
+    pub fn new(
+        air: &'a A,
+        composition_coeffs: Vec<(A::Fp, A::Fp)>,
+        quadratic_transition_constraints: Vec<Constraint<A::Fp>>,
+    ) -> Self {
         ConstraintComposer {
             air,
             composition_coeffs,
+            quadratic_transition_constraints,
         }
     }
 
@@ -81,7 +87,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         // drop(_timer);
 
         let boundary_constraints = air.boundary_constraints();
-        let transition_constraints = air.transition_constraints();
+        let transition_constraints = &self.quadratic_transition_constraints;
         let terminal_constraints = air.terminal_constraints();
 
         // let _timer = Timer::new("generating quotients");
@@ -199,7 +205,9 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let mut composition_poly = composed_evaluations.interpolate_columns(self.air.lde_domain());
 
         let composition_poly_degree = composition_poly.column_degrees()[0];
-        assert_eq!(composition_poly_degree, self.air.composition_degree());
+        // TODO: put back if quadratic degrees no success
+        // assert_eq!(composition_poly_degree, self.air.composition_degree());
+        assert_eq!(composition_poly_degree, self.air.trace_len() * 2 - 1);
         composition_poly.0[0].truncate(composition_poly_degree + 1);
 
         let num_composition_trace_cols = self.air.ce_blowup_factor();

@@ -46,9 +46,11 @@ fn constraint_degree_reduction() {
         * (0.curr() - eight)
         * (0.curr() - nine);
 
+    // TODO: clean up
     println!("original degree: {}", is_between_0_and_10.degree());
 
-    let quadratic_constraints = Constraint::into_quadratic_constraints(vec![is_between_0_and_10]);
+    let quadratic_constraints =
+        Constraint::into_quadratic_constraints(&[], &[is_between_0_and_10], None);
 
     for (i, constraint) in quadratic_constraints.iter().enumerate() {
         println!("CONSTRAINT {i}\n{constraint:?}");

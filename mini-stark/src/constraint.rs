@@ -344,21 +344,27 @@ impl<F: GpuField> Constraint<F> {
     /// degrees. Modifies execution trace in place and generates new
     /// constraints.
     pub fn into_quadratic_constraints(
-        constraints: Vec<Constraint<F>>,
-        // execution_trace_lde: &mut Matrix<F>,
+        challenges: &[F],
+        constraints: &[Constraint<F>],
+        trace_step: usize,
+        trace_lde: &mut Matrix<F>,
     ) -> Vec<Constraint<F>> {
-        let mut next_column_idx = constraints
+        let mut remainder = constraints
+            .iter()
+            .map(|c| c.evaluate_challenges(challenges))
+            .collect::<Vec<Constraint<F>>>();
+
+        let mut next_column_idx = remainder
             .iter()
             .flat_map(|c| c.get_elements())
             .filter_map(|element| match element {
                 Element::Curr(i) | Element::Next(i) => Some(i + 1),
-                Element::Challenge(_) => unreachable!("challenges need to be evaluated"),
+                Element::Challenge(_) => unreachable!(),
             })
             .max()
             .unwrap_or(0);
 
         let mut res = Vec::new();
-        let mut remainder = constraints.clone();
 
         loop {
             // move constraints of degree 2 or less into res
@@ -374,6 +380,7 @@ impl<F: GpuField> Constraint<F> {
             let highest_degree_term = remainder[0].0.iter().map(|term| &term.1).max().unwrap();
             let highest_degree_variable = highest_degree_term.0.iter().max_by_key(|v| v.1).unwrap();
 
+            let new_constraint: Constraint<F>;
             let new_element = Element::Curr(next_column_idx);
             next_column_idx += 1;
 
@@ -403,9 +410,7 @@ impl<F: GpuField> Constraint<F> {
                     *constraint = Constraint::new(new_terms);
                 }
 
-                let new_constraint = Constraint::from(new_element)
-                    - Constraint::from(old_element) * Constraint::from(old_element);
-                res.push(new_constraint);
+                new_constraint = Constraint::from(old_element) * Constraint::from(old_element);
             } else {
                 // no elements with power >2 so create a new column composed of
                 // two elements i.e. reduce x * y * z -> w * z where w = x * y
@@ -432,10 +437,13 @@ impl<F: GpuField> Constraint<F> {
                     *constraint = Constraint::new(new_terms);
                 }
 
-                let new_constraint = Constraint::from(new_element)
-                    - Constraint::from(old_elements.0) * Constraint::from(old_elements.1);
-                res.push(new_constraint);
+                new_constraint =
+                    Constraint::from(old_elements.0) * Constraint::from(old_elements.1);
             }
+
+            let col = new_constraint.evaluate_symbolic(&[], trace_step, trace_lde);
+            res.push(are_eq(Constraint::from(new_element), new_constraint));
+            trace_lde.append(col);
         }
 
         res
