@@ -18,7 +18,7 @@ pub enum FftDirection {
 }
 
 // GPU implementation of the field exists in metal/
-pub trait GpuField: FftField + Sized {
+pub trait GpuField: FftField {
     // Used to select which GPU kernel to call.
     fn field_name() -> String;
 }
