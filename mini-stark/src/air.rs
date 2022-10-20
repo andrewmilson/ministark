@@ -268,8 +268,6 @@ pub trait Air {
             match element {
                 Element::Curr(i) | Element::Next(i) => col_indicies[i] = true,
                 Element::Challenge(i) => challenge_indicies[i] = true,
-                // TODO: more reason to remove X here. X should just be treated as a regular column
-                Element::X => unreachable!(),
             }
         }
         for (index, exists) in col_indicies.into_iter().enumerate() {

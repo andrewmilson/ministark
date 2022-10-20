@@ -8,6 +8,7 @@ use crate::merkle::MerkleTree;
 use crate::trace::Queries;
 use crate::utils::Timer;
 use crate::Air;
+use crate::Constraint;
 use crate::Matrix;
 use crate::Trace;
 use crate::TraceInfo;
@@ -148,6 +149,13 @@ pub trait Prover {
             execution_trace_polys.append(extension_trace_polys);
             extension_trace_tree = Some(extension_trace_lde_tree);
         }
+
+        let quadratic_constraints = Constraint::into_quadratic_constraints(
+            air.transition_constraints()
+                .iter()
+                .map(|constraint| constraint.evaluate_challenges(&challenges))
+                .collect(),
+        );
 
         #[cfg(debug_assertions)]
         air.validate_constraints(&challenges, &execution_trace);

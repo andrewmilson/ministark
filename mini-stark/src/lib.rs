@@ -1,5 +1,10 @@
-#![feature(allocator_api, let_chains, array_windows, array_chunks)]
-#![feature(generic_const_exprs)]
+#![feature(
+    allocator_api,
+    let_chains,
+    array_windows,
+    array_chunks,
+    iter_partition_in_place
+)]
 
 mod air;
 pub mod challenges;

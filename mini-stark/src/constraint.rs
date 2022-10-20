@@ -13,6 +13,8 @@ use fast_poly::GpuField;
 use rayon::prelude::*;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ops::Add;
 use std::ops::Mul;
 use std::ops::Neg;
@@ -23,7 +25,6 @@ use std::ops::Sub;
 /// - a column in the next cycle
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Element {
-    X,
     Curr(usize),
     Next(usize),
     Challenge(usize),
@@ -135,7 +136,6 @@ impl core::fmt::Debug for Variables {
                 Element::Curr(index) => write!(f, "x_{}", index)?,
                 Element::Next(index) => write!(f, "x'_{}", index)?,
                 Element::Challenge(index) => write!(f, "c_{}", index)?,
-                Element::X => write!(f, "x")?,
             };
             if !power.is_one() {
                 write!(f, "^{power}")?;
@@ -337,6 +337,108 @@ impl<F: GpuField> Constraint<F> {
         command_buffer.commit();
         command_buffer.wait_until_completed();
         Matrix::new(term_evaluations).sum_columns()
+    }
+
+    /// Transforms constraints of arbitrary degree to constraints of degree 2.
+    /// This is achieved by adding additional columns that lower constraint
+    /// degrees. Modifies execution trace in place and generates new
+    /// constraints.
+    pub fn into_quadratic_constraints(
+        constraints: Vec<Constraint<F>>,
+        // execution_trace_lde: &mut Matrix<F>,
+    ) -> Vec<Constraint<F>> {
+        let mut next_column_idx = constraints
+            .iter()
+            .flat_map(|c| c.get_elements())
+            .filter_map(|element| match element {
+                Element::Curr(i) | Element::Next(i) => Some(i + 1),
+                Element::Challenge(_) => unreachable!("challenges need to be evaluated"),
+            })
+            .max()
+            .unwrap_or(0);
+
+        let mut res = Vec::new();
+        let mut remainder = constraints.clone();
+
+        loop {
+            // move constraints of degree 2 or less into res
+            let i = remainder.iter_mut().partition_in_place(|c| c.degree() > 2);
+            res.extend_from_slice(&remainder.split_off(i));
+
+            if remainder.is_empty() {
+                break;
+            }
+
+            // find the term with the highest degree
+            remainder.sort_by_key(|c| c.degree());
+            let highest_degree_term = remainder[0].0.iter().map(|term| &term.1).max().unwrap();
+            let highest_degree_variable = highest_degree_term.0.iter().max_by_key(|v| v.1).unwrap();
+
+            let new_element = Element::Curr(next_column_idx);
+            next_column_idx += 1;
+
+            if highest_degree_variable.1 >= 2 {
+                // lower the highest degree element's power
+                let old_element = highest_degree_variable.0;
+
+                // update all remaining terms with the new element
+                for constraint in &mut remainder {
+                    let mut new_terms = constraint.0.clone();
+
+                    for Term(_, variables) in &mut new_terms {
+                        let mut new_variables = variables.0.clone();
+
+                        let mut new_element_power = 0;
+                        for (element, power) in &mut new_variables {
+                            if *element == old_element && *power >= 2 {
+                                new_element_power = *power / 2;
+                                *power %= 2;
+                            }
+                        }
+
+                        new_variables.push((new_element, new_element_power));
+                        *variables = Variables::new(new_variables);
+                    }
+
+                    *constraint = Constraint::new(new_terms);
+                }
+
+                let new_constraint = Constraint::from(new_element)
+                    - Constraint::from(old_element) * Constraint::from(old_element);
+                res.push(new_constraint);
+            } else {
+                // no elements with power >2 so create a new column composed of
+                // two elements i.e. reduce x * y * z -> w * z where w = x * y
+                let old_elements = (highest_degree_term.0[0].0, highest_degree_term.0[1].0);
+
+                // update all remaining terms with the new element
+                for constraint in &mut remainder {
+                    let mut new_terms = constraint.0.clone();
+
+                    for Term(_, variables) in &mut new_terms {
+                        let elements = variables.0.iter().map(|v| v.0).collect::<Vec<_>>();
+                        let mut new_variables = variables.0.clone();
+
+                        // check if the term degree can be reduced
+                        if elements.contains(&old_elements.0) && elements.contains(&old_elements.1)
+                        {
+                            new_variables
+                                .retain(|v| v.0 != old_elements.0 && v.0 != old_elements.1);
+                            new_variables.push((new_element, 1));
+                            *variables = Variables::new(new_variables);
+                        }
+                    }
+
+                    *constraint = Constraint::new(new_terms);
+                }
+
+                let new_constraint = Constraint::from(new_element)
+                    - Constraint::from(old_elements.0) * Constraint::from(old_elements.1);
+                res.push(new_constraint);
+            }
+        }
+
+        res
     }
 }
 
