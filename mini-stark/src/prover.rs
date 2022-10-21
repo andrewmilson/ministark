@@ -162,6 +162,8 @@ pub trait Prover {
             &mut execution_trace_lde,
         );
 
+        // let quadratic_constraints = air.transition_constraints().to_vec();
+
         drop(_timer);
 
         println!("quad cons len {}", quadratic_constraints.len());

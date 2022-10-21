@@ -192,7 +192,7 @@ fn gen_trace(len: usize) -> FibTrace {
 
 fn main() {
     let now = Instant::now();
-    let options = ProofOptions::new(32, 2, 8);
+    let options = ProofOptions::new(32, 4, 8);
     let prover = FibProver::new(options);
     let trace = gen_trace(33554432);
 

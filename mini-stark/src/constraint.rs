@@ -1,10 +1,13 @@
 //! Implementation is adapted from the multivariable polynomial in arkworks.
 
+use crate::utils::Timer;
 use crate::Matrix;
 use ark_ff::One;
 use ark_ff::Zero;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::PLANNER;
+use fast_poly::stage::AddAssignStage;
+use fast_poly::stage::FillBuffStage;
 use fast_poly::stage::MulPowStage;
 use fast_poly::utils::buffer_mut_no_copy;
 use fast_poly::utils::buffer_no_copy;
@@ -305,38 +308,103 @@ impl<F: GpuField> Constraint<F> {
 
     // TODO: don't make this coupled to "trace"
     pub fn evaluate_symbolic(
-        &self,
+        constraints: &[Constraint<F>],
         challenges: &[F],
         trace_step: usize,
         trace_lde: &Matrix<F>,
     ) -> Matrix<F> {
         let n = trace_lde.num_rows();
-        let constraint_without_challenges = self.evaluate_challenges(challenges).0;
-        assert!(!constraint_without_challenges.is_empty());
+        let constraint_without_challenges = constraints
+            .iter()
+            .map(|c| c.evaluate_challenges(challenges).0)
+            .collect::<Vec<_>>();
+        if constraint_without_challenges.is_empty() {
+            return Matrix::new(vec![]);
+        }
+        // assert!(!constraint_without_challenges.is_empty());
+        // let _timer = Timer::new("Symbolic evaluation time");
+        // let _timer3 = Timer::new("Setup TIme");
+
         let library = &PLANNER.library;
         let command_queue = &PLANNER.command_queue;
+        let device = command_queue.device();
         let command_buffer = command_queue.new_command_buffer();
-        let mut term_evaluations = Vec::new();
-        let curr_multiplier = MulPowStage::<F>::new(library, n, 0);
-        let next_multiplier = MulPowStage::<F>::new(library, n, trace_step);
-        for term in constraint_without_challenges {
-            let mut scratch = Vec::with_capacity_in(n, PageAlignedAllocator);
-            scratch.resize(n, term.0);
-            let mut scratch_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch);
-            for (element, power) in &(term.1).0 {
-                let (col_index, multiplier) = match element {
-                    Element::Curr(col_index) => (col_index, &curr_multiplier),
-                    Element::Next(col_index) => (col_index, &next_multiplier),
-                    _ => unreachable!(),
-                };
-                let column_buffer = buffer_no_copy(command_queue.device(), &trace_lde[*col_index]);
-                multiplier.encode(command_buffer, &mut scratch_buffer, &column_buffer, *power);
+
+        let multiplier = MulPowStage::<F>::new(library, n);
+        let filler = FillBuffStage::<F>::new(library, n);
+        let adder = AddAssignStage::<F>::new(library, n);
+
+        let mut res = Matrix::new(
+            constraints
+                .iter()
+                .map(|_| {
+                    let mut col = Vec::with_capacity_in(n, PageAlignedAllocator);
+                    // col.resize(n, F::zero());
+                    unsafe { col.set_len(n) }
+                    col
+                })
+                .collect(),
+        );
+        // drop(_timer3);
+
+        let mut res_buffers = res
+            .iter_mut()
+            .map(|col| buffer_mut_no_copy(device, col))
+            .collect::<Vec<_>>();
+
+        let mut scratch = Vec::<F, PageAlignedAllocator>::with_capacity_in(n, PageAlignedAllocator);
+        unsafe { scratch.set_len(n) }
+        let mut scratch_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch);
+
+        for (constraint, res_buffer) in constraint_without_challenges.iter().zip(&mut res_buffers) {
+            for (i, term) in constraint.iter().enumerate() {
+                if i == 0 {
+                    filler.encode(command_buffer, res_buffer, term.0);
+                    for (element, power) in &(term.1).0 {
+                        let (col_index, shift) = match element {
+                            Element::Curr(col_index) => (col_index, 0),
+                            Element::Next(col_index) => (col_index, trace_step),
+                            _ => unreachable!(),
+                        };
+                        let column_buffer =
+                            buffer_no_copy(command_queue.device(), &trace_lde[*col_index]);
+                        multiplier.encode(
+                            command_buffer,
+                            res_buffer,
+                            &column_buffer,
+                            *power,
+                            shift,
+                        );
+                    }
+                } else {
+                    filler.encode(command_buffer, &mut scratch_buffer, term.0);
+                    for (element, power) in &(term.1).0 {
+                        let (col_index, shift) = match element {
+                            Element::Curr(col_index) => (col_index, 0),
+                            Element::Next(col_index) => (col_index, trace_step),
+                            _ => unreachable!(),
+                        };
+                        let column_buffer =
+                            buffer_no_copy(command_queue.device(), &trace_lde[*col_index]);
+                        multiplier.encode(
+                            command_buffer,
+                            &mut scratch_buffer,
+                            &column_buffer,
+                            *power,
+                            shift,
+                        );
+                    }
+                    adder.encode(command_buffer, res_buffer, &scratch_buffer);
+                }
             }
-            term_evaluations.push(scratch);
         }
         command_buffer.commit();
+        // let _timer2 = Timer::new("Execution TIme");
         command_buffer.wait_until_completed();
-        Matrix::new(term_evaluations).sum_columns()
+        // drop(_timer2);
+        // drop(_timer);
+
+        res
     }
 
     /// Transforms constraints of arbitrary degree to constraints of degree 2.
@@ -441,8 +509,8 @@ impl<F: GpuField> Constraint<F> {
                     Constraint::from(old_elements.0) * Constraint::from(old_elements.1);
             }
 
-            let col = new_constraint.evaluate_symbolic(&[], trace_step, trace_lde);
-            res.push(are_eq(Constraint::from(new_element), new_constraint));
+            res.push(are_eq(Constraint::from(new_element), &new_constraint));
+            let col = Constraint::evaluate_symbolic(&[new_constraint], &[], trace_step, trace_lde);
             trace_lde.append(col);
         }
 

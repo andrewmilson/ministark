@@ -20,45 +20,46 @@ use mini_stark::constraint::Column;
 use mini_stark::Constraint;
 use mini_stark::Matrix;
 
-#[test]
-fn constraint_degree_reduction() {
-    let zero = Fp::zero();
-    let one = Fp::one();
-    let two = one + one;
-    let three = two + one;
-    let four = three + one;
-    let five = four + one;
-    let six = five + one;
-    let seven = six + one;
-    let eight = seven + one;
-    let nine = eight + one;
-    let ten = nine + one;
-    let eleven = ten + one;
-    let twelve = eleven + one;
+// #[test]
+// fn constraint_degree_reduction() {
+//     let zero = Fp::zero();
+//     let one = Fp::one();
+//     let two = one + one;
+//     let three = two + one;
+//     let four = three + one;
+//     let five = four + one;
+//     let six = five + one;
+//     let seven = six + one;
+//     let eight = seven + one;
+//     let nine = eight + one;
+//     let ten = nine + one;
+//     let eleven = ten + one;
+//     let twelve = eleven + one;
 
-    let is_between_0_and_10: Constraint<Fp> = (0.curr() - one)
-        * (0.curr() - two)
-        * (0.curr() - three)
-        * (0.curr() - four)
-        * (0.curr() - five)
-        * (0.curr() - six)
-        * (0.curr() - seven)
-        * (0.curr() - eight)
-        * (0.curr() - nine);
+//     let is_between_0_and_10: Constraint<Fp> = (0.curr() - one)
+//         * (0.curr() - two)
+//         * (0.curr() - three)
+//         * (0.curr() - four)
+//         * (0.curr() - five)
+//         * (0.curr() - six)
+//         * (0.curr() - seven)
+//         * (0.curr() - eight)
+//         * (0.curr() - nine);
 
-    // TODO: clean up
-    println!("original degree: {}", is_between_0_and_10.degree());
+//     // TODO: clean up
+//     println!("original degree: {}", is_between_0_and_10.degree());
 
-    let quadratic_constraints =
-        Constraint::into_quadratic_constraints(&[], &[is_between_0_and_10], None);
+//     let quadratic_constraints =
+//         Constraint::into_quadratic_constraints(&[], &[is_between_0_and_10],
+// None);
 
-    for (i, constraint) in quadratic_constraints.iter().enumerate() {
-        println!("CONSTRAINT {i}\n{constraint:?}");
-    }
+//     for (i, constraint) in quadratic_constraints.iter().enumerate() {
+//         println!("CONSTRAINT {i}\n{constraint:?}");
+//     }
 
-    // println!("new_degree: {}", quadratic_constraints[0].degree());
-    // println!("num_constraints: {}")
-}
+//     // println!("new_degree: {}", quadratic_constraints[0].degree());
+//     // println!("num_constraints: {}")
+// }
 
 #[test]
 fn constraint_with_challenges() {

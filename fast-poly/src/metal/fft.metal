@@ -99,10 +99,7 @@ MulPow(device FieldT *dst [[ buffer(0) ]],
         constant unsigned &shift [[ buffer(3) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
     unsigned dst_idx = global_tid;
-    unsigned src_idx = global_tid + shift;
-    if (src_idx >= N) {
-        src_idx -= N;
-    }
+    unsigned src_idx = (global_tid + shift) % N;
 
     FieldT src_val = src[src_idx];
     FieldT acc = src_val;
@@ -116,6 +113,12 @@ MulPow(device FieldT *dst [[ buffer(0) ]],
     dst[dst_idx] = dst_val * acc;
 }
 
+template<typename FieldT> kernel void
+FillBuff(device FieldT *dst [[ buffer(0) ]],
+        constant FieldT &value [[ buffer(1) ]],
+        unsigned global_tid [[ thread_position_in_grid ]]) {
+    dst[global_tid] = value;
+}
 
 // Performs multiple itteration stages of Cooley-Tuckey radix-2 decimation-in-time (DIT)
 //
@@ -207,6 +210,11 @@ MulPow<FP18446744069414584321>(
         constant FP18446744069414584321*,
         constant unsigned&,
         constant unsigned&,
+        unsigned);
+template [[ host_name("fill_buff_fp18446744069414584321") ]] kernel void
+FillBuff<FP18446744069414584321>(
+        device FP18446744069414584321*,
+        constant FP18446744069414584321&,
         unsigned);
 template [[ host_name("fft_single_fp18446744069414584321") ]] kernel void
 FftSingle<FP18446744069414584321>(

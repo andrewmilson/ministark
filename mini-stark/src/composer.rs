@@ -48,23 +48,27 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         divisor: &Divisor<A::Fp>,
     ) -> Matrix<A::Fp> {
         let trace_step = self.air.lde_blowup_factor() as usize;
-        let mut all_evaluations = Matrix::join(
-            constraints
-                .iter()
-                .map(|constraint| constraint.evaluate_symbolic(challenges, trace_step, trace_lde))
-                .collect(),
-        );
+        let _timer = Timer::new("=======CONSTRAINT EVALUATIOOOONS======");
+        let mut all_evaluations =
+            Constraint::evaluate_symbolic(constraints, challenges, trace_step, trace_lde);
+        drop(_timer);
 
         // Generate quotients
         let library = &PLANNER.library;
         let command_queue = &PLANNER.command_queue;
         let command_buffer = command_queue.new_command_buffer();
-        let multiplier = MulPowStage::<A::Fp>::new(library, divisor.len(), 0);
+        let multiplier = MulPowStage::<A::Fp>::new(library, divisor.len());
         let divisor_buffer = buffer_no_copy(command_queue.device(), divisor);
         // TODO: let's move GPU stuff out of here and make it readable in here.
         for evaluations in &mut all_evaluations.0 {
             let mut evaluations_buffer = buffer_no_copy(command_queue.device(), evaluations);
-            multiplier.encode(command_buffer, &mut evaluations_buffer, &divisor_buffer, 0);
+            multiplier.encode(
+                command_buffer,
+                &mut evaluations_buffer,
+                &divisor_buffer,
+                1,
+                0,
+            );
         }
         command_buffer.commit();
         command_buffer.wait_until_completed();
@@ -204,11 +208,13 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         assert!(composed_evaluations.num_cols() == 1);
         let mut composition_poly = composed_evaluations.interpolate_columns(self.air.lde_domain());
 
+        let _timer = Timer::new("degree calculation");
         let composition_poly_degree = composition_poly.column_degrees()[0];
         // TODO: put back if quadratic degrees no success
         // assert_eq!(composition_poly_degree, self.air.composition_degree());
-        assert_eq!(composition_poly_degree, self.air.trace_len() * 2 - 1);
+        assert_eq!(composition_poly_degree, self.air.composition_degree());
         composition_poly.0[0].truncate(composition_poly_degree + 1);
+        drop(_timer);
 
         let num_composition_trace_cols = self.air.ce_blowup_factor();
         assert_eq!(
@@ -232,9 +238,9 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         challenges: &Challenges<A::Fp>,
         execution_trace_lde: &Matrix<A::Fp>,
     ) -> (Matrix<A::Fp>, Matrix<A::Fp>, MerkleTree<Sha256>) {
-        // let _timer = Timer::new("constraint evaluation");
+        let _timer = Timer::new("constraint evaluation");
         let composed_evaluations = self.evaluate(challenges, execution_trace_lde);
-        // drop(_timer);
+        drop(_timer);
         let composition_trace_polys = self.trace_polys(composed_evaluations);
         let composition_trace_lde = composition_trace_polys.evaluate(self.air.lde_domain());
         let merkle_tree = composition_trace_lde.commit_to_rows();
