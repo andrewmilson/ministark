@@ -138,14 +138,17 @@ pub trait Air {
         #[cfg(not(feature = "parallel"))]
         let chunk_size = n;
 
+        let scaled_offset = lde_domain.coset_offset().pow([trace_domain.size() as u64]);
+        let scaled_generator = lde_domain.group_gen().pow([trace_domain.size() as u64]);
+        let trace_scaled_offset = trace_domain.coset_offset_pow_size();
         // evaluates TODO over the lde domain
         ark_std::cfg_chunks_mut!(lde, chunk_size)
             .enumerate()
             .for_each(|(i, chunk)| {
-                let mut lde_x = lde_domain.element(i * chunk_size);
+                let mut acc = scaled_offset * scaled_generator.pow([i as u64]);
                 chunk.iter_mut().for_each(|coeff| {
-                    *coeff = trace_domain.evaluate_vanishing_polynomial(lde_x);
-                    lde_x *= &lde_domain.group_gen
+                    *coeff = acc - trace_scaled_offset;
+                    acc *= &scaled_generator
                 })
             });
 

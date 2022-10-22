@@ -12,6 +12,7 @@ use ark_poly::Radix2EvaluationDomain;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::plan::PLANNER;
 use fast_poly::stage::MulPowStage;
+use fast_poly::utils::buffer_mut_no_copy;
 use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
 use fast_poly::GpuVec;
@@ -40,6 +41,8 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         }
     }
 
+    // TTB: 367ms
+
     fn generate_quotients(
         &self,
         challenges: &Challenges<A::Fp>,
@@ -54,6 +57,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         drop(_timer);
 
         // Generate quotients
+        let _timer = Timer::new("=QQ====QUOTIENT EVALUATIOOOONS===QQ=");
         let library = &PLANNER.library;
         let command_queue = &PLANNER.command_queue;
         let command_buffer = command_queue.new_command_buffer();
@@ -73,6 +77,8 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         command_buffer.commit();
         command_buffer.wait_until_completed();
 
+        drop(_timer);
+
         all_evaluations
     }
 
@@ -84,11 +90,11 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     ) -> Matrix<A::Fp> {
         let air = self.air;
 
-        // let _timer = Timer::new("genering divisors");
+        let _timer = Timer::new("genering divisors");
         let boundary_divisor = air.boundary_constraint_divisor();
         let transition_divisor = air.transition_constraint_divisor();
         let terminal_divisor = air.terminal_constraint_divisor();
-        // drop(_timer);
+        drop(_timer);
 
         let boundary_constraints = air.boundary_constraints();
         let transition_constraints = &self.quadratic_transition_constraints;
@@ -122,7 +128,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let terminal_iter =
             zip(terminal_constraints, terminal_quotients.0).map(|(c, q)| (c, q, &terminal_divisor));
 
-        // let _timer = Timer::new("asjusting degree");
+        let _timer = Timer::new("asjusting degree");
         let composition_degree = air.composition_degree();
         let mut groups = BTreeMap::new();
         for (constraint, quotient, divisor) in
@@ -174,7 +180,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
             let mut beta_col = Matrix::new(beta_cols).sum_columns();
 
-            // let _timer = Timer::new("===DEG ADJUSTOR===");
+            let _timer = Timer::new("===DEG ADJUSTOR===");
 
             // TODO: make parallel. also this is hacky and needs to go
             // modify domain to go from x to x^degree_adjustment
@@ -194,12 +200,12 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             //     adjust_offset,
             // );
 
-            // drop(_timer);
+            drop(_timer);
 
             accumulator.append(Matrix::new(alpha_cols));
             accumulator.append(beta_col);
         }
-        // drop(_timer);
+        drop(_timer);
 
         accumulator.sum_columns()
     }
@@ -208,13 +214,11 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         assert!(composed_evaluations.num_cols() == 1);
         let mut composition_poly = composed_evaluations.interpolate_columns(self.air.lde_domain());
 
-        let _timer = Timer::new("degree calculation");
         let composition_poly_degree = composition_poly.column_degrees()[0];
         // TODO: put back if quadratic degrees no success
         // assert_eq!(composition_poly_degree, self.air.composition_degree());
         assert_eq!(composition_poly_degree, self.air.composition_degree());
         composition_poly.0[0].truncate(composition_poly_degree + 1);
-        drop(_timer);
 
         let num_composition_trace_cols = self.air.ce_blowup_factor();
         assert_eq!(

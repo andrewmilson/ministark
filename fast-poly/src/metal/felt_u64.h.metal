@@ -53,9 +53,9 @@ private:
 
     inline unsigned long mul(const unsigned long lhs, const unsigned long rhs) const
     {
-        u128 x = u128(lhs) * u128(rhs);
-        unsigned long xl = x.low;
-        unsigned long xh = x.high;
+        // u128 x = u128(lhs) * u128(rhs);
+        unsigned long xl = lhs * rhs;// x.low;
+        unsigned long xh = metal::mulhi(lhs, rhs);
         unsigned long tmp = xl << 32;
         unsigned long a_overflow = xl > (0xFFFFFFFFFFFFFFFF - tmp);
         unsigned long a = xl + tmp;

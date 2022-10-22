@@ -83,7 +83,8 @@ fn symbolic_evaluation_with_challenges() {
     let poly_matrix = matrix.interpolate_columns(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 
-    let constraint_eval = constraint.evaluate_symbolic(&[alpha, beta], blowup, &lde_matrix);
+    let constraint_eval =
+        Constraint::evaluate_symbolic(&[constraint], &[alpha, beta], blowup, &lde_matrix);
 
     let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
@@ -149,7 +150,7 @@ fn evaluate_fibonacci_constraint() {
     let constraint_evals = Matrix::join(
         constraints
             .into_iter()
-            .map(|constraint| constraint.evaluate_symbolic(&[], 1, &lde_matrix))
+            .map(|constraint| Constraint::evaluate_symbolic(&[constraint], &[], 1, &lde_matrix))
             .collect(),
     );
 
@@ -168,7 +169,7 @@ fn evaluate_binary_constraint() {
     let poly_matrix = matrix.interpolate_columns(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 
-    let constraint_eval = constraint.evaluate_symbolic(&[], blowup, &lde_matrix);
+    let constraint_eval = Constraint::evaluate_symbolic(&[constraint], &[], blowup, &lde_matrix);
 
     let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
@@ -224,7 +225,9 @@ fn evaluate_permutation_constraint() {
     let constraint_evals = Matrix::join(
         constraints
             .into_iter()
-            .map(|constraint| constraint.evaluate_symbolic(&[challenge], blowup, &lde_matrix))
+            .map(|constraint| {
+                Constraint::evaluate_symbolic(&[constraint], &[challenge], blowup, &lde_matrix)
+            })
             .collect(),
     );
 
@@ -269,7 +272,8 @@ fn evaluate_zerofier_constraint() {
     let poly_matrix = matrix.interpolate_columns(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 
-    let constraint_eval = constraint.evaluate_symbolic(challenges, blowup, &lde_matrix);
+    let constraint_eval =
+        Constraint::evaluate_symbolic(&[constraint], challenges, blowup, &lde_matrix);
 
     let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);

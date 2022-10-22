@@ -14,6 +14,7 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
+use std::time::Instant;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
 
@@ -146,12 +147,15 @@ impl Planner {
             root.inverse_in_place().unwrap();
         }
 
+        // let now = Instant::now();
         // generate twiddles buffer
-        let mut _twiddles = Vec::with_capacity_in(n, PageAlignedAllocator);
+        let mut _twiddles = Vec::with_capacity_in(n / 2, PageAlignedAllocator);
+        // unsafe { _twiddles.set_len(n / 2) }
         _twiddles.resize(n / 2, F::zero());
         fill_twiddles(&mut _twiddles, root);
         bit_reverse(&mut _twiddles);
         let twiddles_buffer = buffer_no_copy(self.command_queue.device(), &_twiddles);
+        // println!("twiddle generation: {:?}", now.elapsed());
 
         // in-place FFT requires a bit reversal
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);

@@ -84,6 +84,8 @@ impl<F: GpuField> Matrix<F> {
 
     pub fn interpolate_columns(&self, domain: Radix2EvaluationDomain<F>) -> Self {
         let mut ifft = GpuIfft::from(domain);
+
+        let _timer = Timer::new("Setup");
         let columns = self
             .0
             .iter()
@@ -93,14 +95,18 @@ impl<F: GpuField> Matrix<F> {
                 poly
             })
             .collect();
+        drop(_timer);
+        let _timer = Timer::new("execution");
 
         ifft.execute();
+        drop(_timer);
 
         Matrix::new(columns)
     }
 
     pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
         let mut fft = GpuFft::from(domain);
+        let _timer = Timer::new("Setup");
         let columns = self
             .0
             .iter()
@@ -110,8 +116,11 @@ impl<F: GpuField> Matrix<F> {
                 evaluations
             })
             .collect();
+        drop(_timer);
 
+        let _timer = Timer::new("execution");
         fft.execute();
+        drop(_timer);
 
         Matrix::new(columns)
     }
