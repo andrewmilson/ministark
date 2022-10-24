@@ -1,5 +1,8 @@
 use crate::challenges::Challenges;
 use crate::constraint::Element;
+use crate::utils;
+use crate::utils::fill_vanishing_polynomial;
+use crate::utils::Timer;
 use crate::Constraint;
 use crate::Matrix;
 use crate::ProofOptions;
@@ -50,7 +53,7 @@ pub trait Air {
             .map(|constraint| constraint.degree())
             .max()
             .unwrap_or(0);
-        ceil_power_of_two(highest_degree)
+        utils::ceil_power_of_two(highest_degree)
     }
 
     /// Returns a degree that all constraints polynomials must be normalized to.
@@ -98,35 +101,31 @@ pub trait Air {
     }
 
     fn transition_constraint_divisor(&self) -> Divisor<Self::Fp> {
+        let _timer = Timer::new("===TRANSITION DIVISOR===");
         let trace_domain = self.trace_domain();
         let last_trace_x = trace_domain.group_gen_inv;
         let degree = trace_domain.size() - 1;
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
+
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
         lde.resize(n, Self::Fp::zero());
 
+        // Evaluates `(x - t_0)(x - t_1)...(x - t_n-1)` over the lde domain
+        fill_vanishing_polynomial(&mut lde, &trace_domain, &lde_domain);
+
+        // Invert the vanishing polynomial evaluations
+        // i.e. `1 / (x - t_0)(x - t_1)...(x - t_n-1)`
+        batch_inversion(&mut lde);
+
+        // Transition constraints apply to all rows except the last.
+        // Multiplies out the last term of the vanishing polynomial
+        // i.e. `1 / (x - t_0)(x - t_1)...(x - t_n-2)`
+        // Note: `t^(n-1) = t^(-1)`
         #[cfg(feature = "parallel")]
         let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
         #[cfg(not(feature = "parallel"))]
         let chunk_size = n;
-
-        let scaled_offset = lde_domain.coset_offset().pow([trace_domain.size() as u64]);
-        let scaled_generator = lde_domain.group_gen().pow([trace_domain.size() as u64]);
-        let trace_scaled_offset = trace_domain.coset_offset_pow_size();
-        // evaluates TODO over the lde domain
-        ark_std::cfg_chunks_mut!(lde, chunk_size)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                let mut acc = scaled_offset * scaled_generator.pow([(i * chunk_size) as u64]);
-                chunk.iter_mut().for_each(|coeff| {
-                    *coeff = acc - trace_scaled_offset;
-                    acc *= &scaled_generator
-                })
-            });
-
-        batch_inversion(&mut lde);
-
         ark_std::cfg_chunks_mut!(lde, chunk_size)
             .enumerate()
             .for_each(|(i, chunk)| {
@@ -141,13 +140,13 @@ pub trait Air {
     }
 
     fn boundary_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        // let _timer = Timer::new("===BOUNDARY DIVISOR===");
+        let _timer = Timer::new("===BOUNDARY DIVISOR===");
 
         let first_trace_x = Self::Fp::one();
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        lde.resize(n, lde_domain.offset);
+        lde.resize(n, Self::Fp::zero());
 
         #[cfg(feature = "parallel")]
         let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
@@ -160,7 +159,7 @@ pub trait Air {
             .for_each(|(i, chunk)| {
                 let mut lde_x = lde_domain.group_gen.pow([(i * chunk_size) as u64]);
                 chunk.iter_mut().for_each(|coeff| {
-                    *coeff = *coeff * lde_x - first_trace_x;
+                    *coeff = lde_domain.offset * lde_x - first_trace_x;
                     lde_x *= &lde_domain.group_gen
                 })
             });
@@ -172,7 +171,7 @@ pub trait Air {
     }
 
     fn terminal_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        // let _timer = Timer::new("===TERMINAL DIVISOR===");
+        let _timer = Timer::new("===TERMINAL DIVISOR===");
 
         let last_trace_x = self.trace_domain().group_gen_inv();
         let lde_domain = self.lde_domain();
@@ -302,22 +301,5 @@ impl<F: GpuField> Deref for Divisor<F> {
 
     fn deref(&self) -> &Self::Target {
         &self.lde
-    }
-}
-
-// TODO: remove
-// fn print_row<F: GpuField>(row: &[F]) {
-//     for val in row {
-//         print!("{val}, ");
-//     }
-//     println!()
-// }
-
-/// Rounds the input value up the the nearest power of two
-fn ceil_power_of_two(value: usize) -> usize {
-    if value.is_power_of_two() {
-        value
-    } else {
-        value.next_power_of_two()
     }
 }

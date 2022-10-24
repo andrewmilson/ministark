@@ -7,7 +7,6 @@ use ark_ff_optimized::fp64;
 pub mod allocator;
 pub mod plan;
 pub mod stage;
-pub mod twiddles;
 pub mod utils;
 
 /// Represents a FFT direction

@@ -4,6 +4,7 @@ use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
+use ark_poly::EvaluationDomain;
 use ark_poly::Polynomial;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
@@ -310,4 +311,48 @@ pub fn interleave<T: Copy + Send + Sync + Default, const RADIX: usize>(
             }
         });
     res
+}
+
+// fn print_row<F: GpuField>(row: &[F]) {
+//     for val in row {
+//         print!("{val}, ");
+//     }
+//     println!()
+// }
+
+/// Rounds the input value up the the nearest power of two
+pub fn ceil_power_of_two(value: usize) -> usize {
+    if value.is_power_of_two() {
+        value
+    } else {
+        value.next_power_of_two()
+    }
+}
+
+// Evaluates the vanishing polynomial for `vanish_domain` over `eval_domain`
+// E.g. evaluates `(x - v_0)(x - v_1)...(x - v_n-1)` over `eval_domain`
+pub fn fill_vanishing_polynomial<F: GpuField>(
+    dst: &mut [F],
+    vanish_domain: &Radix2EvaluationDomain<F>,
+    eval_domain: &Radix2EvaluationDomain<F>,
+) {
+    let n = vanish_domain.size();
+    let scaled_eval_offset = eval_domain.coset_offset().pow([n as u64]);
+    let scaled_eval_generator = eval_domain.group_gen().pow([n as u64]);
+    let scaled_vanish_offset = vanish_domain.coset_offset_pow_size();
+
+    #[cfg(feature = "parallel")]
+    let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
+    #[cfg(not(feature = "parallel"))]
+    let chunk_size = n;
+
+    ark_std::cfg_chunks_mut!(dst, chunk_size)
+        .enumerate()
+        .for_each(|(i, chunk)| {
+            let mut acc = scaled_eval_offset * scaled_eval_generator.pow([(i * chunk_size) as u64]);
+            chunk.iter_mut().for_each(|coeff| {
+                *coeff = acc - scaled_vanish_offset;
+                acc *= &scaled_eval_generator
+            })
+        });
 }
