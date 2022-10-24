@@ -35,6 +35,17 @@ cargo run --release --features parallel,asm  --example fib
 
 - debugging memory table. Remove constraint for memory stay the same clock cycle increase
 
+## Help wanted
+
+- More tests
+- More benchmarks
+- Making fast-poly less `unsafe`
+- CUDA support in `fast-poly`
+- Speed optimizations that don't sacrifice readability
+- Memory reductions that don't sacrifice readability
+- Using more `arkworks` features where appropriate
+- Perhaps move Merkle Tree and FRI impl to `arkworks`
+
 ## Reference and thanks
 
 - [Anatomy of a STARK](https://aszepieniec.github.io/stark-anatomy/) by [Alan Szepieniec](https://twitter.com/aszepieniec?lang=en) - Probably the best practical resource I've read on STARKs to date. STARKs remained a mystery to me until I went through this word by word (it took a while to digest). Read through this and the magic of STARKs will start to make sense.

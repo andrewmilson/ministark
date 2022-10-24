@@ -156,7 +156,7 @@ impl Planner {
         _twiddles.resize(n / 2, F::zero());
         fill_twiddles(&mut _twiddles, root);
         bit_reverse(&mut _twiddles);
-        let twiddles_buffer = buffer_no_copy(self.command_queue.device(), &_twiddles);
+        let twiddles_buffer = buffer_mut_no_copy(self.command_queue.device(), &mut _twiddles);
 
         // in-place FFT requires a bit reversal
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);

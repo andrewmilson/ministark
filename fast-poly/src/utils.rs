@@ -1,5 +1,7 @@
 use crate::allocator::PageAlignedAllocator;
 use crate::allocator::PAGE_SIZE;
+use crate::plan::PLANNER;
+use crate::stage::BitReverseGpuStage;
 use ark_ff::FftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -31,6 +33,7 @@ pub fn fill_twiddles<F: FftField>(dst: &mut [F], root: F) {
         });
 }
 
+#[cfg(not(feature = "parallel"))]
 pub fn bit_reverse<T>(v: &mut [T]) {
     assert!(v.len().is_power_of_two());
     let n = v.len();
@@ -40,6 +43,33 @@ pub fn bit_reverse<T>(v: &mut [T]) {
             v.swap(i, j);
         }
     }
+}
+
+/// From winterfell STARK library
+#[cfg(feature = "parallel")]
+pub fn bit_reverse<T: Send>(v: &mut [T]) {
+    assert!(v.len().is_power_of_two());
+    let n = v.len();
+    let num_batches = rayon::current_num_threads().next_power_of_two();
+    let batch_size = n / num_batches;
+    rayon::scope(|s| {
+        for batch_idx in 0..num_batches {
+            // create another mutable reference to the slice of values to use in a new
+            // thread; this is OK because we never write the same positions in
+            // the slice from different threads
+            let values = unsafe { &mut *(&mut v[..] as *mut [T]) };
+            s.spawn(move |_| {
+                let batch_start = batch_idx * batch_size;
+                let batch_end = batch_start + batch_size;
+                for i in batch_start..batch_end {
+                    let j = bit_reverse_index(n, i);
+                    if j > i {
+                        values.swap(i, j);
+                    }
+                }
+            });
+        }
+    });
 }
 
 // Copies a cpu buffer to a gpu buffer

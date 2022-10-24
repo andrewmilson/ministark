@@ -80,13 +80,13 @@ fn symbolic_evaluation_with_challenges() {
     let alpha = Fp::from(3);
     let beta = Fp::from(7);
     let matrix = gen_binary_valued_matrix(n, alpha, beta);
-    let poly_matrix = matrix.interpolate_columns(trace_domain);
+    let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 
     let constraint_eval =
         Constraint::evaluate_symbolic(&[constraint], &[alpha, beta], blowup, &lde_matrix);
 
-    let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
+    let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
 }
 
@@ -140,7 +140,7 @@ fn evaluate_fibonacci_constraint() {
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = trace_domain.get_coset(Fp::GENERATOR).unwrap();
     let matrix = gen_fib_matrix(n);
-    let poly_matrix = matrix.interpolate_columns(trace_domain);
+    let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
     let constraints: Vec<Constraint<Fp>> = vec![
         are_eq(0.next(), 0.curr() + 1.curr()),
@@ -154,7 +154,7 @@ fn evaluate_fibonacci_constraint() {
             .collect(),
     );
 
-    let constraint_evals_poly = constraint_evals.interpolate_columns(lde_domain);
+    let constraint_evals_poly = constraint_evals.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_evals_poly);
 }
 
@@ -166,12 +166,12 @@ fn evaluate_binary_constraint() {
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
     let matrix = gen_binary_valued_matrix(n, Fp::zero(), Fp::one());
-    let poly_matrix = matrix.interpolate_columns(trace_domain);
+    let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 
     let constraint_eval = Constraint::evaluate_symbolic(&[constraint], &[], blowup, &lde_matrix);
 
-    let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
+    let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
 }
 
@@ -219,7 +219,7 @@ fn evaluate_permutation_constraint() {
     let blowup = 2;
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
-    let poly_matrix = matrix.interpolate_columns(trace_domain);
+    let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 
     let constraint_evals = Matrix::join(
@@ -238,7 +238,7 @@ fn evaluate_permutation_constraint() {
     let final_original_product = *last_original_product * (challenge - last_original_val);
     let final_shuffled_product = *last_shuffled_product * (challenge - last_shuffled_val);
     assert_eq!(final_original_product, final_shuffled_product);
-    let constraint_eval_poly = constraint_evals.interpolate_columns(lde_domain);
+    let constraint_eval_poly = constraint_evals.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
 }
 
@@ -269,13 +269,13 @@ fn evaluate_zerofier_constraint() {
         .collect::<Vec<Fp>>()
         .to_vec_in(PageAlignedAllocator);
     let matrix = Matrix::new(vec![curr_instr_column, permutation_column]);
-    let poly_matrix = matrix.interpolate_columns(trace_domain);
+    let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 
     let constraint_eval =
         Constraint::evaluate_symbolic(&[constraint], challenges, blowup, &lde_matrix);
 
-    let constraint_eval_poly = constraint_eval.interpolate_columns(lde_domain);
+    let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
 }
 

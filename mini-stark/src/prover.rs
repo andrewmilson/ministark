@@ -100,7 +100,7 @@ pub trait Prover {
         lde_domain: Radix2EvaluationDomain<Self::Fp>,
     ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
         let _timer = Timer::new("trace extension");
-        let trace_polys = trace.interpolate_columns(trace_domain);
+        let trace_polys = trace.interpolate(trace_domain);
         let trace_lde = trace_polys.evaluate(lde_domain);
         drop(_timer);
         let _timer = Timer::new("trace commitment");
@@ -181,6 +181,7 @@ pub trait Prover {
         let deep_coeffs = channel.get_deep_composition_coeffs();
         let _timer = Timer::new("DEEP composition");
         let mut deep_poly_composer = DeepPolyComposer::new(&air, deep_coeffs, z);
+        let _timer2 = Timer::new("DEEP MAIN");
         deep_poly_composer.add_execution_trace_polys(
             execution_trace_polys,
             ood_execution_trace_evals,
@@ -188,8 +189,11 @@ pub trait Prover {
         );
         deep_poly_composer
             .add_composition_trace_polys(composition_trace_polys, ood_composition_trace_evals);
+        drop(_timer2);
+        let _timer2 = Timer::new("DEEP INTERP");
         let deep_composition_poly = deep_poly_composer.into_deep_poly();
-        let deep_composition_lde = deep_composition_poly.evaluate(lde_domain);
+        let deep_composition_lde = deep_composition_poly.into_evaluations(lde_domain);
+        drop(_timer2);
         drop(_timer);
 
         let _timer = Timer::new("FRI");

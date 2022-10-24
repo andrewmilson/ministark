@@ -84,47 +84,40 @@ impl<F: GpuField> Matrix<F> {
         self.num_rows() == 0
     }
 
-    pub fn interpolate_columns(&self, domain: Radix2EvaluationDomain<F>) -> Self {
+    /// Interpolates the columns of the polynomials over the domain
+    pub fn into_polynomials(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
         let mut ifft = GpuIfft::from(domain);
 
-        let _timer = Timer::new("Setup");
-        let columns = self
-            .0
-            .iter()
-            .map(|evaluations| {
-                let mut poly = evaluations.to_vec_in(PageAlignedAllocator);
-                ifft.encode(&mut poly);
-                poly
-            })
-            .collect();
-        drop(_timer);
-        let _timer = Timer::new("execution");
+        for column in &mut self.0 {
+            ifft.encode(column);
+        }
 
         ifft.execute();
-        drop(_timer);
 
-        Matrix::new(columns)
+        self
     }
 
-    pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
+    /// Interpolates the columns of the matrix over the domain
+    pub fn interpolate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
+        self.clone().into_polynomials(domain)
+    }
+
+    /// Evaluates the columns of the matrix
+    pub fn into_evaluations(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
         let mut fft = GpuFft::from(domain);
-        let _timer = Timer::new("Setup");
-        let columns = self
-            .0
-            .iter()
-            .map(|poly| {
-                let mut evaluations = poly.to_vec_in(PageAlignedAllocator);
-                fft.encode(&mut evaluations);
-                evaluations
-            })
-            .collect();
-        drop(_timer);
 
-        let _timer = Timer::new("execution");
+        for column in &mut self.0 {
+            fft.encode(column);
+        }
+
         fft.execute();
-        drop(_timer);
 
-        Matrix::new(columns)
+        self
+    }
+
+    /// Evaluates the columns of the matrix
+    pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
+        self.clone().into_evaluations(domain)
     }
 
     /// Sums columns into a single column matrix

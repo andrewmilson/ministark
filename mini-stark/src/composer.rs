@@ -204,7 +204,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
     fn trace_polys(&self, composed_evaluations: Matrix<A::Fp>) -> Matrix<A::Fp> {
         assert!(composed_evaluations.num_cols() == 1);
-        let mut composition_poly = composed_evaluations.interpolate_columns(self.air.lde_domain());
+        let mut composition_poly = composed_evaluations.into_polynomials(self.air.lde_domain());
 
         let composition_poly_degree = composition_poly.column_degrees()[0];
         // TODO: put back if quadratic degrees no success
@@ -282,6 +282,8 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         ood_evals: Vec<A::Fp>,
         ood_evals_next: Vec<A::Fp>,
     ) {
+        assert!(self.poly.is_empty());
+
         let trace_domain = self.air.trace_domain();
         let next_z = self.z * trace_domain.group_gen();
         let n = trace_domain.size();
@@ -304,7 +306,6 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         synthetic_divide(&mut t1_composition, 1, self.z);
         synthetic_divide(&mut t2_composition, 1, next_z);
 
-        assert!(self.poly.is_empty());
         for (t1, t2) in t1_composition.into_iter().zip(t2_composition) {
             self.poly.push(t1 + t2)
         }
@@ -315,6 +316,8 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
     }
 
     pub fn add_composition_trace_polys(&mut self, mut polys: Matrix<A::Fp>, ood_evals: Vec<A::Fp>) {
+        assert!(!self.poly.is_empty());
+
         let z_n = self.z.pow([polys.num_cols() as u64]);
 
         ark_std::cfg_iter_mut!(polys.0)
@@ -337,7 +340,8 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
 
     pub fn into_deep_poly(mut self) -> Matrix<A::Fp> {
         let (alpha, beta) = self.composition_coeffs.degree;
-        // TODO: messy. make gpu
+
+        // TODO: make multithreaded
         // Adjust the degree
         // P(x) * (alpha + x * beta)
         let mut last = A::Fp::zero();
