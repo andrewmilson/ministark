@@ -1,4 +1,4 @@
-# GPU accelerated STARK engine for Apple devices
+# MiniSTARK - GPU accelerated STARK engine
 
 My time working at Immutable left me fascinated with theoretical proof systems and their applications. I developed an all-consuming amateur interest for scalable transparent arguments of knowledge (STARKs). They give the ability to prove to a 3rd party that some computation with $n$ steps ran correctly. Proofs can be verified in $O(log^{2}(n))$ vs naive $O(n)$. 
 
@@ -15,12 +15,12 @@ Implementation of the [Brainf***](https://esolangs.org/wiki/Brainfuck) virtual m
 ```bash
 # source: https://esolangs.org/wiki/Brainfuck
 export HELLO_WORLD_BF_SOURCE="++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
-cargo run --release --features parallel,asm  --example bf --src HELLO_WORLD_BF_SOURCE
+cargo run --release --features parallel,asm  --example bf --src $HELLO_WORLD_BF_SOURCE
 ```
 
 ### Multiplicative Fibonacci Sequence 
 
-An analogue to the regular fibonacci sequence that uses multiplication rather than addition. Multiplicative fibonacci requires more grunt (and AIR constraints) to prove.
+An analogue to the regular fibonacci sequence that uses multiplication rather than addition. Multiplicative fibonacci requires more grunt (more AIR constraints) to prove.
 
 ```bash
 cargo run --release --features parallel,asm  --example fib
