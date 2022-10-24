@@ -63,6 +63,8 @@ impl<'a, F: GpuField> FftEncoder<'a, F> {
 pub struct GpuFft<'a, F: GpuField>(FftEncoder<'a, F>);
 
 impl<'a, F: GpuField> GpuFft<'a, F> {
+    pub const MIN_SIZE: usize = 2048;
+
     pub fn encode(&mut self, buffer: &mut GpuVec<F>) {
         assert!(self.0.n >= buffer.len());
         buffer.resize(self.0.n, F::zero());
@@ -86,6 +88,8 @@ impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuFft<'a, F> {
 pub struct GpuIfft<'a, F: GpuField>(FftEncoder<'a, F>);
 
 impl<'a, F: GpuField> GpuIfft<'a, F> {
+    pub const MIN_SIZE: usize = 2048;
+
     pub fn encode(&mut self, input: &mut GpuVec<F>) {
         assert_eq!(self.0.n, input.len());
         let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), input);
@@ -126,10 +130,12 @@ impl Planner {
     }
 
     pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> GpuFft<F> {
+        assert!(domain.size() >= GpuFft::<F>::MIN_SIZE);
         GpuFft(self.create_fft_encoder(FftDirection::Forward, domain))
     }
 
     pub fn plan_ifft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> GpuIfft<F> {
+        assert!(domain.size() >= GpuIfft::<F>::MIN_SIZE);
         GpuIfft(self.create_fft_encoder(FftDirection::Inverse, domain))
     }
 
@@ -140,22 +146,18 @@ impl Planner {
         domain: Radix2EvaluationDomain<F>,
     ) -> FftEncoder<F> {
         let n = domain.size();
-        assert!(n >= 2048);
 
         let mut root = F::get_root_of_unity(n as u64).unwrap();
         if direction == FftDirection::Inverse {
             root.inverse_in_place().unwrap();
         }
 
-        // let now = Instant::now();
         // generate twiddles buffer
         let mut _twiddles = Vec::with_capacity_in(n / 2, PageAlignedAllocator);
-        // unsafe { _twiddles.set_len(n / 2) }
         _twiddles.resize(n / 2, F::zero());
         fill_twiddles(&mut _twiddles, root);
         bit_reverse(&mut _twiddles);
         let twiddles_buffer = buffer_no_copy(self.command_queue.device(), &_twiddles);
-        // println!("twiddle generation: {:?}", now.elapsed());
 
         // in-place FFT requires a bit reversal
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);

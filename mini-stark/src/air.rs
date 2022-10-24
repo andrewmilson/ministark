@@ -100,31 +100,6 @@ pub trait Air {
     }
 
     fn transition_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        // let trace_domain = self.trace_domain();
-        // // ((x - o^0)...(x - o^(n-1)) has degree n - 1
-        // let degree = trace_domain.size() - 1;
-        // let lde_domain = self.lde_domain();
-        // let n = lde_domain.size();
-        // // TODO: make this easier to understand
-        // // Transition constraints apply to all rows of execution trace except the
-        // last // row. We need to change the inverse zerofier from being the
-        // // evaluations of the polynomial `1/((x - o^0)...(x - o^(n-1)))` to
-        // // `1/((x - o^0)...(x - o^(n-2)))`. This is achieved by performing the
-        // // dot product of the zerofier evaluations and the evaluations of the
-        // polynomial // (x - o^(n-1)). Note that o^(n-1) is the inverse of `o`.
-        // let last_trace_x = trace_domain.group_gen_inv;
-        // let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        // // TODO: make parallel
-        // for lde_x in lde_domain.elements() {
-        //     lde.push(trace_domain.evaluate_vanishing_polynomial(lde_x));
-        // }
-        // batch_inversion(&mut lde);
-        // // TODO: make parallel
-        // for (i, lde_x) in lde_domain.elements().enumerate() {
-        //     lde[i] *= lde_x - last_trace_x;
-        // }
-        // Divisor { lde, degree }
-
         let trace_domain = self.trace_domain();
         let last_trace_x = trace_domain.group_gen_inv;
         let degree = trace_domain.size() - 1;

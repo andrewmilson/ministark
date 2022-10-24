@@ -1,6 +1,5 @@
 //! Implementation is adapted from the multivariable polynomial in arkworks.
 
-use crate::utils::Timer;
 use crate::Matrix;
 use ark_ff::One;
 use ark_ff::Zero;
@@ -16,12 +15,13 @@ use fast_poly::GpuField;
 use rayon::prelude::*;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::ops::Add;
+use std::ops::AddAssign;
 use std::ops::Mul;
+use std::ops::MulAssign;
 use std::ops::Neg;
 use std::ops::Sub;
+use std::ops::SubAssign;
 
 /// A constraint element can represent several things:
 /// - a column in the current cycle
@@ -31,6 +31,15 @@ pub enum Element {
     Curr(usize),
     Next(usize),
     Challenge(usize),
+}
+
+impl Element {
+    pub fn pow<F: GpuField>(&self, exponent: usize) -> Constraint<F> {
+        Constraint::new(vec![Term(
+            F::one(),
+            Variables::new(vec![(*self, exponent)]),
+        )])
+    }
 }
 
 impl<F: GpuField> From<Element> for Constraint<F> {
@@ -85,11 +94,11 @@ impl Column for usize {
 /// Represents the group of variables within a constraint polynomial term.
 /// Each variable is of the form `(element, power)`.
 #[derive(Clone, PartialEq, Eq, Default)]
-struct Variables(Vec<(Element, usize)>);
+pub(crate) struct Variables(pub(crate) Vec<(Element, usize)>);
 
 impl Variables {
     /// Create a new group of variables
-    fn new(mut variables: Vec<(Element, usize)>) -> Self {
+    pub(crate) fn new(mut variables: Vec<(Element, usize)>) -> Self {
         variables.retain(|(_, pow)| *pow != 0);
         variables.sort();
         Variables(Self::combine(&variables))
@@ -181,7 +190,7 @@ impl Ord for Variables {
 /// Represents a constraint polynomial term.
 /// A term is of the form `(coefficient, variables)`.
 #[derive(Clone, PartialEq, Eq)]
-struct Term<F>(F, Variables);
+pub struct Term<F>(pub(crate) F, pub(crate) Variables);
 
 impl<F: GpuField> Term<F> {
     fn new(coefficient: F, variables: Variables) -> Self {
@@ -220,7 +229,7 @@ impl<'a, 'b, F: GpuField> Mul<&'a Term<F>> for &'b Term<F> {
 
 /// A multivariate constraint polynomial
 #[derive(Clone)]
-pub struct Constraint<F>(Vec<Term<F>>);
+pub struct Constraint<F>(pub(crate) Vec<Term<F>>);
 
 impl<F: GpuField> Constraint<F> {
     pub fn pow(&self, mut exp: usize) -> Self {
@@ -247,12 +256,45 @@ impl<F: GpuField> Constraint<F> {
         indices
     }
 
-    fn new(mut terms: Vec<Term<F>>) -> Self {
+    pub fn new(mut terms: Vec<Term<F>>) -> Self {
         terms.sort_by(|a, b| a.1.cmp(&b.1));
 
         let mut constraint = Constraint(Self::combine_terms(terms));
         constraint.remove_zeros();
         constraint
+    }
+
+    /// Substitutes an element with a constraint
+    /// E.g. substituting `x = y^2 + y` into `3 * xy` gives `3 * y^3 + 3 * y^2`
+    pub fn substitute(&mut self, element: Element, substitution: &Constraint<F>) {
+        *self = Self::new(
+            self.0
+                .iter()
+                .cloned()
+                .flat_map(|term| {
+                    let mut substitution_power = 0;
+
+                    for variable in &(term.1).0 {
+                        if variable.0 == element {
+                            substitution_power = variable.1;
+                            break;
+                        }
+                    }
+
+                    if substitution_power != 0 {
+                        let new_term = Term(
+                            term.0,
+                            Variables::new(
+                                (term.1).0.into_iter().filter(|v| v.0 != element).collect(),
+                            ),
+                        );
+                        (Constraint::new(vec![new_term]) * substitution.pow(substitution_power)).0
+                    } else {
+                        vec![term]
+                    }
+                })
+                .collect(),
+        );
     }
 
     pub fn degree(&self) -> usize {
@@ -716,7 +758,7 @@ impl<F: GpuField> Sub<&F> for &Constraint<F> {
 }
 
 // Adapted from the `forward_ref_binop!` macro in the Rust standard library.
-// Implements "&T op U", "T op &U" based on "&T op &U".
+// Implements "&T op U", "T op &U" based on "&T op &U"
 macro_rules! forward_ref_binop {
     (impl<F: GpuField> $imp:ident, $method:ident for $t:ty, $u:ty) => {
         impl<'a, F: GpuField> $imp<$u> for &'a $t {
@@ -745,6 +787,63 @@ forward_ref_binop!(impl<F: GpuField> Sub, sub for Constraint<F>, Constraint<F>);
 forward_ref_binop!(impl<F: GpuField> Mul, mul for Constraint<F>, F);
 forward_ref_binop!(impl<F: GpuField> Add, add for Constraint<F>, F);
 forward_ref_binop!(impl<F: GpuField> Sub, sub for Constraint<F>, F);
+
+impl<F: GpuField> MulAssign<&Constraint<F>> for Constraint<F> {
+    fn mul_assign(&mut self, other: &Constraint<F>) {
+        *self = &*self * other
+    }
+}
+
+impl<F: GpuField> MulAssign<&F> for Constraint<F> {
+    fn mul_assign(&mut self, rhs: &F) {
+        // self.clone() * *rhs
+        *self = &*self * rhs
+    }
+}
+
+impl<F: GpuField> AddAssign<&Constraint<F>> for Constraint<F> {
+    fn add_assign(&mut self, other: &Constraint<F>) {
+        *self = &*self + other
+    }
+}
+
+impl<F: GpuField> AddAssign<&F> for Constraint<F> {
+    fn add_assign(&mut self, rhs: &F) {
+        *self = &*self + rhs
+    }
+}
+
+impl<F: GpuField> SubAssign<&Constraint<F>> for Constraint<F> {
+    fn sub_assign(&mut self, other: &Constraint<F>) {
+        *self = &*self - other
+    }
+}
+
+impl<F: GpuField> SubAssign<&F> for Constraint<F> {
+    fn sub_assign(&mut self, rhs: &F) {
+        *self = &*self - rhs
+    }
+}
+
+// Adapted from the `forward_ref_op_assign!` macro in the Rust standard library.
+// implements "T op= U", based on "T op= &U"
+macro_rules! forward_ref_op_assign {
+    (impl<F: GpuField> $imp:ident, $method:ident for $t:ty, $u:ty) => {
+        impl<F: GpuField> $imp<$u> for $t {
+            #[inline]
+            fn $method(&mut self, other: $u) {
+                $imp::$method(self, &other);
+            }
+        }
+    };
+}
+
+forward_ref_op_assign!(impl<F: GpuField> AddAssign, add_assign for Constraint<F>, Constraint<F>);
+forward_ref_op_assign!(impl<F: GpuField> SubAssign, sub_assign for Constraint<F>, Constraint<F>);
+forward_ref_op_assign!(impl<F: GpuField> MulAssign, mul_assign for Constraint<F>, Constraint<F>);
+forward_ref_op_assign!(impl<F: GpuField> AddAssign, add_assign for Constraint<F>, F);
+forward_ref_op_assign!(impl<F: GpuField> SubAssign, sub_assign for Constraint<F>, F);
+forward_ref_op_assign!(impl<F: GpuField> MulAssign, mul_assign for Constraint<F>, F);
 
 pub fn are_eq<F: GpuField>(
     a: impl Borrow<Constraint<F>>,

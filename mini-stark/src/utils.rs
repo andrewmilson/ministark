@@ -18,6 +18,7 @@ use fast_poly::GpuField;
 use fast_poly::GpuVec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::cmp::Ordering;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Index;
@@ -152,40 +153,32 @@ impl<F: GpuField> Matrix<F> {
 
     pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {
         let num_rows = self.num_rows();
-        let num_cols = self.num_cols();
 
-        let mut row_hashes = Vec::with_capacity(num_rows);
-        row_hashes.resize(num_rows, Default::default());
-        {
-            // let _timer = Timer::new("GENERATING LEAFS");
-            #[cfg(not(feature = "parallel"))]
-            let chunk_size = row_hashes.len();
-            #[cfg(feature = "parallel")]
-            let chunk_size = std::cmp::max(
-                row_hashes.len() / rayon::current_num_threads().next_power_of_two(),
-                128,
-            );
+        let mut row_hashes = vec![Default::default(); num_rows];
 
-            // println!("Chunk size {}", chunk_size);
+        #[cfg(not(feature = "parallel"))]
+        let chunk_size = row_hashes.len();
+        #[cfg(feature = "parallel")]
+        let chunk_size = std::cmp::max(
+            row_hashes.len() / rayon::current_num_threads().next_power_of_two(),
+            128,
+        );
 
-            ark_std::cfg_chunks_mut!(row_hashes, chunk_size)
-                .enumerate()
-                .for_each(|(chunk_offset, chunk)| {
-                    let offset = chunk_size * chunk_offset;
+        ark_std::cfg_chunks_mut!(row_hashes, chunk_size)
+            .enumerate()
+            .for_each(|(chunk_offset, chunk)| {
+                let offset = chunk_size * chunk_offset;
 
-                    let mut row_buffer = vec![F::zero(); self.num_cols()];
-                    let mut row_bytes = Vec::with_capacity(row_buffer.compressed_size());
+                let mut row_buffer = vec![F::zero(); self.num_cols()];
+                let mut row_bytes = Vec::with_capacity(row_buffer.compressed_size());
 
-                    for (i, row_hash) in chunk.iter_mut().enumerate() {
-                        row_bytes.clear();
-                        self.read_row(offset + i, &mut row_buffer);
-                        row_buffer.serialize_compressed(&mut row_bytes).unwrap();
-                        *row_hash = D::new_with_prefix(&row_bytes).finalize();
-                    }
-                });
-        }
-
-        // let _timer = Timer::new("GENERATING TREE");
+                for (i, row_hash) in chunk.iter_mut().enumerate() {
+                    row_bytes.clear();
+                    self.read_row(offset + i, &mut row_buffer);
+                    row_buffer.serialize_compressed(&mut row_bytes).unwrap();
+                    *row_hash = D::new_with_prefix(&row_bytes).finalize();
+                }
+            });
 
         MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
     }
@@ -271,6 +264,18 @@ impl<F: GpuField, C: Column> Index<C> for Matrix<F> {
 impl<F: GpuField, C: Column> IndexMut<C> for Matrix<F> {
     fn index_mut(&mut self, col: C) -> &mut Self::Output {
         &mut self.0[col.index()]
+    }
+}
+
+impl<F: GpuField> TryInto<GpuVec<F>> for Matrix<F> {
+    type Error = String;
+
+    fn try_into(self) -> Result<GpuVec<F>, Self::Error> {
+        match self.num_cols().cmp(&1) {
+            Ordering::Equal => Ok(self.0.into_iter().next().unwrap()),
+            Ordering::Greater => Err("Matrix has more than one column".to_string()),
+            Ordering::Less => Err("Matrix has no columns".to_string()),
+        }
     }
 }
 

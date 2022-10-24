@@ -3,7 +3,8 @@
     let_chains,
     array_windows,
     array_chunks,
-    iter_partition_in_place
+    iter_partition_in_place,
+    slice_flatten
 )]
 
 mod air;

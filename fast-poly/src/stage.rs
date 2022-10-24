@@ -4,7 +4,6 @@ use crate::utils::buffer_no_copy;
 use crate::GpuVec;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
-use std::collections::HashMap;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy, Debug)]

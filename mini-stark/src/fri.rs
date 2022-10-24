@@ -1,7 +1,6 @@
 use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
 use crate::utils::interleave;
-use crate::Matrix;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
@@ -9,6 +8,7 @@ use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
 use fast_poly::allocator::PageAlignedAllocator;
+use fast_poly::plan::GpuFft;
 use fast_poly::plan::GpuIfft;
 use fast_poly::GpuField;
 use fast_poly::GpuVec;
@@ -132,33 +132,36 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
     pub fn build_layers(
         &mut self,
         channel: &mut impl ProverChannel<F, Digest = D>,
-        mut evaluations: Matrix<F>,
+        mut evaluations: GpuVec<F>,
     ) {
         assert!(self.layers.is_empty());
+        // let codeword = evaluations.0[0];
 
-        for _ in 0..self.options.num_layers(evaluations.num_rows()) + 1 {
-            match self.options.folding_factor {
-                2 => self.build_layer::<2>(channel, &mut evaluations.0[0]),
-                4 => self.build_layer::<4>(channel, &mut evaluations.0[0]),
-                8 => self.build_layer::<8>(channel, &mut evaluations.0[0]),
-                16 => self.build_layer::<16>(channel, &mut evaluations.0[0]),
+        for _ in 0..self.options.num_layers(evaluations.len()) + 1 {
+            evaluations = match self.options.folding_factor {
+                2 => self.build_layer::<2>(channel, evaluations),
+                4 => self.build_layer::<4>(channel, evaluations),
+                8 => self.build_layer::<8>(channel, evaluations),
+                16 => self.build_layer::<16>(channel, evaluations),
                 folding_factor => unreachable!("folding factor {folding_factor} not supported"),
             }
         }
     }
 
+    /// Builds a single layer of the FRI protocol
+    /// Returns the evaluations for the next layer.
     fn build_layer<const N: usize>(
         &mut self,
         channel: &mut impl ProverChannel<F, Digest = D>,
-        evaluations: &mut GpuVec<F>,
-    ) {
+        mut evaluations: GpuVec<F>,
+    ) -> GpuVec<F> {
         // Each layer requires decommitting to `folding_factor` many evaluations e.g.
         // `folding_factor = 2` decommits to an evaluation for LHS_i and RHS_i
         // (0 ≤ i < n/2) which requires two merkle paths if the evaluations are
         // committed to in their natural order. If we instead commit to interleaved
         // evaluations i.e. [[LHS0, RHS0], [LHS1, RHS1], ...] LHS_i and RHS_i
         // only require a single merkle path for their decommitment.
-        let interleaved_evals = interleave::<F, N>(evaluations);
+        let interleaved_evals = interleave::<F, N>(&evaluations);
         let hashed_evals = ark_std::cfg_iter!(interleaved_evals)
             .map(|chunk| {
                 let mut buff = Vec::new();
@@ -173,7 +176,7 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         channel.commit_fri_layer(evals_merkle_tree.root());
 
         let alpha = channel.draw_fri_alpha();
-        *evaluations = apply_drp(
+        evaluations = apply_drp(
             evaluations,
             self.options.domain_offset(),
             alpha,
@@ -182,8 +185,10 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
 
         self.layers.push(FriLayer {
             tree: evals_merkle_tree,
-            evaluations: interleaved_evals.into_iter().flatten().collect(),
-        })
+            evaluations: interleaved_evals.into_flattened(),
+        });
+
+        evaluations
     }
 }
 
@@ -216,6 +221,7 @@ pub trait ProverChannel<F: GpuField> {
 ///    f_o(x) = c1 + c3 * x + c5 * x^2 + c7 * x^3
 ///    f(x)   = f_e(x) + x * f_o(x)
 ///    f'(x)  = f_e(x) + α * f_o(x)
+///    α      = <random field element sent from verifier>
 ///   
 /// 4. obtain the DRP by evaluating f'(x) over a new domain of half the size:
 ///    ┌───────┬───────────┬───────────┬───────────┬───────────┐
@@ -229,28 +235,29 @@ pub trait ProverChannel<F: GpuField> {
 ///    │ drp[i] │ 82 │ 12 │ 57 │ 34 │
 ///    └────────┴────┴────┴────┴────┘
 pub fn apply_drp<F: GpuField>(
-    evals: &[F],
+    mut evals: GpuVec<F>,
     domain_offset: F,
     alpha: F,
     folding_factor: usize,
 ) -> GpuVec<F> {
     let n = evals.len();
     let domain = Radix2EvaluationDomain::new_coset(n, domain_offset).unwrap();
-    let mut coeffs = if n >= 2048 {
-        let mut coeffs = evals.to_vec_in(PageAlignedAllocator);
+
+    let coeffs = if n >= GpuIfft::<F>::MIN_SIZE {
         let mut ifft = GpuIfft::from(domain);
-        ifft.encode(&mut coeffs);
+        ifft.encode(&mut evals);
         ifft.execute();
-        coeffs
+        evals
     } else {
-        domain.ifft(&evals).to_vec_in(PageAlignedAllocator)
+        let coeffs = domain.ifft(&evals);
+        coeffs.to_vec_in(PageAlignedAllocator)
     };
 
     let alpha_powers = (0..folding_factor)
         .map(|i| alpha.pow([i as u64]))
         .collect::<Vec<F>>();
 
-    let drp_coeffs = ark_std::cfg_chunks!(coeffs, folding_factor)
+    let mut drp_coeffs = ark_std::cfg_chunks!(coeffs, folding_factor)
         .map(|chunk| {
             chunk
                 .iter()
@@ -258,11 +265,22 @@ pub fn apply_drp<F: GpuField>(
                 .map(|(v, alpha)| *v * alpha)
                 .sum()
         })
-        .collect::<Vec<F>>();
+        .collect::<Vec<F>>()
+        .to_vec_in(PageAlignedAllocator);
 
     let drp_offset = domain_offset.pow([folding_factor as u64]);
     let drp_domain = Radix2EvaluationDomain::new_coset(n / folding_factor, drp_offset).unwrap();
-    drp_domain.fft(&drp_coeffs).to_vec_in(PageAlignedAllocator)
+
+    // return the drp evals
+    if drp_domain.size() >= GpuFft::<F>::MIN_SIZE {
+        let mut fft = GpuFft::from(drp_domain);
+        fft.encode(&mut drp_coeffs);
+        fft.execute();
+        drp_coeffs
+    } else {
+        let evals = drp_domain.fft(&drp_coeffs);
+        evals.to_vec_in(PageAlignedAllocator)
+    }
 }
 
 fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {

@@ -18,7 +18,6 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::GpuField;
 use sha2::Sha256;
-use std::time::Instant;
 
 // TODO: include ability to specify:
 // - base field
@@ -120,13 +119,16 @@ pub trait Prover {
         let air = Self::Air::new(trace_info, pub_inputs, options);
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
 
-        // {
-        //     // TODO: move into validation section
-        //     let ce_blowup_factor = air.ce_blowup_factor();
-        //     let lde_blowup_factor = air.lde_blowup_factor();
-        //     assert!(ce_blowup_factor <= lde_blowup_factor, "constraint evaluation
-        // blowup factor {ce_blowup_factor} is larger than the lde blowup factor
-        // {lde_blowup_factor}"); }
+        {
+            // TODO: move into validation section
+            let ce_blowup_factor = air.ce_blowup_factor();
+            let lde_blowup_factor = air.lde_blowup_factor();
+            assert!(
+                ce_blowup_factor <= lde_blowup_factor,
+                "constraint evaluation blowup factor {ce_blowup_factor} is 
+                larger than the lde blowup factor {lde_blowup_factor}"
+            );
+        }
 
         let trace_domain = air.trace_domain();
         let lde_domain = air.lde_domain();
@@ -208,7 +210,7 @@ pub trait Prover {
 
         let _timer = Timer::new("FRI");
         let mut fri_prover = FriProver::<Self::Fp, Sha256>::new(air.options().into_fri_options());
-        fri_prover.build_layers(&mut channel, deep_composition_lde);
+        fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
 
         channel.grind_fri_commitments();
 
