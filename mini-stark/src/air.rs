@@ -111,16 +111,16 @@ pub trait Air {
         let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
         lde.resize(n, Self::Fp::zero());
 
-        // Evaluates `(x - t_0)(x - t_1)...(x - t_n-1)` over the lde domain
+        // evaluates `(x - t_0)(x - t_1)...(x - t_n-1)` over the lde domain
         fill_vanishing_polynomial(&mut lde, &trace_domain, &lde_domain);
 
-        // Invert the vanishing polynomial evaluations
-        // i.e. `1 / (x - t_0)(x - t_1)...(x - t_n-1)`
+        // invert the vanishing polynomial evaluations
+        // i.e. evaluations of `1 / (x - t_0)(x - t_1)...(x - t_n-1)`
         batch_inversion(&mut lde);
 
-        // Transition constraints apply to all rows except the last.
-        // Multiplies out the last term of the vanishing polynomial
-        // i.e. `1 / (x - t_0)(x - t_1)...(x - t_n-2)`
+        // transition constraints apply to all rows except the last
+        // multiplies out the last term of the vanishing polynomial
+        // i.e. evaluations of `1 / (x - t_0)(x - t_1)...(x - t_n-2)`
         // Note: `t^(n-1) = t^(-1)`
         #[cfg(feature = "parallel")]
         let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
@@ -153,7 +153,7 @@ pub trait Air {
         #[cfg(not(feature = "parallel"))]
         let chunk_size = n;
 
-        // evaluates (x - o^0) over the lde domain
+        // evaluates `(x - t_0)` over the lde domain
         ark_std::cfg_chunks_mut!(lde, chunk_size)
             .enumerate()
             .for_each(|(i, chunk)| {
@@ -164,7 +164,8 @@ pub trait Air {
                 })
             });
 
-        // change evaluations to `1 / (x - o^0)`
+        // invert the evaluations
+        // i.e. evaluations of `1 / (x - t_0)`
         batch_inversion(&mut lde);
 
         Divisor { lde, degree: 1 }
@@ -184,7 +185,8 @@ pub trait Air {
         #[cfg(not(feature = "parallel"))]
         let chunk_size = n;
 
-        // evaluates (x - o^0) over the lde domain
+        // evaluates `(x - t_n-1)` over the lde domain
+        // Note: `t^(n-1) = t^(-1)`
         ark_std::cfg_chunks_mut!(lde, chunk_size)
             .enumerate()
             .for_each(|(i, chunk)| {
@@ -195,7 +197,8 @@ pub trait Air {
                 })
             });
 
-        // change evaluations to `1 / (x - o^0)`
+        // invert the evaluations
+        // i.e. evaluations of `1 / (x - t_n-1)`
         batch_inversion(&mut lde);
 
         Divisor { lde, degree: 1 }
