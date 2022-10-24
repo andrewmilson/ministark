@@ -1,6 +1,5 @@
 use crate::challenges::Challenges;
 use crate::constraint::Element;
-use crate::utils::Timer;
 use crate::Constraint;
 use crate::Matrix;
 use crate::ProofOptions;
@@ -51,8 +50,7 @@ pub trait Air {
             .map(|constraint| constraint.degree())
             .max()
             .unwrap_or(0);
-        // ceil_power_of_two(highest_degree)
-        std::cmp::min(ceil_power_of_two(highest_degree), 2)
+        ceil_power_of_two(highest_degree)
     }
 
     /// Returns a degree that all constraints polynomials must be normalized to.
@@ -120,14 +118,13 @@ pub trait Air {
         ark_std::cfg_chunks_mut!(lde, chunk_size)
             .enumerate()
             .for_each(|(i, chunk)| {
-                let mut acc = scaled_offset * scaled_generator.pow([i as u64]);
+                let mut acc = scaled_offset * scaled_generator.pow([(i * chunk_size) as u64]);
                 chunk.iter_mut().for_each(|coeff| {
                     *coeff = acc - trace_scaled_offset;
                     acc *= &scaled_generator
                 })
             });
 
-        // change evaluations to `TODO`
         batch_inversion(&mut lde);
 
         ark_std::cfg_chunks_mut!(lde, chunk_size)

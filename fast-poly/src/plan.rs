@@ -14,7 +14,6 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
-use std::time::Instant;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
 
@@ -147,10 +146,10 @@ impl Planner {
     ) -> FftEncoder<F> {
         let n = domain.size();
 
-        let mut root = F::get_root_of_unity(n as u64).unwrap();
-        if direction == FftDirection::Inverse {
-            root.inverse_in_place().unwrap();
-        }
+        let root = match direction {
+            FftDirection::Forward => domain.group_gen,
+            FftDirection::Inverse => domain.group_gen_inv,
+        };
 
         // generate twiddles buffer
         let mut _twiddles = Vec::with_capacity_in(n / 2, PageAlignedAllocator);

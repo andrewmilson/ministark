@@ -23,7 +23,6 @@ use mini_stark::challenges::Challenges;
 // use mini_stark::constraint::Challenge as _;
 use mini_stark::Matrix;
 use mini_stark::Trace;
-use rand::thread_rng;
 
 pub struct BrainfuckTrace {
     processor_base_trace: Matrix<Fp>,
@@ -219,16 +218,12 @@ fn gen_instruction_ext_matrix(
     let mut previous_address = -Fp::one();
 
     let mut extension_rows = Vec::new();
-    // TODO: remove
-    let mut num_padded_rows = 0usize;
     for row in 0..base_matrix.num_rows() {
         let curr_base_row = base_matrix.get_row(row).unwrap();
         let prev_base_row = base_matrix.get_row(row.wrapping_sub(1));
         let mut extension_row = vec![Fp::zero(); InstructionExtensionColumn::NUM_TRACE_COLUMNS];
 
-        if curr_base_row[CurrInstr as usize].is_zero() {
-            num_padded_rows += 1;
-        } else if row > 0 && curr_base_row[Ip as usize] == prev_base_row.unwrap()[Ip as usize] {
+        if row > 0 && curr_base_row[Ip as usize] == prev_base_row.unwrap()[Ip as usize] {
             // permutation argument
             // update running product
             // make sure new row is not padding
@@ -253,9 +248,6 @@ fn gen_instruction_ext_matrix(
         extension_rows.push(extension_row);
     }
 
-    // self.extended_matrix = Some(extended_matrix);
-    // self.permutation_terminal = Some(permutation_running_product);
-    // self.evaluation_terminal = Some(evaluation_running_sum);
     Matrix::new(into_columns(extension_rows))
 }
 

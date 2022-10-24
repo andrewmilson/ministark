@@ -78,9 +78,9 @@ impl ProcessorBaseColumn {
 
             // TODO: mul assign
             // account for padding and deactivate all polynomials if curr instruction is 0
-            constraints.0 = constraints.0 + &deselector * instr_constraints.0 * CurrInstr.curr();
-            constraints.1 = constraints.1 + &deselector * instr_constraints.1 * CurrInstr.curr();
-            constraints.2 = constraints.2 + &deselector * instr_constraints.2 * CurrInstr.curr();
+            constraints.0 += &deselector * &instr_constraints.0 * CurrInstr.curr();
+            constraints.1 += &deselector * &instr_constraints.1 * CurrInstr.curr();
+            constraints.2 += &deselector * &instr_constraints.2 * CurrInstr.curr();
         }
 
         vec![

@@ -8,7 +8,6 @@ use crate::merkle::MerkleTree;
 use crate::trace::Queries;
 use crate::utils::Timer;
 use crate::Air;
-use crate::Constraint;
 use crate::Matrix;
 use crate::Trace;
 use crate::TraceInfo;
@@ -159,24 +158,9 @@ pub trait Prover {
         #[cfg(debug_assertions)]
         air.validate_constraints(&challenges, &execution_trace);
 
-        let _timer = Timer::new("Quadratic constraints");
-        let quadratic_constraints = Constraint::into_quadratic_constraints(
-            &challenges,
-            air.transition_constraints(),
-            air.lde_blowup_factor(),
-            &mut execution_trace_lde,
-        );
-
-        // let quadratic_constraints = air.transition_constraints().to_vec();
-
-        drop(_timer);
-
-        println!("quad cons len {}", quadratic_constraints.len());
-
         let _timer = Timer::new("Composition trace");
         let composition_coeffs = channel.get_constraint_composition_coeffs();
-        let constraint_coposer =
-            ConstraintComposer::new(&air, composition_coeffs, quadratic_constraints);
+        let constraint_coposer = ConstraintComposer::new(&air, composition_coeffs);
         // TODO: move commitment here
         let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =
             constraint_coposer.build_commitment(&challenges, &execution_trace_lde);

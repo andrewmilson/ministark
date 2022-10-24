@@ -73,9 +73,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     // TODO: make this generic
     pub fn get_constraint_composition_coeffs(&mut self) -> Vec<(A::Fp, A::Fp)> {
         let mut rng = self.public_coin.draw_rng();
-        // TODO: fix
-        // (0..self.air.num_constraints())
-        (0..500)
+        (0..self.air.num_constraints())
             .map(|_| (A::Fp::rand(&mut rng), A::Fp::rand(&mut rng)))
             .collect()
     }
@@ -133,6 +131,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     pub fn grind_fri_commitments(&mut self) {
         let grinding_factor = self.air.options().grinding_factor as u32;
         // ark_std::cfg_into_iter!(1..u64::MAX).find(predicate)
+        // TODO: make parallel
         let nonce = (1..u64::MAX)
             .find(|nonce| {
                 let mut hasher = D::new();

@@ -28,7 +28,6 @@ pub enum OpCode {
 }
 
 impl OpCode {
-    // TODO: probably not idiomatic
     pub const VALUES: [OpCode; 8] = [
         OpCode::IncrementPointer,
         OpCode::DecrementPointer,

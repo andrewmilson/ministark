@@ -143,18 +143,20 @@ impl Prover for FibProver {
     }
 }
 
-fn gen_trace(len: usize) -> FibTrace {
-    assert!(len.is_power_of_two());
-    assert!(len > 8);
+fn gen_trace(n: usize) -> FibTrace {
+    assert!(n.is_power_of_two());
+    assert!(n > 8);
 
-    let mut col0 = Vec::new_in(PageAlignedAllocator);
-    let mut col1 = Vec::new_in(PageAlignedAllocator);
-    let mut col2 = Vec::new_in(PageAlignedAllocator);
-    let mut col3 = Vec::new_in(PageAlignedAllocator);
-    let mut col4 = Vec::new_in(PageAlignedAllocator);
-    let mut col5 = Vec::new_in(PageAlignedAllocator);
-    let mut col6 = Vec::new_in(PageAlignedAllocator);
-    let mut col7 = Vec::new_in(PageAlignedAllocator);
+    let num_rows = n / 8;
+
+    let mut col0 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
+    let mut col1 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
+    let mut col2 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
+    let mut col3 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
+    let mut col4 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
+    let mut col5 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
+    let mut col6 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
+    let mut col7 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
 
     let mut v0 = Fp::one();
     let mut v1 = v0 + v0;
@@ -165,7 +167,7 @@ fn gen_trace(len: usize) -> FibTrace {
     let mut v6 = v4 * v5;
     let mut v7 = v5 * v6;
 
-    for _ in 0..len / 8 {
+    for _ in 0..num_rows {
         col0.push(v0);
         col1.push(v1);
         col2.push(v2);
@@ -194,7 +196,7 @@ fn main() {
     let now = Instant::now();
     let options = ProofOptions::new(32, 4, 8);
     let prover = FibProver::new(options);
-    let trace = gen_trace(33554432);
+    let trace = gen_trace(1048576);
 
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());
