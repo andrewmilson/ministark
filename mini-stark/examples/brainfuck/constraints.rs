@@ -291,9 +291,7 @@ impl OutputExtensionColumn {
 fn instr_zerofier<F: GpuField>(instr: Constraint<F>) -> Constraint<F> {
     let mut accumulator = Constraint::from(F::one());
     for opcode in OpCode::VALUES {
-        let factor = &instr - F::from(opcode as u64);
-        // TODO: mul assign
-        accumulator = accumulator * factor;
+        accumulator *= &instr - F::from(opcode as u64);
     }
     accumulator
 }
@@ -308,7 +306,7 @@ fn if_not_instr<F: GpuField>(
     for opcode in OpCode::VALUES {
         if opcode != instr {
             let factor = indeterminate.borrow() - F::from(opcode as u64);
-            accumulator = accumulator * factor;
+            accumulator *= factor;
         }
     }
     accumulator

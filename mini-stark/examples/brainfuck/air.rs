@@ -17,7 +17,7 @@ pub struct BrainfuckAir {
     options: ProofOptions,
     trace_info: TraceInfo,
     execution_info: ExecutionInfo,
-    // boundary_constraints: Vec<Constraint<Fp>>,
+    boundary_constraints: Vec<Constraint<Fp>>,
     transition_constraints: Vec<Constraint<Fp>>,
     // terminal_constraints: Vec<Constraint<Fp>>,
 }
@@ -42,6 +42,18 @@ impl Air for BrainfuckAir {
                 tables::OutputExtensionColumn::transition_constraints(),
             ]
             .concat(),
+            // TODO
+            boundary_constraints: vec![],
+            //     tables::ProcessorBaseColumn::boundary_constraints(),
+            //     tables::ProcessorExtensionColumn::boundary_constraints(),
+            //     tables::MemoryBaseColumn::boundary_constraints(),
+            //     tables::MemoryExtensionColumn::boundary_constraints(),
+            //     tables::InstructionBaseColumn::boundary_constraints(),
+            //     tables::InstructionExtensionColumn::boundary_constraints(),
+            //     tables::InputExtensionColumn::boundary_constraints(),
+            //     tables::OutputExtensionColumn::boundary_constraints(),
+            // ]
+            // .concat(),
         }
     }
 
@@ -55,6 +67,10 @@ impl Air for BrainfuckAir {
 
     fn transition_constraints(&self) -> &[Constraint<Self::Fp>] {
         &self.transition_constraints
+    }
+
+    fn boundary_constraints(&self) -> &[Constraint<Self::Fp>] {
+        &self.boundary_constraints
     }
 
     fn trace_info(&self) -> &TraceInfo {

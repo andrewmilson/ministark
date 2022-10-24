@@ -259,13 +259,6 @@ pub fn simulate(
     )
 }
 
-fn print_row(row: &[Fp]) {
-    for val in row {
-        print!("{val}, ");
-    }
-    println!()
-}
-
 fn pad_processor_rows(rows: &mut Vec<Vec<Fp>>, n: usize) {
     use ProcessorBaseColumn::*;
     while rows.len() < n {

@@ -6,6 +6,26 @@ The library is primarily written in Rust but runs exceptionally fast due to movi
 
 On top of the hardware acceleration I tried to take a shot at improving how AIR constraints are expressed. TODO
 
+## Examples
+
+### Brainf*** virtual machine
+
+Implementation of the [Brainf***](https://esolangs.org/wiki/Brainfuck) virtual machine from [Alan Szepieniec BrainSTARK tutorial](https://aszepieniec.github.io/stark-brainfuck/brainfuck).
+
+```bash
+# source: https://esolangs.org/wiki/Brainfuck
+export HELLO_WORLD_BF_SOURCE="++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
+cargo run --release --features parallel,asm  --example bf --src HELLO_WORLD_BF_SOURCE
+```
+
+### Multiplicative Fibonacci Sequence 
+
+An analogue to the regular fibonacci sequence that uses multiplication rather than addition. Multiplicative fibonacci requires more grunt (and AIR constraints) to prove.
+
+```bash
+cargo run --release --features parallel,asm  --example fib
+```
+
 ## Things I don't like
 
 - remembering what the longest table is
