@@ -96,7 +96,7 @@ pub trait Air {
     }
 
     fn lde_blowup_factor(&self) -> usize {
-        self.options().blowup_factor as usize
+        self.options().lde_blowup_factor as usize
     }
 
     /// Validate properties of this air

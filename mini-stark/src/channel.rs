@@ -129,7 +129,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     }
 
     pub fn grind_fri_commitments(&mut self) {
-        let grinding_factor = self.air.options().grinding_factor as u32;
+        let grinding_factor = self.air.options().fri_grinding_factor as u32;
         if grinding_factor == 0 {
             // skip if there is no grinding required
             return;
