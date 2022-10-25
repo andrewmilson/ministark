@@ -37,6 +37,7 @@ impl ProofOptions {
     pub const MAX_NUM_QUERIES: u8 = 128;
     pub const MIN_BLOWUP_FACTOR: u8 = 2;
     pub const MAX_BLOWUP_FACTOR: u8 = 64;
+    pub const MAX_GRINDING_FACTOR: u8 = 32;
 
     pub fn new(num_queries: u8, blowup_factor: u8, grinding_factor: u8) -> Self {
         assert!(num_queries >= Self::MIN_NUM_QUERIES);
@@ -44,6 +45,7 @@ impl ProofOptions {
         assert!(blowup_factor.is_power_of_two());
         assert!(blowup_factor >= Self::MIN_BLOWUP_FACTOR);
         assert!(blowup_factor <= Self::MAX_BLOWUP_FACTOR);
+        assert!(grinding_factor <= Self::MAX_GRINDING_FACTOR);
         ProofOptions {
             num_queries,
             blowup_factor,
@@ -99,13 +101,9 @@ pub trait Prover {
         trace_domain: Radix2EvaluationDomain<Self::Fp>,
         lde_domain: Radix2EvaluationDomain<Self::Fp>,
     ) -> (Matrix<Self::Fp>, Matrix<Self::Fp>, MerkleTree<Sha256>) {
-        let _timer = Timer::new("trace extension");
         let trace_polys = trace.interpolate(trace_domain);
         let trace_lde = trace_polys.evaluate(lde_domain);
-        drop(_timer);
-        let _timer = Timer::new("trace commitment");
         let merkle_tree = trace_lde.commit_to_rows();
-        drop(_timer);
         (trace_lde, trace_polys, merkle_tree)
     }
 
@@ -116,18 +114,8 @@ pub trait Prover {
         let trace_info = trace.info();
         let pub_inputs = self.get_pub_inputs(&trace);
         let air = Self::Air::new(trace_info, pub_inputs, options);
+        air.validate();
         let mut channel = ProverChannel::<Self::Air, Sha256>::new(&air);
-
-        {
-            // TODO: move into validation section
-            let ce_blowup_factor = air.ce_blowup_factor();
-            let lde_blowup_factor = air.lde_blowup_factor();
-            assert!(
-                ce_blowup_factor <= lde_blowup_factor,
-                "constraint evaluation blowup factor {ce_blowup_factor} is 
-                larger than the lde blowup factor {lde_blowup_factor}"
-            );
-        }
 
         let trace_domain = air.trace_domain();
         let lde_domain = air.lde_domain();
@@ -158,16 +146,13 @@ pub trait Prover {
         #[cfg(debug_assertions)]
         air.validate_constraints(&challenges, &execution_trace);
 
-        let _timer = Timer::new("Composition trace");
         let composition_coeffs = channel.get_constraint_composition_coeffs();
         let constraint_coposer = ConstraintComposer::new(&air, composition_coeffs);
         // TODO: move commitment here
         let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =
             constraint_coposer.build_commitment(&challenges, &execution_trace_lde);
         channel.commit_composition_trace(composition_trace_lde_tree.root());
-        drop(_timer);
 
-        let _timer = Timer::new("OOD evals");
         let g = trace_domain.group_gen;
         let z = channel.get_ood_point();
         let ood_execution_trace_evals = execution_trace_polys.evaluate_at(z);
@@ -176,12 +161,9 @@ pub trait Prover {
         let z_n = z.pow([execution_trace_polys.num_cols() as u64]);
         let ood_composition_trace_evals = composition_trace_polys.evaluate_at(z_n);
         channel.send_ood_constraint_evaluations(&ood_composition_trace_evals);
-        drop(_timer);
 
         let deep_coeffs = channel.get_deep_composition_coeffs();
-        let _timer = Timer::new("DEEP composition");
         let mut deep_poly_composer = DeepPolyComposer::new(&air, deep_coeffs, z);
-        let _timer2 = Timer::new("DEEP MAIN");
         deep_poly_composer.add_execution_trace_polys(
             execution_trace_polys,
             ood_execution_trace_evals,
@@ -189,14 +171,9 @@ pub trait Prover {
         );
         deep_poly_composer
             .add_composition_trace_polys(composition_trace_polys, ood_composition_trace_evals);
-        drop(_timer2);
-        let _timer2 = Timer::new("DEEP INTERP");
         let deep_composition_poly = deep_poly_composer.into_deep_poly();
         let deep_composition_lde = deep_composition_poly.into_evaluations(lde_domain);
-        drop(_timer2);
-        drop(_timer);
 
-        let _timer = Timer::new("FRI");
         let mut fri_prover = FriProver::<Self::Fp, Sha256>::new(air.options().into_fri_options());
         fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
 
@@ -213,7 +190,6 @@ pub trait Prover {
             composition_trace_lde_tree,
             &query_positions,
         );
-        drop(_timer);
 
         Ok(channel.build_proof(queries, fri_proof))
     }

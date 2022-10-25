@@ -99,6 +99,17 @@ pub trait Air {
         self.options().blowup_factor as usize
     }
 
+    /// Validate properties of this air
+    fn validate(&self) {
+        let ce_blowup_factor = self.ce_blowup_factor();
+        let lde_blowup_factor = self.lde_blowup_factor();
+        assert!(
+            ce_blowup_factor <= lde_blowup_factor,
+            "constraint evaluation blowup factor {ce_blowup_factor} is 
+            larger than the lde blowup factor {lde_blowup_factor}"
+        );
+    }
+
     fn trace_domain(&self) -> Radix2EvaluationDomain<Self::Fp> {
         let trace_len = self.trace_len();
         Radix2EvaluationDomain::new(trace_len).unwrap()
