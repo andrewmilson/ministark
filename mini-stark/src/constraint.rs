@@ -71,7 +71,7 @@ impl Challenge for usize {
 /// An interface for types that can symbolically represent a column of an
 /// execution trace
 pub trait Column {
-    /// Get the execution trace column index
+    /// Returns the execution trace column index
     fn index(&self) -> usize;
 
     // Create a constraint element for the current cycle
@@ -90,6 +90,11 @@ impl Column for usize {
         *self
     }
 }
+
+// #[proc_macro_derive(Column, attributes(after))]
+// pub fn derive_constraint_column(_item: TokenStream) -> TokenStream {
+//     "fn answer() -> u32 { 42 }".parse().unwrap()
+// }
 
 /// Represents the group of variables within a constraint polynomial term.
 /// Each variable is of the form `(element, power)`.

@@ -4,24 +4,16 @@ My time working at Immutable left me fascinated with theoretical proof systems a
 
 The library is primarily written in Rust but has been optimised by moving heavily parellisable polynomial arithmetic from the CPU to the GPU. Rust has poor support for coding GPUs so [Apple's metal shader language](https://developer.apple.com/metal/) was used instead. The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and [winterfell](https://github.com/novifinancial/winterfell) was heavily used as a reference for several components: fast Merkle Tree, DEEP composition polynomial, FRI. This library runs around twice as fast as Winterfell at the moment but will evolve to be even faster and have lower memory requirements.
 
-MiniSTARK is unique with how constraints are expressed over the execution trace. Constraints are represented symbolically as a multivariate polynomial where each variable represents a column of the execution trace ([Column](mini-stark/src/constraint.rs) trait) or one of the verifier's challenges ([Challenge](mini-stark/src/constraint.rs) trait). Bellow is a contrived example to illustrate how constraints are represented. Challenges are represented in a similar way. Look at the [Brainf***](mini-stark/examples/brainfuck/) example for a full example
+MiniSTARK is unique with how constraints are expressed over the execution trace. Constraints are represented symbolically as a multivariate polynomial where each variable represents a column of the execution trace ([Column](mini-stark/src/constraint.rs) trait) or one of the verifier's challenges ([Challenge](mini-stark/src/constraint.rs) trait). Bellow is a contrived example to illustrate how constraints are represented. Challenges are represented in a similar way. Look at the [Brainf***](mini-stark/examples/brainfuck/) for a full example.
 
 ```rust
+#[derive(Column)]
 enum ProcessorTable {
     Cycle,
     InstructionPointer,
     CurrentInstruction,
     // ...
 }
-
-impl mini_stark::constraint::Column for ProcessorTable {
-    /// Returns the execution trace column index
-    fn index(&self) -> usize {
-        *self as usize
-    }
-}
-
-// ...
 
 fn transition_constraints<F: Field>() -> Vec<Constraint<F>> {
     use ProcessorTable::*;
