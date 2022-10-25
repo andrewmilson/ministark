@@ -1,7 +1,5 @@
-use crate::allocator::PageAlignedAllocator;
 use crate::allocator::PAGE_SIZE;
-use crate::plan::PLANNER;
-use crate::stage::BitReverseGpuStage;
+use crate::GpuVec;
 use ark_ff::FftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -76,7 +74,7 @@ pub fn bit_reverse<T: Send>(v: &mut [T]) {
 // Never use on unified memory architechture devices (M1, M2 etc.)
 pub fn copy_to_private_buffer<T: Sized>(
     command_queue: &metal::CommandQueue,
-    v: &Vec<T, PageAlignedAllocator>,
+    v: &GpuVec<T>,
 ) -> metal::Buffer {
     let device = command_queue.device();
     let shared_buffer = buffer_no_copy(device, v);
@@ -92,10 +90,7 @@ pub fn copy_to_private_buffer<T: Sized>(
 }
 
 /// WARNING: keep the original data around or it will be freed.
-pub fn buffer_no_copy<T: Sized>(
-    device: &metal::DeviceRef,
-    v: &Vec<T, PageAlignedAllocator>,
-) -> metal::Buffer {
+pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &GpuVec<T>) -> metal::Buffer {
     let byte_len = round_up_to_multiple(v.len() * std::mem::size_of::<T>(), *PAGE_SIZE);
     device.new_buffer_with_bytes_no_copy(
         v.as_ptr() as *mut std::ffi::c_void,
@@ -106,10 +101,7 @@ pub fn buffer_no_copy<T: Sized>(
 }
 
 /// WARNING: keep the original data around or it will be freed.
-pub fn buffer_mut_no_copy<T: Sized>(
-    device: &metal::DeviceRef,
-    v: &mut Vec<T, PageAlignedAllocator>,
-) -> metal::Buffer {
+pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut GpuVec<T>) -> metal::Buffer {
     let byte_len = round_up_to_multiple(v.len() * std::mem::size_of::<T>(), *PAGE_SIZE);
     device.new_buffer_with_bytes_no_copy(
         v.as_mut_ptr() as *mut std::ffi::c_void,

@@ -44,7 +44,7 @@ cargo run --release --features parallel,asm  --example fib
 - Speed optimizations that don't sacrifice readability
 - Memory reductions that don't sacrifice readability
 - Using more `arkworks` features where appropriate
-- Perhaps move Merkle Tree and FRI impl to `arkworks`
+- Enabling zero knowledge
 
 ## Reference and thanks
 

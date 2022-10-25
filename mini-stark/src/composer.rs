@@ -131,17 +131,21 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             let evaluation_degree = constraint.degree() * trace_degree - divisor.degree;
             #[cfg(debug_assertions)]
             self.validate_quotient_degree(&quotient, evaluation_degree);
+            assert!(evaluation_degree <= composition_degree);
             let degree_adjustment = composition_degree - evaluation_degree;
 
-            let group = groups
-                .entry(degree_adjustment)
-                .or_insert_with(|| DegreeAdjustmentGroup {
-                    degree_adjustment,
-                    columns: Vec::new(),
-                    coeffs: Vec::new(),
-                });
-            group.columns.push(quotient);
-            group.coeffs.push(self.composition_coeffs.pop().unwrap());
+            if degree_adjustment != 0 {
+                let group =
+                    groups
+                        .entry(degree_adjustment)
+                        .or_insert_with(|| DegreeAdjustmentGroup {
+                            degree_adjustment,
+                            columns: Vec::new(),
+                            coeffs: Vec::new(),
+                        });
+                group.columns.push(quotient);
+                group.coeffs.push(self.composition_coeffs.pop().unwrap());
+            }
         }
 
         // TODO: GPU
@@ -203,11 +207,10 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     }
 
     fn trace_polys(&self, composed_evaluations: Matrix<A::Fp>) -> Matrix<A::Fp> {
-        assert!(composed_evaluations.num_cols() == 1);
+        assert_eq!(composed_evaluations.num_cols(), 1);
         let mut composition_poly = composed_evaluations.into_polynomials(self.air.lde_domain());
 
         let composition_poly_degree = composition_poly.column_degrees()[0];
-        // TODO: put back if quadratic degrees no success
         assert_eq!(composition_poly_degree, self.air.composition_degree());
         assert_eq!(composition_poly_degree, self.air.composition_degree());
         composition_poly.0[0].truncate(composition_poly_degree + 1);

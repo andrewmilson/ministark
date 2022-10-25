@@ -5,7 +5,6 @@ use crate::stage::ScaleAndNormalizeGpuStage;
 use crate::stage::Variant;
 use crate::utils::bit_reverse;
 use crate::utils::buffer_mut_no_copy;
-use crate::utils::buffer_no_copy;
 use crate::utils::fill_twiddles;
 use crate::FftDirection;
 use crate::GpuField;

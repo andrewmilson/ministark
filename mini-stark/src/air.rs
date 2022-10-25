@@ -44,16 +44,48 @@ pub trait Air {
     }
 
     /// Constraint evaluation blowup factor
-    /// Must be a power of two greater than or equal to the highest transition
-    /// constraint degree.
+    /// Must be a power of two.
     fn ce_blowup_factor(&self) -> usize {
-        let highest_degree = self
+        let max_boundary_constraint_degree = self
+            .boundary_constraints()
+            .iter()
+            .map(|constraint| constraint.degree())
+            .max()
+            .unwrap_or(0);
+        let boundary_ce_blowup_factor = utils::ceil_power_of_two(max_boundary_constraint_degree);
+
+        let max_terminal_constraint_degree = self
+            .terminal_constraints()
+            .iter()
+            .map(|constraint| constraint.degree())
+            .max()
+            .unwrap_or(0);
+        let terminal_ce_blowup_factor = utils::ceil_power_of_two(max_terminal_constraint_degree);
+
+        let max_transition_constraint_degree = self
             .transition_constraints()
             .iter()
             .map(|constraint| constraint.degree())
             .max()
             .unwrap_or(0);
-        utils::ceil_power_of_two(highest_degree)
+        // TODO: improve explanation of why we negate these constraint degrees by 1
+        // Transition constraints must evaluate to zero in all execution trace rows
+        // except the last. These rows are divided out from the transition constraint
+        // evaluations which has the effect of reducing the overall degree of the
+        // transition constraint evaluations by `trace_len - 1`. Therefore the
+        // total constraint evaluation degree is `constraint_degree * (trace_len - 1) -
+        // (trace_len - 1) = (constraint_degree - 1) * (trace_len - 1)`
+        let transition_ce_blowup_factor =
+            utils::ceil_power_of_two(max_transition_constraint_degree.saturating_sub(1));
+
+        [
+            transition_ce_blowup_factor,
+            terminal_ce_blowup_factor,
+            boundary_ce_blowup_factor,
+        ]
+        .into_iter()
+        .max()
+        .unwrap()
     }
 
     /// Returns a degree that all constraints polynomials must be normalized to.
