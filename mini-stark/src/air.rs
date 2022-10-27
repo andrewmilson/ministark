@@ -1,5 +1,7 @@
 use crate::challenges::Challenges;
 use crate::constraint::Element;
+use crate::prover::Proof;
+use crate::random::PublicCoin;
 use crate::utils;
 use crate::utils::fill_vanishing_polynomial;
 use crate::utils::Timer;
@@ -14,7 +16,9 @@ use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
+use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use digest::Digest;
 use fast_poly::allocator::PageAlignedAllocator;
 use fast_poly::GpuField;
 use fast_poly::GpuVec;
@@ -24,7 +28,8 @@ use std::ops::Deref;
 
 pub trait Air {
     type Fp: GpuField;
-    type PublicInputs: CanonicalSerialize;
+    // TODO: consider removing clone requirement
+    type PublicInputs: CanonicalSerialize + CanonicalDeserialize + Clone;
 
     // TODO: could make this borrow info and options if so inclined
     fn new(info: TraceInfo, inputs: Self::PublicInputs, options: ProofOptions) -> Self;
@@ -247,17 +252,25 @@ pub trait Air {
         Divisor { lde, degree: 1 }
     }
 
-    fn num_challenges(&self) -> usize {
+    fn get_challenges(&self, public_coin: &mut PublicCoin<impl Digest>) -> Challenges<Self::Fp> {
         // TODO: change get_challenge_indices to a constraint iterator and extract the
         // constraint with the highest index
-        self.all_constraint_elements()
+        let num_challenges = self
+            .all_constraint_elements()
             .iter()
             .filter_map(|element| match element {
                 Element::Challenge(index) => Some(index + 1),
                 _ => None,
             })
             .max()
-            .unwrap_or(0)
+            .unwrap_or(0);
+
+        if num_challenges == 0 {
+            Challenges::default()
+        } else {
+            let mut rng = public_coin.draw_rng();
+            Challenges::new(&mut rng, num_challenges)
+        }
     }
 
     fn all_constraint_elements(&self) -> Vec<Element> {

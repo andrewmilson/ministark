@@ -1,12 +1,13 @@
 use crate::tables;
 use ark_ff_optimized::fp64::Fp;
+use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use mini_stark::Air;
 use mini_stark::Constraint;
 use mini_stark::ProofOptions;
 use mini_stark::TraceInfo;
 
-#[derive(CanonicalSerialize)]
+#[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct ExecutionInfo {
     pub execution_len: usize,
     pub input: Vec<usize>,

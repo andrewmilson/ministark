@@ -4,6 +4,7 @@ use fast_poly::GpuField;
 use std::ops::Deref;
 use std::ops::Index;
 
+#[derive(Default)]
 pub struct Challenges<F: GpuField>(Vec<F>);
 
 impl<F: GpuField> Challenges<F> {

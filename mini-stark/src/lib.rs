@@ -18,6 +18,7 @@ mod prover;
 mod random;
 mod trace;
 pub mod utils;
+mod verifier;
 
 pub use air::Air;
 pub use constraint::Column;

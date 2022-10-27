@@ -5,6 +5,7 @@ use crate::fri::FriProof;
 use crate::prover::Proof;
 use crate::random::PublicCoin;
 use crate::trace::Queries;
+use crate::verifier::VerificationError;
 use crate::Air;
 use ark_ff::UniformRand;
 use ark_serialize::CanonicalSerialize;
@@ -12,6 +13,7 @@ use ark_std::rand::Rng;
 use digest::Digest;
 use digest::Output;
 use fast_poly::GpuField;
+use sha2::Sha256;
 use std::ops::Deref;
 
 pub struct ProverChannel<'a, A: Air, D: Digest> {
@@ -123,11 +125,6 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         self.ood_constraint_evaluations = evals.to_vec();
     }
 
-    pub fn get_challenges<F: GpuField>(&mut self, num_challenges: usize) -> Challenges<F> {
-        let mut rng = self.public_coin.draw_rng();
-        Challenges::new(&mut rng, num_challenges)
-    }
-
     pub fn grind_fri_commitments(&mut self) {
         let grinding_factor = self.air.options().fri_grinding_factor as u32;
         if grinding_factor == 0 {
@@ -167,13 +164,15 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         self,
         trace_queries: Queries<A::Fp>,
         fri_proof: FriProof<A::Fp>,
-    ) -> Proof<A::Fp> {
+    ) -> Proof<A> {
         Proof {
             options: *self.air.options(),
             trace_info: self.air.trace_info().clone(),
             base_trace_commitment: self.base_trace_commitment.to_vec(),
             extension_trace_commitment: self.extension_trace_commitment.map(|o| o.to_vec()),
             composition_trace_commitment: self.composition_trace_commitment.to_vec(),
+            public_inputs: self.air.pub_inputs().clone(),
+            fri_pow_nonce: self.fri_pow_nonce,
             fri_proof,
             trace_queries,
         }
@@ -193,3 +192,46 @@ impl<'a, A: Air, D: Digest> fri::ProverChannel<A::Fp> for ProverChannel<'a, A, D
         self.public_coin.draw()
     }
 }
+
+// pub struct VerifierChannel<'a, A: Air, D: Digest> {
+//     public_coin: PublicCoin<D>,
+//     base_trace_commitment: Output<D>,
+//     extension_trace_commitment: Option<Output<D>>,
+//     composition_trace_commitment: Output<D>,
+//     ood_trace_states: (Vec<A::Fp>, Vec<A::Fp>),
+//     ood_constraint_evaluations: Vec<A::Fp>,
+//     fri_pow_nonce: u64,
+// }
+
+// impl<'a, A: Air, D: Digest> VerifierChannel<'a, A, D> {
+//     pub fn new(proof: &Proof<A>) -> Result<Self, VerificationError> {
+//         let Proof {
+//             base_trace_commitment,
+//             extension_trace_commitment,
+//             composition_trace_commitment,
+//             fri_pow_nonce,
+//             ..
+//         } = proof;
+
+//         let seed = Vec::new();
+//         proof.public_inputs.serialize_compressed(&mut seed).unwrap();
+//         proof.trace_info.serialize_compressed(&mut seed).unwrap();
+//         proof.options.serialize_compressed(&mut seed).unwrap();
+//         let public_coin = PublicCoin::<Sha256>::new(&seed);
+
+//         let base_trace_commitment =
+// Output::<D>::from_iter(base_trace_commitment);         let
+// extension_trace_commitment =
+// extension_trace_commitment.map(Output::<D>::from_iter);         let
+// composition_trace_commitment =
+// Output::<D>::from_iter(composition_trace_commitment);
+
+//         Ok(VerifierChannel {
+//             public_coin,
+//             fri_pow_nonce,
+//             base_trace_commitment,
+//             extension_trace_commitment,
+//             composition_trace_commitment,
+//         })
+//     }
+// }
