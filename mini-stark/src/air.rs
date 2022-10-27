@@ -13,6 +13,7 @@ use ark_ff::batch_inversion;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
+use ark_ff::UniformRand;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
@@ -271,6 +272,17 @@ pub trait Air {
             let mut rng = public_coin.draw_rng();
             Challenges::new(&mut rng, num_challenges)
         }
+    }
+
+    // TODO: make this generic
+    fn get_constraint_composition_coeffs(
+        &self,
+        public_coin: &mut PublicCoin<impl Digest>,
+    ) -> Vec<(Self::Fp, Self::Fp)> {
+        let mut rng = public_coin.draw_rng();
+        (0..self.num_constraints())
+            .map(|_| (Self::Fp::rand(&mut rng), Self::Fp::rand(&mut rng)))
+            .collect()
     }
 
     fn all_constraint_elements(&self) -> Vec<Element> {

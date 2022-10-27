@@ -121,31 +121,30 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             zip(terminal_constraints, terminal_quotients.0).map(|(c, q)| (c, q, &terminal_divisor));
 
         let _timer = Timer::new("asjusting degree");
+        let trace_degree = air.trace_len() - 1;
         let composition_degree = air.composition_degree();
         let mut groups = BTreeMap::new();
         for (constraint, quotient, divisor) in
             boundary_iter.chain(transition_iter).chain(terminal_iter)
         {
             // TODO: handle case when degree is 0?
-            let trace_degree = air.trace_len() - 1;
             let evaluation_degree = constraint.degree() * trace_degree - divisor.degree;
             #[cfg(debug_assertions)]
             self.validate_quotient_degree(&quotient, evaluation_degree);
             assert!(evaluation_degree <= composition_degree);
             let degree_adjustment = composition_degree - evaluation_degree;
 
-            if degree_adjustment != 0 {
-                let group =
-                    groups
-                        .entry(degree_adjustment)
-                        .or_insert_with(|| DegreeAdjustmentGroup {
-                            degree_adjustment,
-                            columns: Vec::new(),
-                            coeffs: Vec::new(),
-                        });
-                group.columns.push(quotient);
-                group.coeffs.push(self.composition_coeffs.pop().unwrap());
-            }
+            println!("{}", degree_adjustment);
+
+            let group = groups
+                .entry(degree_adjustment)
+                .or_insert_with(|| DegreeAdjustmentGroup {
+                    degree_adjustment,
+                    columns: Vec::new(),
+                    coeffs: Vec::new(),
+                });
+            group.columns.push(quotient);
+            group.coeffs.push(self.composition_coeffs.pop().unwrap());
         }
 
         // TODO: GPU
@@ -174,17 +173,19 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
                 })
                 .unzip();
 
-            let mut beta_col = Matrix::new(beta_cols).sum_columns();
+            let mut alpha_col = Matrix::new(alpha_cols).sum_columns();
 
             let _timer = Timer::new("===DEG ADJUSTOR===");
 
-            // TODO: make parallel. also this is hacky and needs to go
-            // modify domain to go from x to x^degree_adjustment
-            let mut adjust_domain = lde_domain;
-            adjust_domain.offset = adjust_domain.offset.pow([degree_adjustment as u64]);
-            adjust_domain.group_gen = adjust_domain.group_gen.pow([degree_adjustment as u64]);
-            for (v, x) in zip(&mut beta_col.0[0], adjust_domain.elements()) {
-                *v *= x
+            if degree_adjustment != 0 {
+                // TODO: make parallel. also this is hacky and needs to go
+                // modify domain to go from x to x^degree_adjustment
+                let mut adjust_domain = lde_domain;
+                adjust_domain.offset = adjust_domain.offset.pow([degree_adjustment as u64]);
+                adjust_domain.group_gen = adjust_domain.group_gen.pow([degree_adjustment as u64]);
+                for (v, x) in zip(&mut alpha_col.0[0], adjust_domain.elements()) {
+                    *v *= x
+                }
             }
 
             // TODO: multithreaded but not faster. hmmm..
@@ -198,8 +199,8 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
             drop(_timer);
 
-            accumulator.append(Matrix::new(alpha_cols));
-            accumulator.append(beta_col);
+            accumulator.append(alpha_col);
+            accumulator.append(Matrix::new(beta_cols));
         }
         drop(_timer);
 

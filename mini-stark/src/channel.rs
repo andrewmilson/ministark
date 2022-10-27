@@ -73,14 +73,6 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     }
 
     // TODO: make this generic
-    pub fn get_constraint_composition_coeffs(&mut self) -> Vec<(A::Fp, A::Fp)> {
-        let mut rng = self.public_coin.draw_rng();
-        (0..self.air.num_constraints())
-            .map(|_| (A::Fp::rand(&mut rng), A::Fp::rand(&mut rng)))
-            .collect()
-    }
-
-    // TODO: make this generic
     /// Output is of the form `(trace_coeffs, composition_coeffs,
     /// degree_adjustment_coeffs)`
     pub fn get_deep_composition_coeffs(&mut self) -> DeepCompositionCoeffs<A::Fp> {
@@ -172,6 +164,8 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
             extension_trace_commitment: self.extension_trace_commitment.map(|o| o.to_vec()),
             composition_trace_commitment: self.composition_trace_commitment.to_vec(),
             public_inputs: self.air.pub_inputs().clone(),
+            ood_trace_states: self.ood_trace_states,
+            ood_constraint_evaluations: self.ood_constraint_evaluations,
             fri_pow_nonce: self.fri_pow_nonce,
             fri_proof,
             trace_queries,

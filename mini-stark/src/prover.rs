@@ -79,6 +79,8 @@ pub struct Proof<A: Air> {
     pub fri_pow_nonce: u64,
     pub trace_queries: Queries<A::Fp>,
     pub public_inputs: A::PublicInputs,
+    pub ood_trace_states: (Vec<A::Fp>, Vec<A::Fp>),
+    pub ood_constraint_evaluations: Vec<A::Fp>,
 }
 
 /// Errors that can occur during the proving stage
@@ -139,7 +141,7 @@ pub trait Prover {
         #[cfg(debug_assertions)]
         air.validate_constraints(&challenges, &execution_trace);
 
-        let composition_coeffs = channel.get_constraint_composition_coeffs();
+        let composition_coeffs = air.get_constraint_composition_coeffs(&mut channel.public_coin);
         let constraint_coposer = ConstraintComposer::new(&air, composition_coeffs);
         // TODO: move commitment here
         let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =

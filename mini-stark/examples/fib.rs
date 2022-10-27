@@ -198,12 +198,15 @@ fn main() {
     let prover = FibProver::new(options);
     let trace = gen_trace(1048576);
 
-    let proof = prover.generate_proof(trace);
+    let proof = prover.generate_proof(trace).unwrap();
     println!("Runtime: {:?}", now.elapsed());
-    let mut proof_bytes = Vec::new();
-    proof
-        .unwrap()
-        .serialize_compressed(&mut proof_bytes)
-        .unwrap();
-    println!("Result: {:?}kb", proof_bytes.len() / 1024);
+
+    proof.verify().unwrap();
+
+    // let mut proof_bytes = Vec::new();
+    // proof
+    //     .unwrap()
+    //     .serialize_compressed(&mut proof_bytes)
+    //     .unwrap();
+    // println!("Result: {:?}kb", proof_bytes.len() / 1024);
 }
