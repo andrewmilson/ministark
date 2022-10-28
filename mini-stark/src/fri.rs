@@ -59,6 +59,21 @@ impl FriOptions {
 pub struct FriProof<F: GpuField> {
     layers: Vec<FriProofLayer<F>>,
     remainder: Vec<F>,
+    remainder_commitment: Vec<u8>,
+}
+
+impl<F: GpuField> FriProof<F> {
+    pub fn new(
+        layers: Vec<FriProofLayer<F>>,
+        remainder_commitment: Vec<u8>,
+        remainder: Vec<F>,
+    ) -> Self {
+        FriProof {
+            layers,
+            remainder_commitment,
+            remainder,
+        }
+    }
 }
 
 pub struct FriProver<F: GpuField, D: Digest> {
@@ -71,22 +86,25 @@ struct FriLayer<F: GpuField, D: Digest> {
     evaluations: Vec<F>,
 }
 
-impl<F: GpuField> FriProof<F> {
-    pub fn new(layers: Vec<FriProofLayer<F>>, remainder: Vec<F>) -> Self {
-        FriProof { layers, remainder }
-    }
-}
-
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct FriProofLayer<F: GpuField> {
     values: Vec<F>,
     proofs: Vec<MerkleProof>,
+    commitment: Vec<u8>,
 }
 
 impl<F: GpuField> FriProofLayer<F> {
-    pub fn new<const N: usize>(values: Vec<[F; N]>, proofs: Vec<MerkleProof>) -> Self {
+    pub fn new<const N: usize>(
+        values: Vec<[F; N]>,
+        proofs: Vec<MerkleProof>,
+        commitment: Vec<u8>,
+    ) -> Self {
         let values = values.into_iter().flatten().collect();
-        FriProofLayer { values, proofs }
+        FriProofLayer {
+            values,
+            proofs,
+            commitment,
+        }
     }
 }
 
@@ -120,6 +138,7 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         }
 
         // layers store interlaved evaluations so they need to be un-interleaved
+        let remainder_commitment = last_layer.tree.root().to_vec();
         let last_evals = &last_layer.evaluations;
         let mut remainder = vec![F::zero(); last_evals.len()];
         let num_eval_chunks = last_evals.len() / folding_factor;
@@ -129,7 +148,7 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
             }
         }
 
-        FriProof::new(proof_layers, remainder)
+        FriProof::new(proof_layers, remainder_commitment, remainder)
     }
 
     pub fn build_layers(
@@ -226,7 +245,7 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
         for (i, layer) in proof.layers.iter().enumerate() {
             // TODO: batch merkle tree proofs
             // get the merkle root from the first merkle path
-            let layer_root = layer.proofs[0].parse::<D>().into_iter().next().unwrap();
+            let layer_root = Output::<D>::from_slice(&layer.commitment).clone();
             public_coin.reseed(&layer_root.deref());
             let alpha = public_coin.draw();
             layer_alphas.push(alpha);
@@ -242,6 +261,12 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
 
             layer_codeword_len /= folding_factor;
         }
+
+        let remainder_root = Output::<D>::from_slice(&proof.remainder_commitment).clone();
+        public_coin.reseed(&remainder_root.deref());
+        let remainder_alpha = public_coin.draw();
+        layer_alphas.push(remainder_alpha);
+        layer_commitments.push(remainder_root);
 
         Ok(FriVerifier {
             options,
@@ -376,5 +401,5 @@ fn query_layer<F: GpuField, D: Digest, const N: usize>(
         let chunk = &layer.evaluations[i..i + N];
         values.push(chunk.try_into().unwrap());
     }
-    FriProofLayer::new(values, proofs)
+    FriProofLayer::new(values, proofs, layer.tree.root().to_vec())
 }

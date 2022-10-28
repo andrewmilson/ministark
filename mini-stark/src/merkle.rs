@@ -99,25 +99,25 @@ impl<D: Digest> MerkleTree<D> {
 
     pub fn verify(
         root: &Output<D>,
-        mut proof: Vec<Output<D>>,
+        proof: &[Output<D>],
         mut position: usize,
     ) -> Result<(), MerkleTreeError> {
-        let mut running_hash = proof.pop().unwrap();
-        while proof.len() > 1 {
+        let mut proof_iter = proof.iter();
+        let mut running_hash = proof_iter.next().unwrap().clone();
+        for node in proof_iter {
             let mut hasher = D::new();
             if position % 2 == 0 {
                 hasher.update(running_hash);
-                hasher.update(proof.pop().unwrap());
+                hasher.update(node);
             } else {
-                hasher.update(proof.pop().unwrap());
+                hasher.update(node);
                 hasher.update(running_hash);
             }
             running_hash = hasher.finalize();
             position >>= 1;
         }
 
-        let root = proof.pop().unwrap();
-        if root == running_hash {
+        if *root == running_hash {
             Ok(())
         } else {
             Err(MerkleTreeError::InvalidProof)
@@ -143,7 +143,7 @@ fn build_merkle_nodes<D: Digest>(leaf_nodes: &[Output<D>]) -> Vec<Output<D>> {
                     let mut hasher = D::new();
                     hasher.update(&leaf_nodes[leaf_offset + j]);
                     hasher.update(&leaf_nodes[leaf_offset + j + 1]);
-                    nodes[(n / 2) + (leaf_offset / 2) + (j / 2)] = hasher.finalize();
+                    nodes[(n + leaf_offset + j) / 2] = hasher.finalize();
                 }
 
                 // generate remaining nodes
@@ -152,8 +152,8 @@ fn build_merkle_nodes<D: Digest>(leaf_nodes: &[Output<D>]) -> Vec<Output<D>> {
                 while start_idx >= num_subtrees {
                     for k in (start_idx..(start_idx + batch_size)).rev() {
                         let mut hasher = D::new();
-                        hasher.update(&leaf_nodes[k * 2]);
-                        hasher.update(&leaf_nodes[k * 2 + 1]);
+                        hasher.update(&nodes[k * 2]);
+                        hasher.update(&nodes[k * 2 + 1]);
                         nodes[k] = hasher.finalize();
                     }
                     start_idx /= 2;

@@ -3,6 +3,7 @@ use crate::fri;
 use crate::fri::FriVerifier;
 use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
+use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
 use crate::utils::Timer;
 use crate::Air;
@@ -27,12 +28,19 @@ pub enum VerificationError {
     InconsistentOodConstraintEvaluations,
     #[error("fri verification failed")]
     FriVerification(#[from] fri::VerificationError),
+    #[error("query does not resolve to the base trace commitment")]
+    BaseTraceQueryDoesNotMatchCommitment,
+    #[error("query does not resolve to the extension trace commitment")]
+    ExtensionTraceQueryDoesNotMatchCommitment,
+    #[error("query does not resolve to the composition trace commitment")]
+    CompositionTraceQueryDoesNotMatchCommitment,
     #[error("insufficient proof of work on fri commitments")]
     FriProofOfWork,
 }
 
 impl<A: Air> Proof<A> {
     pub fn verify(self) -> Result<(), VerificationError> {
+        use VerificationError::*;
         let _timer = Timer::new("Verification");
 
         let Proof {
@@ -100,7 +108,7 @@ impl<A: Air> Proof<A> {
                 });
 
         if calculated_ood_constraint_evaluation != provided_ood_constraint_evaluation {
-            return Err(VerificationError::InconsistentOodConstraintEvaluations);
+            return Err(InconsistentOodConstraintEvaluations);
         }
 
         let deep_coeffs = air.get_deep_composition_coeffs(&mut public_coin);
@@ -114,7 +122,7 @@ impl<A: Air> Proof<A> {
         if options.grinding_factor != 0 {
             public_coin.reseed(&pow_nonce);
             if public_coin.seed_leading_zeros() < options.grinding_factor as u32 {
-                return Err(VerificationError::FriProofOfWork);
+                return Err(FriProofOfWork);
             }
         }
 
@@ -124,35 +132,46 @@ impl<A: Air> Proof<A> {
             .map(|_| rng.gen_range(0..lde_domain_size))
             .collect::<Vec<usize>>();
 
-        let (base_trace_values, extension_trace_values) = trace_queries
+        let num_base_columns = air.trace_info().num_base_columns;
+        let num_trace_columns = num_base_columns + air.trace_info().num_extension_columns;
+        let (base_trace_rows, extension_trace_rows): (Vec<_>, Vec<_>) = trace_queries
             .execution_trace_values
-            .split_at(air.trace_info().num_base_columns);
+            .chunks(num_trace_columns)
+            .map(|row| row.split_at(num_base_columns))
+            .unzip();
 
         // base trace positions
         verify_positions::<Sha256>(
             base_trace_comitment,
             &query_positions,
-            base_trace_values,
+            &base_trace_rows,
             trace_queries.base_trace_proofs,
-        )?;
+        )
+        .map_err(|_| BaseTraceQueryDoesNotMatchCommitment)?;
 
         if let Some(extension_trace_commitment) = extension_trace_commitment {
             // extension trace positions
             verify_positions::<Sha256>(
                 extension_trace_commitment,
                 &query_positions,
-                extension_trace_values,
+                &extension_trace_rows,
                 trace_queries.extension_trace_proofs,
-            )?;
+            )
+            .map_err(|_| ExtensionTraceQueryDoesNotMatchCommitment)?;
         }
 
         // composition trace positions
+        let composition_trace_rows = trace_queries
+            .composition_trace_values
+            .chunks(air.ce_blowup_factor())
+            .collect::<Vec<&[A::Fp]>>();
         verify_positions::<Sha256>(
             composition_trace_commitment,
             &query_positions,
-            &trace_queries.composition_trace_values,
+            &composition_trace_rows,
             trace_queries.composition_trace_proofs,
-        )?;
+        )
+        .map_err(|_| CompositionTraceQueryDoesNotMatchCommitment)?;
 
         Ok(())
     }
@@ -224,25 +243,25 @@ fn ood_constraint_evaluation<A: Air>(
 fn verify_positions<D: Digest>(
     commitment: Output<D>,
     positions: &[usize],
-    values: &[impl CanonicalSerialize],
+    rows: &[&[impl CanonicalSerialize]],
     proofs: Vec<MerkleProof>,
-) -> Result<(), VerificationError> {
-    for ((position, proof), value) in positions.iter().zip(proofs).zip(values) {
+) -> Result<(), MerkleTreeError> {
+    for ((position, proof), row) in positions.iter().zip(proofs).zip(rows) {
         let proof = proof.parse::<D>();
-        let expected_leaf = proof.last().unwrap();
+        let expected_leaf = &proof[0];
 
         let mut hasher = D::new();
-        let mut value_bytes = Vec::with_capacity(value.compressed_size());
-        value.serialize_compressed(&mut value_bytes);
-        hasher.update(&value_bytes);
+        let mut row_bytes = Vec::with_capacity(row.compressed_size());
+        row.serialize_compressed(&mut row_bytes).unwrap();
+        hasher.update(&row_bytes);
         let actual_leaf = hasher.finalize();
 
-        if expected_leaf != &actual_leaf {
-            todo!()
+        if *expected_leaf != actual_leaf {
+            return Err(MerkleTreeError::InvalidProof);
         }
 
-        // TODO: make error
-        MerkleTree::<D>::verify(&commitment, proof, *position).unwrap();
+        MerkleTree::<D>::verify(&commitment, &proof, *position)?;
     }
-    todo!()
+
+    Ok(())
 }

@@ -99,6 +99,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
 
         self.pow_nonce = nonce.expect("nonce not found");
         self.public_coin.reseed(&self.pow_nonce);
+        println!("YON {}", self.public_coin.seed_leading_zeros());
     }
 
     pub fn get_fri_query_positions(&mut self) -> Vec<usize> {
