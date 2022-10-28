@@ -1,11 +1,9 @@
-use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
 use crate::fri;
 use crate::fri::FriProof;
 use crate::prover::Proof;
 use crate::random::PublicCoin;
 use crate::trace::Queries;
-use crate::verifier::VerificationError;
 use crate::Air;
 use ark_ff::UniformRand;
 use ark_serialize::CanonicalSerialize;
@@ -13,7 +11,6 @@ use ark_std::rand::Rng;
 use digest::Digest;
 use digest::Output;
 use fast_poly::GpuField;
-use sha2::Sha256;
 use std::ops::Deref;
 
 pub struct ProverChannel<'a, A: Air, D: Digest> {

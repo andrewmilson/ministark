@@ -9,7 +9,6 @@ use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
-use digest::Digest;
 use digest::Output;
 use sha2::Sha256;
 use std::ops::Deref;
@@ -59,6 +58,7 @@ impl<A: Air> Proof<A> {
         public_coin.reseed(&composition_trace_root.deref());
 
         let z = public_coin.draw::<A::Fp>();
+        // let z = air.lde_domain().element(5);
         println!("{z}");
         public_coin.reseed(&ood_trace_states.0);
         public_coin.reseed(&ood_trace_states.1);
@@ -81,6 +81,8 @@ impl<A: Air> Proof<A> {
                     acc *= z;
                     res
                 });
+        println!("WHAT {}", provided_ood_constraint_evaluation);
+        println!("WHY? {}", ood_constraint_evaluations[0]);
 
         if calculated_ood_constraint_evaluation != provided_ood_constraint_evaluation {
             println!("NOOOOOOOO");
@@ -138,15 +140,15 @@ fn ood_constraint_evaluation<A: Air>(
         boundary_iter.chain(transition_iter).chain(terminal_iter)
     {
         // TODO: proper errors
-        let (alpha, beta) = composition_coefficients.pop().unwrap();
         let evaluation = constraint.evaluate(challenges, curr_trace_evals, next_trace_evals);
         let quotient = evaluation * divisor;
 
-        // TODO: handle case when degree is 0?
+        // TODO: don't allow degree 0 constraints
         let evaluation_degree = constraint.degree() * trace_degree - divisor_degree;
         assert!(evaluation_degree <= composition_degree);
         let degree_adjustment = (composition_degree - evaluation_degree) as u64;
 
+        let (alpha, beta) = composition_coefficients.pop().unwrap();
         result += quotient * (alpha * x.pow([degree_adjustment]) + beta)
     }
 

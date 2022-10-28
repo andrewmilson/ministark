@@ -134,8 +134,6 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             assert!(evaluation_degree <= composition_degree);
             let degree_adjustment = composition_degree - evaluation_degree;
 
-            println!("{}", degree_adjustment);
-
             let group = groups
                 .entry(degree_adjustment)
                 .or_insert_with(|| DegreeAdjustmentGroup {
@@ -157,6 +155,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
                 coeffs,
             } = group;
 
+            // TODO this step can be skipped
             let (alpha_cols, beta_cols) = ark_std::cfg_iter!(columns)
                 .zip(coeffs)
                 .map(|(column, (alpha, beta))| {
@@ -221,12 +220,16 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             composition_poly.num_rows() / self.air.trace_len(),
             num_composition_trace_cols
         );
-        let composition_trace_poly = Matrix::from_rows(
-            composition_poly.0[0]
-                .chunks(num_composition_trace_cols)
-                .map(|chunk| chunk.to_vec())
-                .collect(),
-        );
+        let composition_trace_poly = if num_composition_trace_cols == 1 {
+            composition_poly
+        } else {
+            Matrix::from_rows(
+                composition_poly.0[0]
+                    .chunks(num_composition_trace_cols)
+                    .map(|chunk| chunk.to_vec())
+                    .collect(),
+            )
+        };
 
         composition_trace_poly
     }
