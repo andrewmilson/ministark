@@ -1,6 +1,5 @@
 use crate::challenges::Challenges;
 use crate::constraint::Element;
-use crate::prover::Proof;
 use crate::random::PublicCoin;
 use crate::utils;
 use crate::utils::fill_vanishing_polynomial;

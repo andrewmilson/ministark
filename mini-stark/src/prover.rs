@@ -10,7 +10,6 @@ use crate::Air;
 use crate::Trace;
 use crate::TraceInfo;
 use ark_ff::Field;
-use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use fast_poly::GpuField;

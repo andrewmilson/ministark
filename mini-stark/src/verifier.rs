@@ -12,11 +12,13 @@ use ark_serialize::CanonicalSerialize;
 use digest::Output;
 use sha2::Sha256;
 use std::ops::Deref;
+use thiserror::Error;
 
-/// Errors that are returned during verificatino of a STARK proof
-#[derive(Debug)]
+/// Errors that are returned during verification of a STARK proof
+#[derive(Error, Debug)]
 pub enum VerificationError {
-    Fail,
+    #[error("constraint evaluations at the out-of-domain point are inconsistent")]
+    InconsistentOodConstraintEvaluations,
     // TODO
 }
 
@@ -58,8 +60,6 @@ impl<A: Air> Proof<A> {
         public_coin.reseed(&composition_trace_root.deref());
 
         let z = public_coin.draw::<A::Fp>();
-        // let z = air.lde_domain().element(5);
-        println!("{z}");
         public_coin.reseed(&ood_trace_states.0);
         public_coin.reseed(&ood_trace_states.1);
         let calculated_ood_constraint_evaluation = ood_constraint_evaluation(
@@ -72,6 +72,7 @@ impl<A: Air> Proof<A> {
         );
 
         // TODO: why not proof only include single value for constraint eval?
+        public_coin.reseed(&ood_constraint_evaluations);
         let mut acc = A::Fp::one();
         let provided_ood_constraint_evaluation =
             ood_constraint_evaluations
@@ -81,11 +82,9 @@ impl<A: Air> Proof<A> {
                     acc *= z;
                     res
                 });
-        println!("WHAT {}", provided_ood_constraint_evaluation);
-        println!("WHY? {}", ood_constraint_evaluations[0]);
 
         if calculated_ood_constraint_evaluation != provided_ood_constraint_evaluation {
-            println!("NOOOOOOOO");
+            return Err(VerificationError::InconsistentOodConstraintEvaluations);
         }
 
         println!("BOOM!");
@@ -141,6 +140,7 @@ fn ood_constraint_evaluation<A: Air>(
     {
         // TODO: proper errors
         let evaluation = constraint.evaluate(challenges, curr_trace_evals, next_trace_evals);
+        // TODO: consider better name here. Multiplying by divisor seems kinda retarded
         let quotient = evaluation * divisor;
 
         // TODO: don't allow degree 0 constraints
