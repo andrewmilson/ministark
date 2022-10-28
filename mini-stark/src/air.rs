@@ -1,4 +1,5 @@
 use crate::challenges::Challenges;
+use crate::composer::DeepCompositionCoeffs;
 use crate::constraint::Element;
 use crate::random::PublicCoin;
 use crate::utils;
@@ -282,6 +283,42 @@ pub trait Air {
         (0..self.num_constraints())
             .map(|_| (Self::Fp::rand(&mut rng), Self::Fp::rand(&mut rng)))
             .collect()
+    }
+
+    // TODO: make this generic
+    /// Output is of the form `(trace_coeffs, composition_coeffs,
+    /// degree_adjustment_coeffs)`
+    fn get_deep_composition_coeffs(
+        &self,
+        public_coin: &mut PublicCoin<impl Digest>,
+    ) -> DeepCompositionCoeffs<Self::Fp> {
+        let mut rng = public_coin.draw_rng();
+
+        // execution trace coeffs
+        let trace_info = self.trace_info();
+        let num_execution_trace_cols =
+            trace_info.num_base_columns + trace_info.num_extension_columns;
+        let mut execution_trace_coeffs = Vec::new();
+        for _ in 0..num_execution_trace_cols {
+            execution_trace_coeffs.push((
+                Self::Fp::rand(&mut rng),
+                Self::Fp::rand(&mut rng),
+                Self::Fp::rand(&mut rng),
+            ));
+        }
+
+        // composition trace coeffs
+        let num_composition_trace_cols = self.ce_blowup_factor();
+        let mut composition_trace_coeffs = Vec::new();
+        for _ in 0..num_composition_trace_cols {
+            composition_trace_coeffs.push(Self::Fp::rand(&mut rng));
+        }
+
+        DeepCompositionCoeffs {
+            trace: execution_trace_coeffs,
+            constraints: composition_trace_coeffs,
+            degree: (Self::Fp::rand(&mut rng), Self::Fp::rand(&mut rng)),
+        }
     }
 
     fn all_constraint_elements(&self) -> Vec<Element> {

@@ -1,15 +1,21 @@
 use crate::challenges::Challenges;
-// use crate::channel::VerifierChannel;
-use crate::prover::Proof;
+use crate::fri;
+use crate::fri::FriVerifier;
+use crate::merkle::MerkleProof;
+use crate::merkle::MerkleTree;
 use crate::random::PublicCoin;
 use crate::utils::Timer;
 use crate::Air;
+// use crate::channel::VerifierChannel;
+use crate::Proof;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
+use digest::Digest;
 use digest::Output;
+use rand::Rng;
 use sha2::Sha256;
 use std::ops::Deref;
 use thiserror::Error;
@@ -19,7 +25,10 @@ use thiserror::Error;
 pub enum VerificationError {
     #[error("constraint evaluations at the out-of-domain point are inconsistent")]
     InconsistentOodConstraintEvaluations,
-    // TODO
+    #[error("fri verification failed")]
+    FriVerification(#[from] fri::VerificationError),
+    #[error("insufficient proof of work on fri commitments")]
+    FriProofOfWork,
 }
 
 impl<A: Air> Proof<A> {
@@ -32,9 +41,12 @@ impl<A: Air> Proof<A> {
             composition_trace_commitment,
             ood_constraint_evaluations,
             ood_trace_states,
+            trace_queries,
             trace_info,
             public_inputs,
             options,
+            fri_proof,
+            pow_nonce,
             ..
         } = self;
 
@@ -46,18 +58,22 @@ impl<A: Air> Proof<A> {
 
         let air = A::new(trace_info, public_inputs, options);
 
-        let base_trace_root = Output::<Sha256>::from_iter(base_trace_commitment);
-        public_coin.reseed(&base_trace_root.deref());
+        let base_trace_comitment = Output::<Sha256>::from_iter(base_trace_commitment);
+        public_coin.reseed(&base_trace_comitment.deref());
         let challenges = air.get_challenges(&mut public_coin);
 
-        if let Some(extension_trace_commitment) = extension_trace_commitment {
-            let extension_trace_root = Output::<Sha256>::from_iter(extension_trace_commitment);
-            public_coin.reseed(&extension_trace_root.deref());
-        }
+        let extension_trace_commitment =
+            extension_trace_commitment.map(|extension_trace_commitment| {
+                let extension_trace_commitment =
+                    Output::<Sha256>::from_iter(extension_trace_commitment);
+                public_coin.reseed(&extension_trace_commitment.deref());
+                extension_trace_commitment
+            });
 
         let composition_coeffs = air.get_constraint_composition_coeffs(&mut public_coin);
-        let composition_trace_root = Output::<Sha256>::from_iter(composition_trace_commitment);
-        public_coin.reseed(&composition_trace_root.deref());
+        let composition_trace_commitment =
+            Output::<Sha256>::from_iter(composition_trace_commitment);
+        public_coin.reseed(&composition_trace_commitment.deref());
 
         let z = public_coin.draw::<A::Fp>();
         public_coin.reseed(&ood_trace_states.0);
@@ -87,7 +103,56 @@ impl<A: Air> Proof<A> {
             return Err(VerificationError::InconsistentOodConstraintEvaluations);
         }
 
-        println!("BOOM!");
+        let deep_coeffs = air.get_deep_composition_coeffs(&mut public_coin);
+        let fri_verifier = FriVerifier::<A::Fp, Sha256>::new(
+            &mut public_coin,
+            options.into_fri_options(),
+            &fri_proof,
+            air.trace_len() - 1,
+        )?;
+
+        if options.grinding_factor != 0 {
+            public_coin.reseed(&pow_nonce);
+            if public_coin.seed_leading_zeros() < options.grinding_factor as u32 {
+                return Err(VerificationError::FriProofOfWork);
+            }
+        }
+
+        let mut rng = public_coin.draw_rng();
+        let lde_domain_size = air.trace_len() * air.lde_blowup_factor();
+        let query_positions = (0..options.num_queries)
+            .map(|_| rng.gen_range(0..lde_domain_size))
+            .collect::<Vec<usize>>();
+
+        let (base_trace_values, extension_trace_values) = trace_queries
+            .execution_trace_values
+            .split_at(air.trace_info().num_base_columns);
+
+        // base trace positions
+        verify_positions::<Sha256>(
+            base_trace_comitment,
+            &query_positions,
+            base_trace_values,
+            trace_queries.base_trace_proofs,
+        )?;
+
+        if let Some(extension_trace_commitment) = extension_trace_commitment {
+            // extension trace positions
+            verify_positions::<Sha256>(
+                extension_trace_commitment,
+                &query_positions,
+                extension_trace_values,
+                trace_queries.extension_trace_proofs,
+            )?;
+        }
+
+        // composition trace positions
+        verify_positions::<Sha256>(
+            composition_trace_commitment,
+            &query_positions,
+            &trace_queries.composition_trace_values,
+            trace_queries.composition_trace_proofs,
+        )?;
 
         Ok(())
     }
@@ -122,6 +187,7 @@ fn ood_constraint_evaluation<A: Air>(
             .inverse()
             .unwrap();
 
+    // TODO: honestly I hate this
     let boundary_iter = boundary_constraints
         .iter()
         .map(|constraint| (constraint, boundary_divisor, boundary_divisor_degree));
@@ -153,4 +219,30 @@ fn ood_constraint_evaluation<A: Air>(
     }
 
     result
+}
+
+fn verify_positions<D: Digest>(
+    commitment: Output<D>,
+    positions: &[usize],
+    values: &[impl CanonicalSerialize],
+    proofs: Vec<MerkleProof>,
+) -> Result<(), VerificationError> {
+    for ((position, proof), value) in positions.iter().zip(proofs).zip(values) {
+        let proof = proof.parse::<D>();
+        let expected_leaf = proof.last().unwrap();
+
+        let mut hasher = D::new();
+        let mut value_bytes = Vec::with_capacity(value.compressed_size());
+        value.serialize_compressed(&mut value_bytes);
+        hasher.update(&value_bytes);
+        let actual_leaf = hasher.finalize();
+
+        if expected_leaf != &actual_leaf {
+            todo!()
+        }
+
+        // TODO: make error
+        MerkleTree::<D>::verify(&commitment, proof, *position).unwrap();
+    }
+    todo!()
 }

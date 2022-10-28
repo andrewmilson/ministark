@@ -1,16 +1,16 @@
-use crate::composer::DeepCompositionCoeffs;
 use crate::fri;
 use crate::fri::FriProof;
-use crate::prover::Proof;
 use crate::random::PublicCoin;
 use crate::trace::Queries;
 use crate::Air;
-use ark_ff::UniformRand;
+use crate::Proof;
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
 use digest::Digest;
 use digest::Output;
 use fast_poly::GpuField;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use std::ops::Deref;
 
 pub struct ProverChannel<'a, A: Air, D: Digest> {
@@ -20,9 +20,9 @@ pub struct ProverChannel<'a, A: Air, D: Digest> {
     extension_trace_commitment: Option<Output<D>>,
     composition_trace_commitment: Output<D>,
     fri_layer_commitments: Vec<Output<D>>,
-    fri_pow_nonce: u64,
     ood_trace_states: (Vec<A::Fp>, Vec<A::Fp>),
     ood_constraint_evaluations: Vec<A::Fp>,
+    pow_nonce: u64,
 }
 
 // impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
@@ -46,7 +46,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
             ood_trace_states: Default::default(),
             ood_constraint_evaluations: Default::default(),
             fri_layer_commitments: Default::default(),
-            fri_pow_nonce: 0,
+            pow_nonce: 0,
         }
     }
 
@@ -69,39 +69,6 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         self.public_coin.draw()
     }
 
-    // TODO: make this generic
-    /// Output is of the form `(trace_coeffs, composition_coeffs,
-    /// degree_adjustment_coeffs)`
-    pub fn get_deep_composition_coeffs(&mut self) -> DeepCompositionCoeffs<A::Fp> {
-        let mut rng = self.public_coin.draw_rng();
-
-        // execution trace coeffs
-        let trace_info = self.air.trace_info();
-        let num_execution_trace_cols =
-            trace_info.num_base_columns + trace_info.num_extension_columns;
-        let mut execution_trace_coeffs = Vec::new();
-        for _ in 0..num_execution_trace_cols {
-            execution_trace_coeffs.push((
-                A::Fp::rand(&mut rng),
-                A::Fp::rand(&mut rng),
-                A::Fp::rand(&mut rng),
-            ));
-        }
-
-        // composition trace coeffs
-        let num_composition_trace_cols = self.air.ce_blowup_factor();
-        let mut composition_trace_coeffs = Vec::new();
-        for _ in 0..num_composition_trace_cols {
-            composition_trace_coeffs.push(A::Fp::rand(&mut rng));
-        }
-
-        DeepCompositionCoeffs {
-            trace: execution_trace_coeffs,
-            constraints: composition_trace_coeffs,
-            degree: (A::Fp::rand(&mut rng), A::Fp::rand(&mut rng)),
-        }
-    }
-
     pub fn send_ood_trace_states(&mut self, evals: &[A::Fp], next_evals: &[A::Fp]) {
         assert_eq!(evals.len(), next_evals.len());
         self.public_coin.reseed(&evals);
@@ -115,28 +82,23 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     }
 
     pub fn grind_fri_commitments(&mut self) {
-        let grinding_factor = self.air.options().fri_grinding_factor as u32;
+        let grinding_factor = self.air.options().grinding_factor as u32;
         if grinding_factor == 0 {
             // skip if there is no grinding required
             return;
         }
 
-        // ark_std::cfg_into_iter!(1..u64::MAX).find(predicate)
-        // TODO: make parallel
+        #[cfg(not(feature = "parallel"))]
         let nonce = (1..u64::MAX)
-            .find(|nonce| {
-                let mut hasher = D::new();
-                hasher.update(&self.public_coin.seed);
-                hasher.update(nonce.to_le_bytes());
-                let bytes = hasher.finalize();
-                let seed_head = u32::from_le_bytes(bytes[..4].try_into().unwrap());
-                let num_leading_zeros = seed_head.trailing_zeros();
-                num_leading_zeros >= grinding_factor
-            })
-            .expect("nonce not found");
+            .find(|&nonce| self.public_coin.check_leading_zeros(nonce) >= grinding_factor);
 
-        self.fri_pow_nonce = nonce;
-        self.public_coin.reseed(&nonce);
+        #[cfg(feature = "parallel")]
+        let nonce = (1..u64::MAX)
+            .into_par_iter()
+            .find_any(|&nonce| self.public_coin.check_leading_zeros(nonce) >= grinding_factor);
+
+        self.pow_nonce = nonce.expect("nonce not found");
+        self.public_coin.reseed(&self.pow_nonce);
     }
 
     pub fn get_fri_query_positions(&mut self) -> Vec<usize> {
@@ -163,7 +125,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
             public_inputs: self.air.pub_inputs().clone(),
             ood_trace_states: self.ood_trace_states,
             ood_constraint_evaluations: self.ood_constraint_evaluations,
-            fri_pow_nonce: self.fri_pow_nonce,
+            pow_nonce: self.pow_nonce,
             fri_proof,
             trace_queries,
         }

@@ -96,6 +96,33 @@ impl<D: Digest> MerkleTree<D> {
 
         Ok(MerkleProof::new::<D>(path))
     }
+
+    pub fn verify(
+        root: &Output<D>,
+        mut proof: Vec<Output<D>>,
+        mut position: usize,
+    ) -> Result<(), MerkleTreeError> {
+        let mut running_hash = proof.pop().unwrap();
+        while proof.len() > 1 {
+            let mut hasher = D::new();
+            if position % 2 == 0 {
+                hasher.update(running_hash);
+                hasher.update(proof.pop().unwrap());
+            } else {
+                hasher.update(proof.pop().unwrap());
+                hasher.update(running_hash);
+            }
+            running_hash = hasher.finalize();
+            position >>= 1;
+        }
+
+        let root = proof.pop().unwrap();
+        if root == running_hash {
+            Ok(())
+        } else {
+            Err(MerkleTreeError::InvalidProof)
+        }
+    }
 }
 
 #[cfg(feature = "parallel")]

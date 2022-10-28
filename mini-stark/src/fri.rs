@@ -1,5 +1,6 @@
 use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
+use crate::random::PublicCoin;
 use crate::utils::interleave;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
@@ -14,6 +15,8 @@ use fast_poly::GpuField;
 use fast_poly::GpuVec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::ops::Deref;
+use thiserror::Error;
 
 #[derive(Clone, Copy)]
 pub struct FriOptions {
@@ -52,6 +55,12 @@ impl FriOptions {
     }
 }
 
+#[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
+pub struct FriProof<F: GpuField> {
+    layers: Vec<FriProofLayer<F>>,
+    remainder: Vec<F>,
+}
+
 pub struct FriProver<F: GpuField, D: Digest> {
     options: FriOptions,
     layers: Vec<FriLayer<F, D>>,
@@ -60,12 +69,6 @@ pub struct FriProver<F: GpuField, D: Digest> {
 struct FriLayer<F: GpuField, D: Digest> {
     tree: MerkleTree<D>,
     evaluations: Vec<F>,
-}
-
-#[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct FriProof<F: GpuField> {
-    layers: Vec<FriProofLayer<F>>,
-    remainder: Vec<F>,
 }
 
 impl<F: GpuField> FriProof<F> {
@@ -189,6 +192,63 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         });
 
         evaluations
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum VerificationError {
+    #[error("codeword of size {0} could not be divided evenly by folding factor {1} at layer {2}")]
+    CodewordTruncation(usize, usize, usize),
+}
+
+pub struct FriVerifier<F: GpuField, D: Digest> {
+    options: FriOptions,
+    layer_commitments: Vec<Output<D>>,
+    layer_alphas: Vec<F>,
+    domain: Radix2EvaluationDomain<F>,
+}
+
+impl<F: GpuField, D: Digest> FriVerifier<F, D> {
+    pub fn new(
+        public_coin: &mut PublicCoin<impl Digest>,
+        options: FriOptions,
+        proof: &FriProof<F>,
+        max_poly_degree: usize,
+    ) -> Result<Self, VerificationError> {
+        let folding_factor = options.folding_factor;
+        let domain_offset = options.domain_offset();
+        let domain_size = max_poly_degree.next_power_of_two() * options.blowup_factor;
+        let domain = Radix2EvaluationDomain::new_coset(domain_size, domain_offset).unwrap();
+
+        let mut layer_alphas = Vec::new();
+        let mut layer_commitments = Vec::new();
+        let mut layer_codeword_len = domain_size;
+        for (i, layer) in proof.layers.iter().enumerate() {
+            // TODO: batch merkle tree proofs
+            // get the merkle root from the first merkle path
+            let layer_root = layer.proofs[0].parse::<D>().into_iter().next().unwrap();
+            public_coin.reseed(&layer_root.deref());
+            let alpha = public_coin.draw();
+            layer_alphas.push(alpha);
+            layer_commitments.push(layer_root);
+
+            if i != proof.layers.len() - 1 && layer_codeword_len % folding_factor != 0 {
+                return Err(VerificationError::CodewordTruncation(
+                    layer_codeword_len,
+                    folding_factor,
+                    i,
+                ));
+            }
+
+            layer_codeword_len /= folding_factor;
+        }
+
+        Ok(FriVerifier {
+            options,
+            domain,
+            layer_commitments,
+            layer_alphas,
+        })
     }
 }
 

@@ -30,6 +30,19 @@ impl<D: Digest> PublicCoin<D> {
         self.counter = 0;
     }
 
+    pub fn seed_leading_zeros(&self) -> u32 {
+        leading_zeros(&self.seed)
+    }
+
+    pub fn check_leading_zeros(&self, nonce: u64) -> u32 {
+        let mut nonce_bytes = Vec::with_capacity(nonce.compressed_size());
+        nonce.serialize_compressed(&mut nonce_bytes).unwrap();
+        let mut hasher = D::new();
+        hasher.update(&self.seed);
+        hasher.update(&nonce_bytes);
+        leading_zeros(&hasher.finalize())
+    }
+
     pub fn draw<F: Field>(&mut self) -> F {
         F::rand(&mut self.draw_rng())
     }
@@ -50,4 +63,17 @@ impl<D: Digest> PublicCoin<D> {
         hasher.update(self.counter.to_be_bytes());
         hasher.finalize()
     }
+}
+
+fn leading_zeros(hash: &[u8]) -> u32 {
+    let mut zeros = 0;
+    for byte in hash {
+        let leading_zeros = byte.leading_zeros();
+        zeros += leading_zeros;
+
+        if leading_zeros != 8 {
+            break;
+        }
+    }
+    zeros
 }
