@@ -1,5 +1,6 @@
 use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
+use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
 use crate::utils::interleave;
 use ark_poly::EvaluationDomain;
@@ -106,6 +107,32 @@ impl<F: GpuField> FriProofLayer<F> {
             commitment,
         }
     }
+
+    pub fn verify<D: Digest, const N: usize>(
+        &self,
+        positions: &[usize],
+    ) -> Result<(), MerkleTreeError> {
+        let commitment = Output::<D>::from_slice(&self.commitment);
+        // TODO: could check raminder is empty but not critical
+        // TODO: could check positions has the same len as other vecs but not critical
+        let (chunks, _remainder) = &self.values.as_chunks::<N>();
+        // zip chains could be dangerous
+        for (i, position) in positions.iter().enumerate() {
+            let proof = self.proofs[i].parse::<D>();
+            let expected_leaf = &proof[0];
+            let mut chunk_bytes = Vec::with_capacity(chunks.compressed_size());
+            chunks.serialize_compressed(&mut chunk_bytes).unwrap();
+            let actual_leaf = D::new_with_prefix(chunk_bytes).finalize();
+
+            if *expected_leaf != actual_leaf {
+                print!("CMCMDKSMCKMDSKCMK {i}");
+                return Err(MerkleTreeError::InvalidProof);
+            }
+
+            MerkleTree::<D>::verify(commitment, &proof, *position / 4)?;
+        }
+        Ok(())
+    }
 }
 
 impl<F: GpuField, D: Digest> FriProver<F, D> {
@@ -186,11 +213,9 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         let interleaved_evals = interleave::<F, N>(&evaluations);
         let hashed_evals = ark_std::cfg_iter!(interleaved_evals)
             .map(|chunk| {
-                let mut buff = Vec::new();
+                let mut buff = Vec::with_capacity(chunk.compressed_size());
                 chunk.serialize_compressed(&mut buff).unwrap();
-                let mut hasher = D::new();
-                hasher.update(buff);
-                hasher.finalize()
+                D::new_with_prefix(&buff).finalize()
             })
             .collect();
 
@@ -218,12 +243,19 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
 pub enum VerificationError {
     #[error("codeword of size {0} could not be divided evenly by folding factor {1} at layer {2}")]
     CodewordTruncation(usize, usize, usize),
+    #[error("FRI queries do not resolve to their commitment in layer {0}")]
+    LayerCommitmentInvalid(usize),
+    #[error("degree-respecting projection is invalid for layer {0}")]
+    InvalidDegreeRespectingProjection(usize),
+    #[error("the number of query positions does not match the number of evaluations")]
+    NumPositionEvaluationMismatch,
 }
 
 pub struct FriVerifier<F: GpuField, D: Digest> {
     options: FriOptions,
     layer_commitments: Vec<Output<D>>,
     layer_alphas: Vec<F>,
+    proof: FriProof<F>,
     domain: Radix2EvaluationDomain<F>,
 }
 
@@ -231,7 +263,7 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
     pub fn new(
         public_coin: &mut PublicCoin<impl Digest>,
         options: FriOptions,
-        proof: &FriProof<F>,
+        proof: FriProof<F>,
         max_poly_degree: usize,
     ) -> Result<Self, VerificationError> {
         let folding_factor = options.folding_factor;
@@ -245,11 +277,11 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
         for (i, layer) in proof.layers.iter().enumerate() {
             // TODO: batch merkle tree proofs
             // get the merkle root from the first merkle path
-            let layer_root = Output::<D>::from_slice(&layer.commitment).clone();
-            public_coin.reseed(&layer_root.deref());
+            let layer_commitment = Output::<D>::from_slice(&layer.commitment).clone();
+            public_coin.reseed(&layer_commitment.deref());
             let alpha = public_coin.draw();
             layer_alphas.push(alpha);
-            layer_commitments.push(layer_root);
+            layer_commitments.push(layer_commitment);
 
             if i != proof.layers.len() - 1 && layer_codeword_len % folding_factor != 0 {
                 return Err(VerificationError::CodewordTruncation(
@@ -273,11 +305,78 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
             domain,
             layer_commitments,
             layer_alphas,
+            proof,
         })
     }
 
-    pub fn verify(self, positions: &[usize], evaluations: &[F]) -> Result<(), VerificationError> {
+    pub fn verify_generic<const N: usize>(
+        self,
+        positions: &[usize],
+        evaluations: &[F],
+    ) -> Result<(), VerificationError> {
+        let mut layers = self.proof.layers.into_iter();
+        let mut layer_alphas = self.layer_alphas.into_iter();
+        let mut layer_commitments = self.layer_commitments.into_iter();
+        let mut domain = self.domain;
+        let mut positions = positions.to_vec();
+        let mut evaluations = evaluations.to_vec();
+
+        for i in 0..self.options.num_layers(domain.size()) {
+            let folded_positions = fold_positions(&positions, domain.size() / N);
+            let layer_alpha = layer_alphas.next().unwrap();
+            let layer_commitment = layer_commitments.next().unwrap();
+
+            // TODO: change assert to error. Check remainder
+            let layer = layers.next().unwrap();
+            let (chunks, _) = &layer.values.as_chunks::<N>();
+            assert_eq!(chunks.len(), folded_positions.len());
+
+            // verify the layer
+            for (j, position) in folded_positions.iter().enumerate() {
+                let proof = layer.proofs[j].parse::<D>();
+                let expected_leaf = &proof[0];
+                let chunk = chunks[j];
+                let mut chunk_bytes = Vec::with_capacity(chunk.compressed_size());
+                chunk.serialize_compressed(&mut chunk_bytes).unwrap();
+                let actual_leaf = D::new_with_prefix(&chunk_bytes).finalize();
+
+                if *expected_leaf != actual_leaf {
+                    return Err(VerificationError::LayerCommitmentInvalid(i));
+                }
+
+                MerkleTree::<D>::verify(&layer_commitment, &proof, *position)
+                    .map_err(|_| VerificationError::LayerCommitmentInvalid(i))?
+            }
+
+            let query_values =
+                get_query_values::<F, N>(chunks, &positions, &folded_positions, domain.size());
+            if evaluations != query_values {
+                return Err(VerificationError::InvalidDegreeRespectingProjection(i));
+            }
+
+            // prepare for next layer
+            let offset = domain.offset.pow([N as u64]);
+            domain = Radix2EvaluationDomain::new_coset(domain.size() / N, offset).unwrap();
+            positions = folded_positions;
+            // evaluations =
+        }
+
         todo!()
+    }
+
+    pub fn verify(self, positions: &[usize], evaluations: &[F]) -> Result<(), VerificationError> {
+        if positions.len() != evaluations.len() {
+            return Err(VerificationError::NumPositionEvaluationMismatch);
+        }
+
+        match self.options.folding_factor {
+            2 => self.verify_generic::<2>(positions, evaluations),
+            4 => self.verify_generic::<4>(positions, evaluations),
+            8 => self.verify_generic::<8>(positions, evaluations),
+            16 => self.verify_generic::<16>(positions, evaluations),
+            // TODO: move this to options
+            folding_factor => unreachable!("folding factor {folding_factor} not supported"),
+        }
     }
 }
 
@@ -380,6 +479,26 @@ fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {
     res.sort();
     res.dedup();
     res
+}
+
+// from winterfell
+fn get_query_values<F: GpuField, const N: usize>(
+    chunks: &[[F; N]],
+    positions: &[usize],
+    folded_positions: &[usize],
+    domain_size: usize,
+) -> Vec<F> {
+    let stride_len = domain_size / N;
+    positions
+        .iter()
+        .map(|position| {
+            let i = folded_positions
+                .iter()
+                .position(|&v| v == position % stride_len)
+                .unwrap();
+            chunks[i][position / stride_len]
+        })
+        .collect()
 }
 
 fn query_layer<F: GpuField, D: Digest, const N: usize>(

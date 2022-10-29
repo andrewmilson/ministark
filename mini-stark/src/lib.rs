@@ -4,7 +4,8 @@
     array_windows,
     array_chunks,
     iter_partition_in_place,
-    slice_flatten
+    slice_flatten,
+    slice_as_chunks
 )]
 
 mod air;

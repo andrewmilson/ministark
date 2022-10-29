@@ -142,6 +142,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
                     coeffs: Vec::new(),
                 });
             group.columns.push(quotient);
+            // TODO: don't use pop. use index
             group.coeffs.push(self.composition_coeffs.pop().unwrap());
         }
 
@@ -301,7 +302,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         t2_composition.resize(n, A::Fp::zero());
 
         for (i, poly) in polys.iter().enumerate() {
-            let (alpha, beta, _) = self.composition_coeffs.trace.pop().unwrap();
+            let (alpha, beta, _) = self.composition_coeffs.trace[i];
             let ood_eval = ood_evals[i];
             let ood_eval_next = ood_evals_next[i];
 
@@ -334,8 +335,8 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
                 synthetic_divide(poly, 1, z_n);
             });
 
-        for poly in polys.0.into_iter() {
-            let alpha = self.composition_coeffs.constraints.pop().unwrap();
+        for (i, poly) in polys.0.into_iter().enumerate() {
+            let alpha = self.composition_coeffs.constraints[i];
             for (lhs, rhs) in self.poly.iter_mut().zip(poly) {
                 *lhs += rhs * alpha;
             }

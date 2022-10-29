@@ -14,7 +14,6 @@ use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
-use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
@@ -117,7 +116,7 @@ impl<A: Air> Proof<A> {
         let fri_verifier = FriVerifier::<A::Fp, Sha256>::new(
             &mut public_coin,
             options.into_fri_options(),
-            &fri_proof,
+            fri_proof,
             air.trace_len() - 1,
         )?;
 
@@ -265,12 +264,9 @@ fn verify_positions<D: Digest>(
     for ((position, proof), row) in positions.iter().zip(proofs).zip(rows) {
         let proof = proof.parse::<D>();
         let expected_leaf = &proof[0];
-
-        let mut hasher = D::new();
         let mut row_bytes = Vec::with_capacity(row.compressed_size());
         row.serialize_compressed(&mut row_bytes).unwrap();
-        hasher.update(&row_bytes);
-        let actual_leaf = hasher.finalize();
+        let actual_leaf = D::new_with_prefix(&row_bytes).finalize();
 
         if *expected_leaf != actual_leaf {
             return Err(MerkleTreeError::InvalidProof);
