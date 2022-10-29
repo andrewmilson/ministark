@@ -275,6 +275,10 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
             layer_alphas,
         })
     }
+
+    pub fn verify(self, positions: &[usize], evaluations: &[F]) -> Result<(), VerificationError> {
+        todo!()
+    }
 }
 
 pub trait ProverChannel<F: GpuField> {

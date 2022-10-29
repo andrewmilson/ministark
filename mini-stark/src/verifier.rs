@@ -1,4 +1,5 @@
 use crate::challenges::Challenges;
+use crate::composer::DeepCompositionCoeffs;
 use crate::fri;
 use crate::fri::FriVerifier;
 use crate::merkle::MerkleProof;
@@ -13,6 +14,7 @@ use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
+use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
@@ -134,9 +136,16 @@ impl<A: Air> Proof<A> {
 
         let num_base_columns = air.trace_info().num_base_columns;
         let num_trace_columns = num_base_columns + air.trace_info().num_extension_columns;
-        let (base_trace_rows, extension_trace_rows): (Vec<_>, Vec<_>) = trace_queries
+        let execution_trace_rows = trace_queries
             .execution_trace_values
             .chunks(num_trace_columns)
+            .collect::<Vec<&[A::Fp]>>();
+        let composition_trace_rows = trace_queries
+            .composition_trace_values
+            .chunks(air.ce_blowup_factor())
+            .collect::<Vec<&[A::Fp]>>();
+        let (base_trace_rows, extension_trace_rows): (Vec<_>, Vec<_>) = execution_trace_rows
+            .iter()
             .map(|row| row.split_at(num_base_columns))
             .unzip();
 
@@ -161,10 +170,6 @@ impl<A: Air> Proof<A> {
         }
 
         // composition trace positions
-        let composition_trace_rows = trace_queries
-            .composition_trace_values
-            .chunks(air.ce_blowup_factor())
-            .collect::<Vec<&[A::Fp]>>();
         verify_positions::<Sha256>(
             composition_trace_commitment,
             &query_positions,
@@ -173,7 +178,18 @@ impl<A: Air> Proof<A> {
         )
         .map_err(|_| CompositionTraceQueryDoesNotMatchCommitment)?;
 
-        Ok(())
+        let deep_evaluations = deep_composition_evaluations(
+            &air,
+            &query_positions,
+            deep_coeffs,
+            execution_trace_rows,
+            composition_trace_rows,
+            z,
+            ood_trace_states,
+            ood_constraint_evaluations,
+        );
+
+        Ok(fri_verifier.verify(&query_positions, &deep_evaluations)?)
     }
 }
 
@@ -264,4 +280,53 @@ fn verify_positions<D: Digest>(
     }
 
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn deep_composition_evaluations<A: Air>(
+    air: &A,
+    query_positions: &[usize],
+    composition_coeffs: DeepCompositionCoeffs<A::Fp>,
+    execution_trace_rows: Vec<&[A::Fp]>,
+    composition_trace_rows: Vec<&[A::Fp]>,
+    z: A::Fp,
+    ood_trace_states: (Vec<A::Fp>, Vec<A::Fp>),
+    ood_constraint_evaluations: Vec<A::Fp>,
+) -> Vec<A::Fp> {
+    let trace_domain = air.trace_domain();
+    let lde_domain = air.lde_domain();
+    let xs = query_positions
+        .iter()
+        .map(|pos| lde_domain.element(*pos))
+        .collect::<Vec<A::Fp>>();
+
+    let mut evals = vec![A::Fp::zero(); query_positions.len()];
+
+    // add execution trace
+    let next_z = z * trace_domain.group_gen();
+    for ((&x, row), eval) in xs.iter().zip(execution_trace_rows).zip(&mut evals) {
+        for (i, &value) in row.iter().enumerate() {
+            let (alpha, beta, _) = composition_coeffs.trace[i];
+            let t1 = (value - ood_trace_states.0[i]) / (x - z);
+            let t2 = (value - ood_trace_states.1[i]) / (x - next_z);
+            *eval += t1 * alpha + t2 * beta;
+        }
+    }
+
+    // add composition trace
+    let z_n = z.pow([air.ce_blowup_factor() as u64]);
+    for ((&x, row), eval) in xs.iter().zip(composition_trace_rows).zip(&mut evals) {
+        for (i, &value) in row.iter().enumerate() {
+            let alpha = composition_coeffs.constraints[i];
+            *eval += alpha * (value - ood_constraint_evaluations[i]) / (x - z_n);
+        }
+    }
+
+    // adjust degree
+    let (alpha, beta) = composition_coeffs.degree;
+    for (x, eval) in xs.into_iter().zip(&mut evals) {
+        *eval *= alpha + x * beta;
+    }
+
+    evals
 }
