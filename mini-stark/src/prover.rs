@@ -43,6 +43,7 @@ pub trait Prover {
         let trace_domain = air.trace_domain();
         let lde_domain = air.lde_domain();
         let base_trace_polys = trace.base_columns().interpolate(trace_domain);
+        assert_eq!(Self::Trace::NUM_BASE_COLUMNS, base_trace_polys.num_cols());
         let base_trace_lde = base_trace_polys.evaluate(lde_domain);
         let base_trace_lde_tree = base_trace_lde.commit_to_rows();
         channel.commit_base_trace(base_trace_lde_tree.root());
@@ -53,8 +54,10 @@ pub trait Prover {
         let mut execution_trace_lde = base_trace_lde;
         let mut execution_trace_polys = base_trace_polys;
         let mut extension_trace_tree = None;
+        let mut num_extension_columns = 0;
 
         if let Some(extension_trace) = trace.build_extension_columns(&challenges) {
+            num_extension_columns = extension_trace.num_cols();
             let extension_trace_polys = extension_trace.interpolate(trace_domain);
             let extension_trace_lde = extension_trace_polys.evaluate(lde_domain);
             let extension_trace_lde_tree = extension_trace_lde.commit_to_rows();
@@ -66,6 +69,8 @@ pub trait Prover {
             execution_trace_polys.append(extension_trace_polys);
             extension_trace_tree = Some(extension_trace_lde_tree);
         }
+
+        assert_eq!(Self::Trace::NUM_EXTENSION_COLUMNS, num_extension_columns);
 
         #[cfg(debug_assertions)]
         air.validate_constraints(&challenges, &execution_trace);

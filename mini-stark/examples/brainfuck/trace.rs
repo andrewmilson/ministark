@@ -62,7 +62,8 @@ impl BrainfuckTrace {
 impl Trace for BrainfuckTrace {
     type Fp = Fp;
 
-    const NUM_BASE_COLUMNS: usize = 35;
+    const NUM_BASE_COLUMNS: usize = 16;
+    const NUM_EXTENSION_COLUMNS: usize = 9;
 
     fn len(&self) -> usize {
         self.base_trace.num_rows()
@@ -223,7 +224,10 @@ fn gen_instruction_ext_matrix(
         let prev_base_row = base_matrix.get_row(row.wrapping_sub(1));
         let mut extension_row = vec![Fp::zero(); InstructionExtensionColumn::NUM_TRACE_COLUMNS];
 
-        if row > 0 && curr_base_row[Ip as usize] == prev_base_row.unwrap()[Ip as usize] {
+        if !curr_base_row[CurrInstr as usize].is_zero()
+            && row > 0
+            && curr_base_row[Ip as usize] == prev_base_row.unwrap()[Ip as usize]
+        {
             // permutation argument
             // update running product
             // make sure new row is not padding

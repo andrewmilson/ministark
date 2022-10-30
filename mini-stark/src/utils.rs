@@ -306,7 +306,7 @@ pub fn interleave<T: Copy + Send + Sync + Default, const RADIX: usize>(
     res
 }
 
-// fn print_row<F: GpuField>(row: &[F]) {
+// pub(crate) fn print_row<F: GpuField>(row: &[F]) {
 //     for val in row {
 //         print!("{val}, ");
 //     }
