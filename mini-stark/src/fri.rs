@@ -4,6 +4,8 @@ use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
 use crate::utils::interleave;
 use ark_poly::EvaluationDomain;
+use ark_poly::Evaluations;
+use ark_poly::Polynomial;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
@@ -243,12 +245,20 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
 pub enum VerificationError {
     #[error("codeword of size {0} could not be divided evenly by folding factor {1} at layer {2}")]
     CodewordTruncation(usize, usize, usize),
-    #[error("FRI queries do not resolve to their commitment in layer {0}")]
+    #[error("queries do not resolve to their commitment in layer {0}")]
     LayerCommitmentInvalid(usize),
     #[error("degree-respecting projection is invalid for layer {0}")]
     InvalidDegreeRespectingProjection(usize),
     #[error("the number of query positions does not match the number of evaluations")]
     NumPositionEvaluationMismatch,
+    #[error("remainder does not resolve to its commitment")]
+    RemainderCommitmentInvalid,
+    #[error("number of remainder values is less than the expected degree")]
+    RemainderTooSmall,
+    #[error("remainder can not be represented as a degree {0} polynomial")]
+    RemainderDegreeMismatch(usize),
+    #[error("degree-respecting projection is invalid at the last layer")]
+    InvalidRemainderDegreeRespectingProjection,
 }
 
 pub struct FriVerifier<F: GpuField, D: Digest> {
@@ -314,15 +324,20 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
         positions: &[usize],
         evaluations: &[F],
     ) -> Result<(), VerificationError> {
+        let domain_offset = self.domain.coset_offset();
+        let folding_domain = Radix2EvaluationDomain::new(N).unwrap();
+
         let mut layers = self.proof.layers.into_iter();
         let mut layer_alphas = self.layer_alphas.into_iter();
         let mut layer_commitments = self.layer_commitments.into_iter();
-        let mut domain = self.domain;
         let mut positions = positions.to_vec();
         let mut evaluations = evaluations.to_vec();
+        let mut domain_size = self.domain.size();
+        let mut domain_generator = self.domain.group_gen();
 
-        for i in 0..self.options.num_layers(domain.size()) {
-            let folded_positions = fold_positions(&positions, domain.size() / N);
+        // verify all layers
+        for i in 0..self.options.num_layers(domain_size) {
+            let folded_positions = fold_positions(&positions, domain_size / N);
             let layer_alpha = layer_alphas.next().unwrap();
             let layer_commitment = layer_commitments.next().unwrap();
 
@@ -331,7 +346,7 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
             let (chunks, _) = &layer.values.as_chunks::<N>();
             assert_eq!(chunks.len(), folded_positions.len());
 
-            // verify the layer
+            // verify the layer values against the layer's commitment
             for (j, position) in folded_positions.iter().enumerate() {
                 let proof = layer.proofs[j].parse::<D>();
                 let expected_leaf = &proof[0];
@@ -348,20 +363,39 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
                     .map_err(|_| VerificationError::LayerCommitmentInvalid(i))?
             }
 
-            let query_values =
-                get_query_values::<F, N>(chunks, &positions, &folded_positions, domain.size());
+            let query_values = get_query_values(chunks, &positions, &folded_positions, domain_size);
             if evaluations != query_values {
                 return Err(VerificationError::InvalidDegreeRespectingProjection(i));
             }
 
+            let polys = chunks
+                .iter()
+                .zip(&folded_positions)
+                .map(|(chunk, position)| {
+                    let offset = domain_offset * domain_generator.pow([*position as u64]);
+                    let domain = folding_domain.get_coset(offset).unwrap();
+                    let evals = Evaluations::from_vec_and_domain(chunk.to_vec(), domain);
+                    evals.interpolate()
+                });
+
             // prepare for next layer
-            let offset = domain.offset.pow([N as u64]);
-            domain = Radix2EvaluationDomain::new_coset(domain.size() / N, offset).unwrap();
+            evaluations = polys.map(|poly| poly.evaluate(&layer_alpha)).collect();
             positions = folded_positions;
-            // evaluations =
+            domain_generator = domain_generator.pow([N as u64]);
+            domain_size /= N;
         }
 
-        todo!()
+        for (position, evaluation) in positions.into_iter().zip(evaluations) {
+            if self.proof.remainder[position] != evaluation {
+                return Err(VerificationError::InvalidRemainderDegreeRespectingProjection);
+            }
+        }
+
+        verify_remainder::<F, D, N>(
+            layer_commitments.next().unwrap(),
+            self.proof.remainder,
+            domain_size - 1,
+        )
     }
 
     pub fn verify(self, positions: &[usize], evaluations: &[F]) -> Result<(), VerificationError> {
@@ -376,6 +410,49 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
             16 => self.verify_generic::<16>(positions, evaluations),
             // TODO: move this to options
             folding_factor => unreachable!("folding factor {folding_factor} not supported"),
+        }
+    }
+}
+
+fn verify_remainder<F: GpuField, D: Digest, const N: usize>(
+    commitment: Output<D>,
+    remainder_evals: Vec<F>,
+    max_degree: usize,
+) -> Result<(), VerificationError> {
+    if max_degree >= remainder_evals.len() {
+        return Err(VerificationError::RemainderTooSmall);
+    }
+
+    let interleaved_evals: Vec<[F; N]> = interleave(&remainder_evals);
+    let hashed_evals = interleaved_evals
+        .into_iter()
+        .map(|chunk| {
+            let mut buff = Vec::with_capacity(chunk.compressed_size());
+            chunk.serialize_compressed(&mut buff).unwrap();
+            D::new_with_prefix(&buff).finalize()
+        })
+        .collect();
+    let remainder_merkle_tree = MerkleTree::<D>::new(hashed_evals).unwrap();
+
+    if commitment != *remainder_merkle_tree.root() {
+        return Err(VerificationError::RemainderCommitmentInvalid);
+    }
+
+    if max_degree == 0 {
+        if remainder_evals.array_windows().all(|[a, b]| a == b) {
+            Ok(())
+        } else {
+            Err(VerificationError::RemainderDegreeMismatch(max_degree))
+        }
+    } else {
+        let domain = Radix2EvaluationDomain::new(remainder_evals.len()).unwrap();
+        let evals = Evaluations::from_vec_and_domain(remainder_evals, domain);
+        let poly = evals.interpolate();
+
+        if poly.degree() > max_degree {
+            Err(VerificationError::RemainderDegreeMismatch(max_degree))
+        } else {
+            Ok(())
         }
     }
 }
