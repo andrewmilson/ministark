@@ -88,7 +88,7 @@ impl Prover for BrainfuckProver {
 
 fn main() {
     let now = Instant::now();
-    let program = compile(HELLO_WORLD_SOURCE);
+    let program = compile(FIB_TO_55_SOURCE);
     let mut output = Vec::new();
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
     println!("Output: {}", String::from_utf8(output).unwrap());
@@ -97,10 +97,10 @@ fn main() {
     let prover = BrainfuckProver::new(options);
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());
-    let mut proof_bytes = Vec::new();
-    proof
-        .unwrap()
-        .serialize_compressed(&mut proof_bytes)
-        .unwrap();
-    println!("Result: {:?}kb", proof_bytes.len() / 1024);
+    let proof = proof.unwrap();
+    // let mut proof_bytes = Vec::new();
+    //     .serialize_compressed(&mut proof_bytes)
+    //     .unwrap();
+    // println!("Result: {:?}kb", proof_bytes.len() / 1024);
+    proof.verify().unwrap();
 }

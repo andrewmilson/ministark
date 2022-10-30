@@ -2,7 +2,6 @@
 
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
-use ark_serialize::CanonicalSerialize;
 use fast_poly::allocator::PageAlignedAllocator;
 use mini_stark::constraint::are_eq;
 use mini_stark::Air;
