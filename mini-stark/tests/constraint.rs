@@ -217,8 +217,8 @@ fn evaluate_permutation_constraint() {
             - shuffled_product.next(),
     ];
     let blowup = 2;
-    let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
-    let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
+    let trace_domain = Radix2EvaluationDomain::new(n).unwrap();
+    let lde_domain = Radix2EvaluationDomain::new_coset(n * blowup, Fp::GENERATOR).unwrap();
     let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
 

@@ -21,6 +21,7 @@ rayon = { version = "1.5.3", optional = true }
 [features]
 default = []
 asm = [ "sha2/asm" ]
+# gpu = [ "dep:fast-poly" ]
 parallel = [ "dep:rayon", "ark-std/parallel", "fast-poly/parallel" ]
 
 [dev-dependencies]

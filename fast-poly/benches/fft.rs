@@ -20,8 +20,8 @@ fn fft_bench<F: GpuField>(c: &mut Criterion, name: &str) {
     group.sample_size(10);
 
     for n in BENCHMARK_INPUT_SIZES {
-        let vals = (0..n).map(|_| F::rand(&mut rng)).collect::<Vec<F>>();
-        let domain = Radix2EvaluationDomain::<F>::new(n).unwrap();
+        let vals: Vec<F> = (0..n).map(|_| F::rand(&mut rng)).collect();
+        let domain = Radix2EvaluationDomain::new(n).unwrap();
         let coset = domain.get_coset(F::GENERATOR).unwrap();
 
         group.bench_with_input(BenchmarkId::new("GpuFft", n), &n, |b, _| {

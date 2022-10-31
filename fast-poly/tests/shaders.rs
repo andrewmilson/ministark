@@ -25,7 +25,7 @@ fn fft() {
         ];
 
         for (i, domain) in domains.into_iter().enumerate() {
-            let poly = DensePolynomial::<Fp>::rand(domain.size() - 1, &mut ark_std::test_rng());
+            let poly = DensePolynomial::rand(domain.size() - 1, &mut ark_std::test_rng());
             let mut evals = poly.coeffs.to_vec_in(PageAlignedAllocator);
             let mut fft = GpuFft::from(domain);
             fft.encode(&mut evals);
@@ -49,7 +49,7 @@ fn ifft() {
         ];
 
         for (i, domain) in domains.into_iter().enumerate() {
-            let poly = DensePolynomial::<Fp>::rand(domain.size() - 1, &mut ark_std::test_rng());
+            let poly = DensePolynomial::rand(domain.size() - 1, &mut ark_std::test_rng());
             let evals = poly.evaluate_over_domain_by_ref(domain).evals;
 
             let mut coeffs = evals.to_vec_in(PageAlignedAllocator);

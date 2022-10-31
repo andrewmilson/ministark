@@ -212,7 +212,7 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         // committed to in their natural order. If we instead commit to interleaved
         // evaluations i.e. [[LHS0, RHS0], [LHS1, RHS1], ...] LHS_i and RHS_i
         // only require a single merkle path for their decommitment.
-        let interleaved_evals = interleave::<F, N>(&evaluations);
+        let interleaved_evals: Vec<[F; N]> = interleave(&evaluations);
         let hashed_evals = ark_std::cfg_iter!(interleaved_evals)
             .map(|chunk| {
                 let mut buff = Vec::with_capacity(chunk.compressed_size());
@@ -221,7 +221,7 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
             })
             .collect();
 
-        let evals_merkle_tree = MerkleTree::<D>::new(hashed_evals).unwrap();
+        let evals_merkle_tree = MerkleTree::new(hashed_evals).unwrap();
         channel.commit_fri_layer(evals_merkle_tree.root());
 
         let alpha = channel.draw_fri_alpha();
@@ -591,11 +591,7 @@ fn query_layer<F: GpuField, D: Digest, const N: usize>(
                 .expect("failed to generate Merkle proof")
         })
         .collect::<Vec<MerkleProof>>();
-    // let chunked_evals = layer
-    //     .evaluations
-    //     .array_chunks::<N>()
-    //     .collect::<Vec<&[F; N]>>();
-    let mut values = Vec::<[F; N]>::new();
+    let mut values: Vec<[F; N]> = Vec::new();
     for &position in positions {
         let i = position * N;
         let chunk = &layer.evaluations[i..i + N];

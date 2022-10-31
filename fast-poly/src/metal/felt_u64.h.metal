@@ -24,6 +24,21 @@ public:
         return FP18446744069414584321(mul(inner, rhs.inner));
     }
 
+    FP18446744069414584321 pow(unsigned exp) 
+    {
+        FP18446744069414584321 res = ONE;
+
+        while (exp > 0) {
+            if (exp & 1) {
+                res = res * *this;
+            }
+            exp >>= 1;
+            *this = *this * *this;
+        }
+
+        return res;
+    }
+
 private:
     unsigned long inner;
 
@@ -32,6 +47,9 @@ private:
 
     // Square of auxiliary modulus R for Montgomery reduction `R2 ≡ (2^64)^2 mod p`
     constexpr static const constant unsigned long R2 = 18446744065119617025;
+
+    // // 1 in Montgomery representation
+    constexpr static const constant unsigned long ONE = 4294967295;
 
     inline unsigned long add(const unsigned long a, const unsigned long b) const
     {

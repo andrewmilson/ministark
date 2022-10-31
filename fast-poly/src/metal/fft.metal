@@ -102,15 +102,8 @@ MulPow(device FieldT *dst [[ buffer(0) ]],
     unsigned src_idx = (global_tid + shift) % N;
 
     FieldT src_val = src[src_idx];
-    FieldT acc = src_val;
-    
-    // TODO: optimize
-    for (unsigned i = 1; i < exponent; i++) {
-        acc = acc * src_val;
-    }
-
     FieldT dst_val = dst[dst_idx];
-    dst[dst_idx] = dst_val * acc;
+    dst[dst_idx] = dst_val * src_val.pow(exponent);
 }
 
 template<typename FieldT> kernel void
@@ -118,6 +111,15 @@ FillBuff(device FieldT *dst [[ buffer(0) ]],
         constant FieldT &value [[ buffer(1) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
     dst[global_tid] = value;
+}
+
+template<typename FieldT> kernel void
+GenerateTwiddles(device FieldT *dst [[ buffer(0) ]],
+        constant FieldT &root [[ buffer(1) ]],
+        unsigned i [[ thread_position_in_grid ]]) {
+    unsigned ri = reverse_bits(i) >> (sizeof(i) * 8 - ctz(N));
+    FieldT tmp = root;
+    dst[i] = tmp.pow(ri);
 }
 
 // Performs multiple itteration stages of Cooley-Tuckey radix-2 decimation-in-time (DIT)
@@ -213,6 +215,11 @@ MulPow<FP18446744069414584321>(
         unsigned);
 template [[ host_name("fill_buff_fp18446744069414584321") ]] kernel void
 FillBuff<FP18446744069414584321>(
+        device FP18446744069414584321*,
+        constant FP18446744069414584321&,
+        unsigned);
+template [[ host_name("generate_twiddles_fp18446744069414584321") ]] kernel void
+GenerateTwiddles<FP18446744069414584321>(
         device FP18446744069414584321*,
         constant FP18446744069414584321&,
         unsigned);

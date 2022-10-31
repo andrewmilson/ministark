@@ -320,7 +320,7 @@ fn derive_memory_rows(processor_rows: &[Vec<Fp>]) -> Vec<Vec<Fp>> {
     // TODO: sorted by IP and then CYCLE. Check to see if processor table sorts by
     // cycle.
     use MemoryBaseColumn::*;
-    let mut memory_rows = processor_rows
+    let mut memory_rows: Vec<Vec<Fp>> = processor_rows
         .iter()
         .filter_map(|row| {
             if row[ProcessorBaseColumn::CurrInstr as usize].is_zero() {
@@ -334,7 +334,7 @@ fn derive_memory_rows(processor_rows: &[Vec<Fp>]) -> Vec<Vec<Fp>> {
                 Some(mem_row)
             }
         })
-        .collect::<Vec<Vec<Fp>>>();
+        .collect();
 
     memory_rows.sort_by_key(|row| (row[Mp as usize], row[Cycle as usize]));
 

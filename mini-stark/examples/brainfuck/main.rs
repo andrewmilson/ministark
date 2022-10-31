@@ -2,8 +2,8 @@
 
 use air::BrainfuckAir;
 use air::ExecutionInfo;
+use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
-use ark_serialize::CanonicalSerialize;
 use mini_stark::ProofOptions;
 use mini_stark::Prover;
 use mini_stark::Trace;
@@ -21,7 +21,7 @@ mod vm;
 /// Source: http://esoteric.sange.fi/brainfuck/bf-source/prog/fibonacci.txt
 const FIB_TO_55_SOURCE: &str = "
 This determines how many numbers to generate:
-    ++++++++++
+    +++++++++
 
 Program:
     >+>>>>++++++++++++++++++++++++++++++++++++++++++++
@@ -87,6 +87,8 @@ impl Prover for BrainfuckProver {
 }
 
 fn main() {
+    println!("{:?}", Fp::one());
+
     let now = Instant::now();
     let program = compile(HELLO_WORLD_SOURCE);
     let mut output = Vec::new();

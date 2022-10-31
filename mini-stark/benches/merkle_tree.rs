@@ -22,7 +22,7 @@ fn build_merkle_tree_bench<F: GpuField, D: Digest>(c: &mut Criterion, name: &str
 
     for d in BENCHMARK_TREE_DEPTH {
         let n = 1 << d;
-        let leaves = (0..n).map(|_| Fp::rand(&mut rng)).collect::<Vec<Fp>>();
+        let leaves: Vec<Fp> = (0..n).map(|_| Fp::rand(&mut rng)).collect();
         let leaf_nodes = leaves
             .iter()
             .map(|leaf| {

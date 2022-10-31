@@ -383,3 +383,62 @@ impl<F: GpuField> FillBuffStage<F> {
         command_encoder.end_encoding()
     }
 }
+
+pub struct GenerateTwiddlesStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> GenerateTwiddlesStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let constants = metal::FunctionConstantValues::new();
+        let n = n as u32;
+        constants.set_constant_value_at_index(
+            &n as *const u32 as *const std::ffi::c_void,
+            metal::MTLDataType::UInt,
+            0,
+        );
+        let func = library
+            .get_function(
+                &format!("generate_twiddles_{}", F::field_name()),
+                Some(constants),
+            )
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        GenerateTwiddlesStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &mut metal::BufferRef,
+        value: F,
+    ) {
+        let command_encoder = command_buffer.new_compute_command_encoder();
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_bytes(
+            1,
+            std::mem::size_of::<F>() as u64,
+            &value as *const F as *const std::ffi::c_void,
+        );
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}

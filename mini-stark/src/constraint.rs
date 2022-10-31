@@ -11,6 +11,7 @@ use fast_poly::stage::MulPowStage;
 use fast_poly::utils::buffer_mut_no_copy;
 use fast_poly::utils::buffer_no_copy;
 use fast_poly::GpuField;
+use fast_poly::GpuVec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::borrow::Borrow;
@@ -251,11 +252,11 @@ impl<F: GpuField> Constraint<F> {
     }
 
     pub fn get_elements(&self) -> Vec<Element> {
-        let mut indices = self
+        let mut indices: Vec<Element> = self
             .0
             .iter()
             .flat_map(|term| term.1.get_elements())
-            .collect::<Vec<Element>>();
+            .collect();
         indices.sort();
         indices.dedup();
         indices
@@ -361,10 +362,10 @@ impl<F: GpuField> Constraint<F> {
         trace_lde: &Matrix<F>,
     ) -> Matrix<F> {
         let n = trace_lde.num_rows();
-        let constraint_without_challenges = constraints
+        let constraint_without_challenges: Vec<Vec<Term<F>>> = constraints
             .iter()
             .map(|c| c.evaluate_challenges(challenges).0)
-            .collect::<Vec<_>>();
+            .collect();
         if constraint_without_challenges.is_empty() {
             return Matrix::new(vec![]);
         }
@@ -399,7 +400,7 @@ impl<F: GpuField> Constraint<F> {
             .map(|col| buffer_mut_no_copy(device, col))
             .collect::<Vec<_>>();
 
-        let mut scratch = Vec::<F, PageAlignedAllocator>::with_capacity_in(n, PageAlignedAllocator);
+        let mut scratch = GpuVec::<F>::with_capacity_in(n, PageAlignedAllocator);
         unsafe { scratch.set_len(n) }
         let mut scratch_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch);
 

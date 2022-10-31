@@ -324,7 +324,7 @@ pub trait Air {
     fn all_constraint_elements(&self) -> Vec<Element> {
         // TODO: change get_challenge_indices to a constraint iterator and extract the
         // constraint with the highest index
-        let mut indicies = [
+        let mut indicies: Vec<Element> = [
             self.boundary_constraints(),
             self.transition_constraints(),
             self.terminal_constraints(),
@@ -332,7 +332,7 @@ pub trait Air {
         .into_iter()
         .flatten()
         .flat_map(|constraint| constraint.get_elements())
-        .collect::<Vec<Element>>();
+        .collect();
         indicies.sort();
         indicies.dedup();
         indicies

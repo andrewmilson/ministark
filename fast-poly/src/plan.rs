@@ -1,6 +1,7 @@
 use crate::allocator::PageAlignedAllocator;
 use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
+use crate::stage::GenerateTwiddlesStage;
 use crate::stage::ScaleAndNormalizeGpuStage;
 use crate::stage::Variant;
 use crate::utils::bit_reverse;
@@ -152,6 +153,14 @@ impl Planner {
 
         // generate twiddles buffer
         let mut _twiddles = Vec::with_capacity_in(n / 2, PageAlignedAllocator);
+        // unsafe { _twiddles.set_len(n / 2) }
+        // let mut twiddles_buffer = buffer_mut_no_copy(self.command_queue.device(),
+        // &mut _twiddles); let generate_twiddles_stage =
+        // GenerateTwiddlesStage::new(&self.library, n / 2); let command_buffer
+        // = self.command_queue.new_command_buffer(); generate_twiddles_stage.
+        // encode(command_buffer, &mut twiddles_buffer, root); command_buffer.
+        // commit(); command_buffer.wait_until_completed();
+
         _twiddles.resize(n / 2, F::zero());
         fill_twiddles(&mut _twiddles, root);
         bit_reverse(&mut _twiddles);

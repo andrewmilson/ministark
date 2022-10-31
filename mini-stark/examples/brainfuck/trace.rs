@@ -186,10 +186,7 @@ fn gen_memory_ext_matrix(
     // loop over all rows
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
-        let base_row = base_matrix
-            .iter()
-            .map(|column| column[row])
-            .collect::<Vec<Fp>>();
+        let base_row: Vec<Fp> = base_matrix.iter().map(|column| column[row]).collect();
         let mut extension_row = vec![Fp::zero(); MemoryExtensionColumn::NUM_TRACE_COLUMNS];
         extension_row[Permutation as usize] = mem_permutation_running_product;
         if base_row[Dummy as usize].is_zero() {
