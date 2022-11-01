@@ -7,6 +7,11 @@ The library is primarily written in Rust but has been optimised by moving heavil
 MiniSTARK is unique with how constraints are expressed over the execution trace. Constraints are represented symbolically as a multivariate polynomial where each variable represents a column of the execution trace ([Column](mini-stark/src/constraint.rs) trait) or one of the verifier's challenges ([Challenge](mini-stark/src/constraint.rs) trait). Bellow is a contrived example to illustrate how constraints are represented. Challenges are represented in a similar way. Look at the [Brainf***](mini-stark/examples/brainfuck/) for a full example.
 
 ```rust
+#[derive(Hint)]
+enum Hints {
+    ExpectedCycles,
+}
+
 #[derive(Column)]
 enum ProcessorTable {
     Cycle,
@@ -15,8 +20,14 @@ enum ProcessorTable {
     // ...
 }
 
+// cycle starts at zero
+let constraint = Cycle.first().equals(F::zero());
+
 // cycle increases from one row to the next
 let constraint = Cycle.curr() - Cycle.next() - F::one();
+
+// cycle doesn't exceed expected
+let constraint = Cycle.last().equals(ExpectedCycles.get_hint());
 ```
 
 ## Examples
