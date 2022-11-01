@@ -42,9 +42,17 @@ Implementation of the [Brainf***](https://esolangs.org/wiki/Brainfuck) virtual m
 
 ```bash
 # source: https://esolangs.org
-export HELLO_WORLD_BF_SOURCE="++++++++[>++++[>++>+++>+++>+<<<<-]>+>+\
+export HELLO_WORLD_BF="++++++++[>++++[>++>+++>+++>+<<<<-]>+>+\
 >->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
-cargo run --release --features parallel,asm  --example bf --src $HELLO_WORLD_BF_SOURCE
+
+if [[ $(arch) == 'arm64' ]]; then
+  # run on the GPU if Apple Silicon
+  cargo run --release --features parallel,asm,gpu --example bf --src $HELLO_WORLD_BF
+else
+  # fall back to cpu if not apple silicone
+  cargo run --release --features parallel,asm --example bf --src $HELLO_WORLD_BF
+fi
+
 ```
 
 ### Multiplicative Fibonacci Sequence 
