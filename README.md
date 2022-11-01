@@ -20,14 +20,18 @@ enum ProcessorTable {
     // ...
 }
 
-// cycle starts at zero
-let constraint = Cycle.first().equals(F::zero());
+let constraints = vec![
+    // cycle starts at zero
+    Cycle.first().equals(F::zero()),
+    
+    // cycle increases from one row to the next
+    Cycle.curr() - Cycle.next() - F::one(),
 
-// cycle increases from one row to the next
-let constraint = Cycle.curr() - Cycle.next() - F::one();
-
-// cycle doesn't exceed expected
-let constraint = Cycle.last().equals(ExpectedCycles.get_hint());
+    // cycle doesn't exceed expected
+    Cycle.last().equals(ExpectedCycles.get_hint()),
+    
+    // ...
+];
 ```
 
 ## Examples
