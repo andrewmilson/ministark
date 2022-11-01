@@ -7,10 +7,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::GpuFft;
-use fast_poly::plan::GpuIfft;
-use fast_poly::GpuField;
+use fast_poly::prelude::*;
 
 const BENCHMARK_INPUT_SIZES: [usize; 4] = [2048, 4096, 32768, 262144];
 

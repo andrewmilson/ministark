@@ -6,6 +6,7 @@ use ark_ff_optimized::fp64;
 
 pub mod allocator;
 pub mod plan;
+pub mod prelude;
 pub mod stage;
 pub mod utils;
 

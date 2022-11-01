@@ -20,9 +20,7 @@ use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::GpuField;
-use fast_poly::GpuVec;
+use fast_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::ops::Deref;

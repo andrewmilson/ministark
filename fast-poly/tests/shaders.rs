@@ -8,9 +8,7 @@ use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
 use ark_poly::Polynomial;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::GpuFft;
-use fast_poly::plan::GpuIfft;
+use fast_poly::prelude::*;
 use objc::rc::autoreleasepool;
 
 #[test]

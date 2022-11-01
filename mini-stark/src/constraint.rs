@@ -3,15 +3,7 @@
 use crate::Matrix;
 use ark_ff::One;
 use ark_ff::Zero;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::PLANNER;
-use fast_poly::stage::AddAssignStage;
-use fast_poly::stage::FillBuffStage;
-use fast_poly::stage::MulPowStage;
-use fast_poly::utils::buffer_mut_no_copy;
-use fast_poly::utils::buffer_no_copy;
-use fast_poly::GpuField;
-use fast_poly::GpuVec;
+use fast_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::borrow::Borrow;
@@ -476,6 +468,7 @@ impl<F: GpuField> Constraint<F> {
     }
 
     // TODO: don't make this coupled to "trace"
+    // TODO: https://en.wikipedia.org/wiki/Estrin%27s_scheme
     pub fn evaluate_symbolic(
         constraints: &[Constraint<F>],
         challenges: &[F],

@@ -11,11 +11,7 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::GpuFft;
-use fast_poly::plan::GpuIfft;
-use fast_poly::GpuField;
-use fast_poly::GpuVec;
+use fast_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::ops::Deref;

@@ -8,12 +8,7 @@ use crate::Matrix;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::plan::PLANNER;
-use fast_poly::stage::MulPowStage;
-use fast_poly::utils::buffer_no_copy;
-use fast_poly::GpuField;
-use fast_poly::GpuVec;
+use fast_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use sha2::Sha256;
