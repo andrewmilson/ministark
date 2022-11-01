@@ -89,9 +89,7 @@ impl<F: GpuField> Matrix<F> {
 
     #[cfg(not(feature = "gpu"))]
     fn into_polynomials_cpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
-        for column in &mut self.0 {
-            domain.ifft_in_place(column);
-        }
+        self.0.iter_mut().for_each(|col| domain.ifft_in_place(col));
         self
     }
 

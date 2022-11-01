@@ -46,10 +46,10 @@ export HELLO_WORLD_BF="++++++++[>++++[>++>+++>+++>+<<<<-]>+>+\
 >->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
 
 if [[ $(arch) == 'arm64' ]]; then
-  # run on the GPU if Apple Silicon
+  # run on the GPU if Apple silicon
   cargo run --release --features parallel,asm,gpu --example bf --src $HELLO_WORLD_BF
 else
-  # fall back to cpu if not apple silicone
+  # fall back to cpu if not Apple silicon
   cargo run --release --features parallel,asm --example bf --src $HELLO_WORLD_BF
 fi
 
@@ -89,4 +89,4 @@ cargo run --release --features parallel,asm  --example fib
 - [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) by [Alan Szepieniec](https://twitter.com/aszepieniec?lang=en) - A practical STARK tutorial to create a STARK vm for the BF programming language. Is a sequel to Anatomy of a STARK and runs through table-lookup arguments
 - TODO: winterfel
 
-<sup>1</sup> TODO: with small error
+<sup>1</sup> with 0.00000000000000000000000000000000000000000001% error (the same probability picking a random atom in the universe and it belonging to your body)
