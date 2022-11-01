@@ -58,8 +58,8 @@ cargo run --release --features parallel,asm  --example fib
 
 - More tests
 - More benchmarks
-- Making fast-poly less `unsafe`
-- CUDA support in `fast-poly`
+- Making gpu-poly less `unsafe`
+- CUDA support in `gpu-poly`
 - Speed optimizations that don't sacrifice readability
 - Memory reductions that don't sacrifice readability
 - Using more `arkworks` features where appropriate

@@ -15,7 +15,7 @@ members = ["gpu-poly"]
 default = []
 asm = [ "sha2/asm" ]
 gpu = []
-parallel = [ "dep:rayon", "ark-std/parallel", "fast-poly/parallel" ]
+parallel = [ "dep:rayon", "ark-std/parallel", "gpu-poly/parallel" ]
 
 [[bench]]
 name = "merkle_tree"

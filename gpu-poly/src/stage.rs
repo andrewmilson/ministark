@@ -246,7 +246,6 @@ impl<F: GpuField> MulPowStage<F> {
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
 
-        let n = n as u32;
         let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
