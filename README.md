@@ -81,6 +81,7 @@ cargo run --release --features parallel,asm  --example fib
 - Speed optimizations that don't sacrifice readability
 - Memory reductions that don't sacrifice readability
 - Using more `arkworks` features where appropriate
+- Cairo VM prover implemented using MiniSTARK (similar to (giza)[https://github.com/maxgillett/giza])
 - Enabling zero knowledge
 
 ## Reference and thanks

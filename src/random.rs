@@ -12,10 +12,8 @@ pub struct PublicCoin<D: Digest> {
 
 impl<D: Digest> PublicCoin<D> {
     pub fn new(seed: &[u8]) -> Self {
-        let mut hasher = D::new();
-        hasher.update(seed);
         PublicCoin {
-            seed: hasher.finalize(),
+            seed: D::new_with_prefix(seed).finalize(),
             counter: 0,
         }
     }

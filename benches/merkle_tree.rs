@@ -26,11 +26,9 @@ fn build_merkle_tree_bench<F: GpuField, D: Digest>(c: &mut Criterion, name: &str
         let leaf_nodes = leaves
             .iter()
             .map(|leaf| {
-                let mut hasher = D::new();
                 let mut bytes = Vec::new();
                 leaf.serialize_compressed(&mut bytes).unwrap();
-                hasher.update(&bytes);
-                hasher.finalize()
+                D::new_with_prefix(&bytes).finalize()
             })
             .collect::<Vec<Output<D>>>();
 

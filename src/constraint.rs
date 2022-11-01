@@ -328,15 +328,14 @@ impl<F: GpuField> Constraint<F> {
     }
 
     pub fn evaluate(&self, challenges: &[F], current_row: &[F], next_row: &[F]) -> F {
-        let partial = self.evaluate_challenges(challenges);
         let mut result = F::zero();
-        for Term(coeff, vars) in partial.0.iter() {
+        for Term(coeff, vars) in self.0.iter() {
             let mut scratch = *coeff;
             for &(element, power) in &vars.0 {
                 let val = match element {
                     Element::Curr(index) => current_row[index],
                     Element::Next(index) => next_row[index],
-                    // Element::Challenge(index) => challenges[index],
+                    Element::Challenge(index) => challenges[index],
                     _ => unreachable!(),
                 };
                 scratch *= val.pow([power as u64]);
@@ -489,8 +488,7 @@ impl<F: GpuField> Constraint<F> {
                 .iter()
                 .map(|_| {
                     let mut col = Vec::with_capacity_in(n, PageAlignedAllocator);
-                    // col.resize(n, F::zero());
-                    unsafe { col.set_len(n) }
+                    col.resize(n, F::zero());
                     col
                 })
                 .collect(),
@@ -829,7 +827,7 @@ impl<F: GpuField> Sub<&F> for &Constraint<F> {
 // Adapted from the `forward_ref_binop!` macro in the Rust standard library.
 // Implements "&T op U", "T op &U" based on "&T op &U"
 macro_rules! forward_ref_binop {
-    (impl<F: GpuField> $imp:ident, $method:ident for $t:ty, $u:ty) => {
+    (impl < F: GpuField > $imp:ident, $method:ident for $t:ty, $u:ty) => {
         impl<'a, F: GpuField> $imp<$u> for &'a $t {
             type Output = <$t as $imp<$u>>::Output;
 
@@ -897,7 +895,7 @@ impl<F: GpuField> SubAssign<&F> for Constraint<F> {
 // Adapted from the `forward_ref_op_assign!` macro in the Rust standard library.
 // implements "T op= U", based on "T op= &U"
 macro_rules! forward_ref_op_assign {
-    (impl<F: GpuField> $imp:ident, $method:ident for $t:ty, $u:ty) => {
+    (impl < F: GpuField > $imp:ident, $method:ident for $t:ty, $u:ty) => {
         impl<F: GpuField> $imp<$u> for $t {
             #[inline]
             fn $method(&mut self, other: $u) {
