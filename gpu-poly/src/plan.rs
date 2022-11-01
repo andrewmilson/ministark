@@ -159,7 +159,7 @@ impl Planner {
         // GenerateTwiddlesStage::new(&self.library, n / 2); let command_buffer
         // = self.command_queue.new_command_buffer(); generate_twiddles_stage.
         // encode(command_buffer, &mut twiddles_buffer, root); command_buffer.
-        // commit(); command_buffer.wait_until_completed();
+        // commit(); // command_buffer.wait_until_completed();
 
         _twiddles.resize(n / 2, F::zero());
         fill_twiddles(&mut _twiddles, root);

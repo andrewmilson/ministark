@@ -1,7 +1,6 @@
 #![feature(allocator_api, int_log)]
 
 use ark_ff::FftField;
-use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::univariate::DensePolynomial;
@@ -55,14 +54,8 @@ fn ifft() {
             ifft.encode(&mut coeffs);
             ifft.execute();
 
-            let domain_size_inv = Fp::one(); //domain.size_inv;
-
             for (j, (expected, actual)) in poly.coeffs.into_iter().zip(coeffs).enumerate() {
-                assert_eq!(
-                    expected,
-                    actual * domain_size_inv,
-                    "domain ({i}) mismatch at index {j}"
-                );
+                assert_eq!(expected, actual, "domain ({i}) mismatch at index {j}");
             }
         }
     });

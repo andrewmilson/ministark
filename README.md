@@ -15,14 +15,8 @@ enum ProcessorTable {
     // ...
 }
 
-fn transition_constraints<F: Field>() -> Vec<Constraint<F>> {
-    use ProcessorTable::*;
-    vec![
-        // cycle increases from one row to the next
-        Cycle.curr() - Cycle.next() - F::one(),
-        // ...
-    ]
-}
+// cycle increases from one row to the next
+let constraint = Cycle.curr() - Cycle.next() - F::one();
 ```
 
 ## Examples
