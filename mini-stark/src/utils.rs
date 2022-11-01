@@ -84,8 +84,8 @@ impl<F: GpuField> Matrix<F> {
         self.num_rows() == 0
     }
 
-    /// Interpolates the columns of the polynomials over the domain
-    pub fn into_polynomials(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
+    #[cfg(feature = "gpu")]
+    fn into_polynomials_gpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
         let mut ifft = GpuIfft::from(domain);
 
         for column in &mut self.0 {
@@ -97,13 +97,37 @@ impl<F: GpuField> Matrix<F> {
         self
     }
 
+    #[cfg(not(feature = "gpu"))]
+    fn into_polynomials_cpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
+        for column in &mut self.0 {
+            domain.ifft_in_place(column);
+        }
+        self
+    }
+
+    /// Interpolates the columns of the polynomials over the domain
+    pub fn into_polynomials(self, domain: Radix2EvaluationDomain<F>) -> Self {
+        #[cfg(not(feature = "gpu"))]
+        return self.into_polynomials_cpu(domain);
+        #[cfg(feature = "gpu")]
+        return self.into_polynomials_gpu(domain);
+    }
+
     /// Interpolates the columns of the matrix over the domain
     pub fn interpolate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
         self.clone().into_polynomials(domain)
     }
 
-    /// Evaluates the columns of the matrix
-    pub fn into_evaluations(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
+    #[cfg(not(feature = "gpu"))]
+    fn into_evaluations_cpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
+        for column in &mut self.0 {
+            domain.fft_in_place(column);
+        }
+        self
+    }
+
+    #[cfg(feature = "gpu")]
+    fn into_evaluations_gpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
         let mut fft = GpuFft::from(domain);
 
         for column in &mut self.0 {
@@ -116,12 +140,50 @@ impl<F: GpuField> Matrix<F> {
     }
 
     /// Evaluates the columns of the matrix
+    pub fn into_evaluations(self, domain: Radix2EvaluationDomain<F>) -> Self {
+        #[cfg(not(feature = "gpu"))]
+        return self.into_evaluations_cpu(domain);
+        #[cfg(feature = "gpu")]
+        return self.into_evaluations_gpu(domain);
+    }
+
+    /// Evaluates the columns of the matrix
     pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
         self.clone().into_evaluations(domain)
     }
 
-    /// Sums columns into a single column matrix
-    pub fn sum_columns(&self) -> Matrix<F> {
+    #[cfg(not(feature = "gpu"))]
+    pub fn sum_columns_cpu(&self) -> Matrix<F> {
+        let n = self.num_rows();
+        let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
+        accumulator.resize(n, F::zero());
+
+        if !self.num_cols().is_zero() {
+            #[cfg(not(feature = "parallel"))]
+            let chunk_size = accumulator.len();
+            #[cfg(feature = "parallel")]
+            let chunk_size = std::cmp::max(
+                accumulator.len() / rayon::current_num_threads().next_power_of_two(),
+                1024,
+            );
+
+            ark_std::cfg_chunks_mut!(accumulator, chunk_size)
+                .enumerate()
+                .for_each(|(chunk_offset, chunk)| {
+                    let offset = chunk_size * chunk_offset;
+                    for column in &self.0 {
+                        for i in 0..chunk_size {
+                            chunk[i] += column[offset + i];
+                        }
+                    }
+                });
+        }
+
+        Matrix::new(vec![accumulator])
+    }
+
+    #[cfg(feature = "gpu")]
+    pub fn sum_columns_gpu(&self) -> Matrix<F> {
         let n = self.num_rows();
         let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
         accumulator.resize(n, F::zero());
@@ -134,7 +196,7 @@ impl<F: GpuField> Matrix<F> {
             let command_buffer = command_queue.new_command_buffer();
             let mut accumulator_buffer = buffer_mut_no_copy(device, &mut accumulator);
             let adder = AddAssignStage::<F>::new(library, n);
-            for column in self.0.iter() {
+            for column in &self.0 {
                 let column_buffer = buffer_no_copy(command_queue.device(), column);
                 adder.encode(command_buffer, &mut accumulator_buffer, &column_buffer);
             }
@@ -143,6 +205,14 @@ impl<F: GpuField> Matrix<F> {
         }
 
         Matrix::new(vec![accumulator])
+    }
+
+    /// Sums columns into a single column matrix
+    pub fn sum_columns(&self) -> Matrix<F> {
+        #[cfg(not(feature = "gpu"))]
+        return self.sum_columns_cpu();
+        #[cfg(feature = "gpu")]
+        return self.sum_columns_gpu();
     }
 
     pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {

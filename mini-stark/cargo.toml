@@ -9,7 +9,7 @@ digest = "0.10.5"
 rand_chacha = "0.3.1"
 ark-std = { git = "https://github.com/arkworks-rs/std" }
 ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
-ark-poly = { git = "https://github.com/arkworks-rs/algebra" }
+ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator" }
 ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
 fast-poly = { path = "../fast-poly" }
@@ -21,7 +21,7 @@ rayon = { version = "1.5.3", optional = true }
 [features]
 default = []
 asm = [ "sha2/asm" ]
-# gpu = [ "dep:fast-poly" ]
+gpu = []
 parallel = [ "dep:rayon", "ark-std/parallel", "fast-poly/parallel" ]
 
 [dev-dependencies]

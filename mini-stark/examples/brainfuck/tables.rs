@@ -4,6 +4,7 @@ pub trait BrainfuckColumn {
     const NUM_TRACE_COLUMNS: usize = Self::LAST_TRACE_COL_INDEX - Self::FIRST_TRACE_COL_INDEX + 1;
 }
 
+#[derive(Clone, Copy)]
 pub enum Challenge {
     A,
     B,
@@ -24,6 +25,7 @@ impl mini_stark::constraint::Challenge for Challenge {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum ProcessorBaseColumn {
     Cycle,
     Ip,
@@ -34,6 +36,7 @@ pub enum ProcessorBaseColumn {
     MemValInv,
 }
 
+#[derive(Clone, Copy)]
 pub enum ProcessorExtensionColumn {
     InstructionPermutation,
     MemoryPermutation,
@@ -41,6 +44,7 @@ pub enum ProcessorExtensionColumn {
     OutputEvaluation,
 }
 
+#[derive(Clone, Copy)]
 pub enum MemoryBaseColumn {
     Cycle,
     Mp,
@@ -48,33 +52,40 @@ pub enum MemoryBaseColumn {
     Dummy,
 }
 
+#[derive(Clone, Copy)]
 pub enum MemoryExtensionColumn {
     Permutation,
 }
 
+#[derive(Clone, Copy)]
 pub enum InstructionBaseColumn {
     Ip,
     CurrInstr,
     NextInstr,
 }
 
+#[derive(Clone, Copy)]
 pub enum InstructionExtensionColumn {
     ProcessorPermutation,
     ProgramEvaluation,
 }
 
+#[derive(Clone, Copy)]
 pub enum InputBaseColumn {
     Value,
 }
 
+#[derive(Clone, Copy)]
 pub enum InputExtensionColumn {
     Evaluation,
 }
 
+#[derive(Clone, Copy)]
 pub enum OutputBaseColumn {
     Value,
 }
 
+#[derive(Clone, Copy)]
 pub enum OutputExtensionColumn {
     Evaluation,
 }

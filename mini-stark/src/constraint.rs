@@ -354,25 +354,14 @@ impl<F: GpuField> Constraint<F> {
         result
     }
 
-    // TODO: don't make this coupled to "trace"
-    pub fn evaluate_symbolic(
+    #[cfg(feature = "gpu")]
+    fn evaluate_symbolic_gpu(
+        results: &mut [GpuVec<F>],
         constraints: &[Constraint<F>],
-        challenges: &[F],
         trace_step: usize,
         trace_lde: &Matrix<F>,
-    ) -> Matrix<F> {
+    ) {
         let n = trace_lde.num_rows();
-        let constraint_without_challenges: Vec<Vec<Term<F>>> = constraints
-            .iter()
-            .map(|c| c.evaluate_challenges(challenges).0)
-            .collect();
-        if constraint_without_challenges.is_empty() {
-            return Matrix::new(vec![]);
-        }
-        // assert!(!constraint_without_challenges.is_empty());
-        // let _timer = Timer::new("Symbolic evaluation time");
-        // let _timer3 = Timer::new("Setup TIme");
-
         let library = &PLANNER.library;
         let command_queue = &PLANNER.command_queue;
         let device = command_queue.device();
@@ -382,20 +371,7 @@ impl<F: GpuField> Constraint<F> {
         let filler = FillBuffStage::<F>::new(library, n);
         let adder = AddAssignStage::<F>::new(library, n);
 
-        let mut res = Matrix::new(
-            constraints
-                .iter()
-                .map(|_| {
-                    let mut col = Vec::with_capacity_in(n, PageAlignedAllocator);
-                    // col.resize(n, F::zero());
-                    unsafe { col.set_len(n) }
-                    col
-                })
-                .collect(),
-        );
-        // drop(_timer3);
-
-        let mut res_buffers = res
+        let mut res_buffers = results
             .iter_mut()
             .map(|col| buffer_mut_no_copy(device, col))
             .collect::<Vec<_>>();
@@ -404,8 +380,8 @@ impl<F: GpuField> Constraint<F> {
         unsafe { scratch.set_len(n) }
         let mut scratch_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch);
 
-        for (constraint, res_buffer) in constraint_without_challenges.iter().zip(&mut res_buffers) {
-            for (i, term) in constraint.iter().enumerate() {
+        for (constraint, res_buffer) in constraints.iter().zip(&mut res_buffers) {
+            for (i, term) in constraint.0.iter().enumerate() {
                 if i == 0 {
                     filler.encode(command_buffer, res_buffer, term.0);
                     for (element, power) in &(term.1).0 {
@@ -447,12 +423,102 @@ impl<F: GpuField> Constraint<F> {
             }
         }
         command_buffer.commit();
-        // let _timer2 = Timer::new("Execution TIme");
         command_buffer.wait_until_completed();
-        // drop(_timer2);
-        // drop(_timer);
+    }
 
-        res
+    #[cfg(not(feature = "gpu"))]
+    fn evaluate_symbolic_cpu(
+        results: &mut [GpuVec<F>],
+        constraints: &[Constraint<F>],
+        trace_step: usize,
+        trace_lde: &Matrix<F>,
+    ) {
+        let n = trace_lde.num_rows();
+        #[cfg(not(feature = "parallel"))]
+        let chunk_size = n;
+        #[cfg(feature = "parallel")]
+        let chunk_size = std::cmp::max(n / rayon::current_num_threads().next_power_of_two(), 1024);
+
+        for (result, constraint) in results.iter_mut().zip(constraints) {
+            ark_std::cfg_chunks_mut!(result, chunk_size)
+                .enumerate()
+                .for_each(|(chunk_offset, chunk)| {
+                    let offset = chunk_offset * chunk_size;
+                    let mut scratch = Vec::with_capacity(chunk.len());
+                    scratch.resize(chunk.len(), F::zero());
+
+                    for (i, Term(coeff, variables)) in constraint.0.iter().enumerate() {
+                        scratch.fill(*coeff);
+                        for (element, power) in &variables.0 {
+                            let (col_index, shift) = match element {
+                                Element::Curr(col_index) => (col_index, 0),
+                                Element::Next(col_index) => (col_index, trace_step),
+                                _ => unreachable!(),
+                            };
+
+                            for (i, scratch) in scratch.iter_mut().enumerate() {
+                                *scratch *= trace_lde.0[*col_index][(offset + shift + i) % n]
+                                    .pow([*power as u64]);
+                            }
+                        }
+                        if i == 0 {
+                            for (result, scratch) in chunk.iter_mut().zip(&scratch) {
+                                *result = *scratch;
+                            }
+                        } else {
+                            for (result, scratch) in chunk.iter_mut().zip(&scratch) {
+                                *result += scratch;
+                            }
+                        }
+                    }
+                });
+        }
+    }
+
+    // TODO: don't make this coupled to "trace"
+    pub fn evaluate_symbolic(
+        constraints: &[Constraint<F>],
+        challenges: &[F],
+        trace_step: usize,
+        trace_lde: &Matrix<F>,
+    ) -> Matrix<F> {
+        let n = trace_lde.num_rows();
+        let constraints_without_challenges: Vec<Constraint<F>> = constraints
+            .iter()
+            .map(|c| c.evaluate_challenges(challenges))
+            .collect();
+        if constraints_without_challenges.is_empty() {
+            return Matrix::new(vec![]);
+        }
+
+        let mut results = Matrix::new(
+            constraints
+                .iter()
+                .map(|_| {
+                    let mut col = Vec::with_capacity_in(n, PageAlignedAllocator);
+                    // col.resize(n, F::zero());
+                    unsafe { col.set_len(n) }
+                    col
+                })
+                .collect(),
+        );
+
+        #[cfg(feature = "gpu")]
+        Self::evaluate_symbolic_gpu(
+            &mut results.0,
+            &constraints_without_challenges,
+            trace_step,
+            trace_lde,
+        );
+        #[cfg(not(feature = "gpu"))]
+        Self::evaluate_symbolic_cpu(
+            &mut results.0,
+            &constraints_without_challenges,
+            trace_step,
+            trace_lde,
+        );
+
+        results
     }
 
     // TODO: move into example but shouldn't be here

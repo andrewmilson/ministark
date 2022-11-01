@@ -33,21 +33,12 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         }
     }
 
-    // TTB: 367ms
-
-    fn generate_quotients(
+    #[cfg(feature = "gpu")]
+    fn generate_quotients_gpu(
         &self,
-        challenges: &Challenges<A::Fp>,
-        constraints: &[Constraint<A::Fp>],
-        trace_lde: &Matrix<A::Fp>,
+        mut constraint_evaluations: Matrix<A::Fp>,
         divisor: &Divisor<A::Fp>,
     ) -> Matrix<A::Fp> {
-        let trace_step = self.air.lde_blowup_factor() as usize;
-        let _timer = Timer::new("=======CONSTRAINT EVALUATIOOOONS======");
-        let mut all_evaluations =
-            Constraint::evaluate_symbolic(constraints, challenges, trace_step, trace_lde);
-        drop(_timer);
-
         // Generate quotients
         let _timer = Timer::new("=QQ====QUOTIENT EVALUATIOOOONS===QQ=");
         let library = &PLANNER.library;
@@ -56,7 +47,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let multiplier = MulPowStage::<A::Fp>::new(library, divisor.len());
         let divisor_buffer = buffer_no_copy(command_queue.device(), divisor);
         // TODO: let's move GPU stuff out of here and make it readable in here.
-        for evaluations in &mut all_evaluations.0 {
+        for evaluations in &mut constraint_evaluations.0 {
             let mut evaluations_buffer = buffer_no_copy(command_queue.device(), evaluations);
             multiplier.encode(
                 command_buffer,
@@ -71,7 +62,52 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
         drop(_timer);
 
-        all_evaluations
+        constraint_evaluations
+    }
+
+    #[cfg(not(feature = "gpu"))]
+    fn generate_quotients_cpu(
+        &self,
+        mut constraint_evaluations: Matrix<A::Fp>,
+        divisor: &Divisor<A::Fp>,
+    ) -> Matrix<A::Fp> {
+        let n = constraint_evaluations.num_rows();
+        #[cfg(not(feature = "parallel"))]
+        let chunk_size = n;
+        #[cfg(feature = "parallel")]
+        let chunk_size = std::cmp::max(n / rayon::current_num_threads().next_power_of_two(), 1024);
+
+        for column in &mut constraint_evaluations.0 {
+            ark_std::cfg_chunks_mut!(column, chunk_size)
+                .enumerate()
+                .for_each(|(chunk_offset, chunk)| {
+                    let offset = chunk_offset * chunk_size;
+                    for (i, quotient) in chunk.iter_mut().enumerate() {
+                        *quotient *= divisor[offset + i]
+                    }
+                });
+        }
+
+        constraint_evaluations
+    }
+
+    fn generate_quotients(
+        &self,
+        challenges: &Challenges<A::Fp>,
+        constraints: &[Constraint<A::Fp>],
+        trace_lde: &Matrix<A::Fp>,
+        divisor: &Divisor<A::Fp>,
+    ) -> Matrix<A::Fp> {
+        let trace_step = self.air.lde_blowup_factor();
+        let _timer = Timer::new("=======CONSTRAINT EVALUATIOOOONS======");
+        let mut all_evaluations =
+            Constraint::evaluate_symbolic(constraints, challenges, trace_step, trace_lde);
+        drop(_timer);
+
+        #[cfg(feature = "gpu")]
+        return self.generate_quotients_gpu(all_evaluations, divisor);
+        #[cfg(not(feature = "gpu"))]
+        return self.generate_quotients_cpu(all_evaluations, divisor);
     }
 
     // output of the form `(boundary, transition, terminal)`

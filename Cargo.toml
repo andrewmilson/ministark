@@ -5,8 +5,9 @@ members = [
 ]
 
 [profile.release]
-debug = true
+# debug = true
 codegen-units = 1
+panic = 'abort'
 lto = true
 
 [profile.bench]
