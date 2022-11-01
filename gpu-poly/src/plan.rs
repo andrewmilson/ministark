@@ -1,3 +1,5 @@
+#![cfg(target_arch = "aarch64")]
+
 use crate::allocator::PageAlignedAllocator;
 use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
@@ -15,6 +17,13 @@ use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
+
+/// Represents a FFT direction
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+pub enum FftDirection {
+    Forward,
+    Inverse,
+}
 
 pub struct FftEncoder<'a, F: GpuField> {
     n: usize,

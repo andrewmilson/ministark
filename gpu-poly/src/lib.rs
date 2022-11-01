@@ -10,13 +10,6 @@ pub mod prelude;
 pub mod stage;
 pub mod utils;
 
-/// Represents a FFT direction
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-pub enum FftDirection {
-    Forward,
-    Inverse,
-}
-
 // GPU implementation of the field exists in metal/
 pub trait GpuField: FftField {
     // Used to select which GPU kernel to call.

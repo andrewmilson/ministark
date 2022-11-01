@@ -496,28 +496,20 @@ pub trait ProverChannel<F: GpuField> {
 ///    │ drp[i] │ 82 │ 12 │ 57 │ 34 │
 ///    └────────┴────┴────┴────┴────┘
 pub fn apply_drp<F: GpuField>(
-    mut evals: GpuVec<F>,
+    evals: GpuVec<F>,
     domain_offset: F,
     alpha: F,
     folding_factor: usize,
 ) -> GpuVec<F> {
     let n = evals.len();
     let domain = Radix2EvaluationDomain::new_coset(n, domain_offset).unwrap();
-
-    let coeffs = if cfg!(feature = "gpu") && n >= GpuIfft::<F>::MIN_SIZE {
-        let mut ifft = GpuIfft::from(domain);
-        ifft.encode(&mut evals);
-        ifft.execute();
-        evals
-    } else {
-        domain.ifft(&evals).to_vec_in(PageAlignedAllocator)
-    };
+    let coeffs = ifft(evals, domain);
 
     let alpha_powers = (0..folding_factor)
         .map(|i| alpha.pow([i as u64]))
         .collect::<Vec<F>>();
 
-    let mut drp_coeffs = ark_std::cfg_chunks!(coeffs, folding_factor)
+    let drp_coeffs = ark_std::cfg_chunks!(coeffs, folding_factor)
         .map(|chunk| {
             chunk
                 .iter()
@@ -532,15 +524,35 @@ pub fn apply_drp<F: GpuField>(
     let drp_domain = Radix2EvaluationDomain::new_coset(n / folding_factor, drp_offset).unwrap();
 
     // return the drp evals
-    if cfg!(feature = "gpu") && drp_domain.size() >= GpuFft::<F>::MIN_SIZE {
-        let mut fft = GpuFft::from(drp_domain);
-        fft.encode(&mut drp_coeffs);
-        fft.execute();
-        drp_coeffs
-    } else {
-        let evals = drp_domain.fft(&drp_coeffs);
-        evals.to_vec_in(PageAlignedAllocator)
+    fft(drp_coeffs, drp_domain)
+}
+
+fn ifft<F: GpuField>(evals: GpuVec<F>, domain: Radix2EvaluationDomain<F>) -> GpuVec<F> {
+    #[cfg(feature = "gpu")]
+    if domain.size() >= GpuFft::<F>::MIN_SIZE {
+        let mut coeffs = evals;
+        let mut ifft = GpuIfft::from(domain);
+        ifft.encode(&mut evals);
+        ifft.execute();
+        return coeffs;
     }
+
+    let coeffs = domain.ifft(&evals);
+    coeffs.to_vec_in(PageAlignedAllocator)
+}
+
+fn fft<F: GpuField>(coeffs: GpuVec<F>, domain: Radix2EvaluationDomain<F>) -> GpuVec<F> {
+    #[cfg(feature = "gpu")]
+    if domain.size() >= GpuFft::<F>::MIN_SIZE {
+        let mut evals = coeffs;
+        let mut fft = GpuFft::from(domain);
+        fft.encode(&mut evals);
+        fft.execute();
+        return evals;
+    }
+
+    let evals = domain.fft(&coeffs);
+    evals.to_vec_in(PageAlignedAllocator)
 }
 
 fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {

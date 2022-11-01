@@ -336,7 +336,6 @@ impl<F: GpuField> Constraint<F> {
                     Element::Curr(index) => current_row[index],
                     Element::Next(index) => next_row[index],
                     Element::Challenge(index) => challenges[index],
-                    _ => unreachable!(),
                 };
                 scratch *= val.pow([power as u64]);
             }

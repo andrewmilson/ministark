@@ -1,3 +1,5 @@
+#![cfg(target_arch = "aarch64")]
+
 use super::GpuField;
 use crate::allocator::PageAlignedAllocator;
 use crate::utils::buffer_no_copy;

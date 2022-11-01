@@ -1,3 +1,4 @@
+#![cfg(target_arch = "aarch64")]
 #![feature(allocator_api, int_log)]
 
 use ark_ff::FftField;
