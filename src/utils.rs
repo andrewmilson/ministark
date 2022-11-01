@@ -6,7 +6,7 @@ use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
-use fast_poly::prelude::*;
+use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::cmp::Ordering;

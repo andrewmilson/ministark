@@ -5,7 +5,7 @@ use crate::Matrix;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
-use fast_poly::GpuField;
+use gpu_poly::GpuField;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct Queries<F: GpuField> {

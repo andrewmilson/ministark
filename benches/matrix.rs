@@ -6,8 +6,8 @@ use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use digest::Digest;
-use fast_poly::allocator::PageAlignedAllocator;
-use fast_poly::GpuField;
+use gpu_poly::allocator::PageAlignedAllocator;
+use gpu_poly::GpuField;
 use mini_stark::Matrix;
 use sha2::Sha256;
 

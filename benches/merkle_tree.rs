@@ -9,7 +9,7 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use digest::Digest;
 use digest::Output;
-use fast_poly::GpuField;
+use gpu_poly::GpuField;
 use mini_stark::merkle::MerkleTree;
 use sha2::Sha256;
 

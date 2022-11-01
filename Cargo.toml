@@ -1,13 +1,60 @@
+[package]
+name = "mini-stark"
+description = "GPU accelerated STARK engine"
+authors = ["Andrew Milson <andrew.j.milson@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/andrewmilson/stark"
+categories = ["cryptography"]
+readme = "README.md"
+
 [workspace]
-members = [
-    "fast-poly",
-    "mini-stark"
-]
+members = ["gpu-poly"]
+
+[features]
+default = []
+asm = [ "sha2/asm" ]
+gpu = []
+parallel = [ "dep:rayon", "ark-std/parallel", "fast-poly/parallel" ]
+
+[[bench]]
+name = "merkle_tree"
+path = "benches/merkle_tree.rs"
+harness = false
+
+[[bench]]
+name = "matrix"
+path = "benches/matrix.rs"
+# required-features = ["asm", "parallel"]
+harness = false
+
+[dependencies]
+sha2 = "0.10.6"
+digest = "0.10.5"
+rand_chacha = "0.3.1"
+ark-std = { git = "https://github.com/arkworks-rs/std" }
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
+ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator" }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
+ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
+gpu-poly = { path = "./gpu-poly" }
+anyhow = "1.0.65"
+rand = "0.8.5"
+thiserror = "1.0.37"
+rayon = { version = "1.5.3", optional = true }
+
+[dev-dependencies]
+criterion = "0.4.0"
+
+# taken from https://github.com/recmo/uint
+# Compilation profile for any non-workspace member.
+# Dependencies are optimized, even in a dev build. This improves dev performance
+# while having neglible impact on incremental build times.
+[profile.dev.package."*"]
+opt-level = 3
 
 [profile.release]
-# debug = true
 codegen-units = 1
-panic = 'abort'
 lto = true
 
 [profile.bench]

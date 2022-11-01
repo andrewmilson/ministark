@@ -9,7 +9,7 @@ use crate::Proof;
 use crate::ProofOptions;
 use crate::Trace;
 use ark_ff::Field;
-use fast_poly::GpuField;
+use gpu_poly::GpuField;
 use sha2::Sha256;
 
 /// Errors that can occur during the proving stage

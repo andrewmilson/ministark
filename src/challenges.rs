@@ -1,6 +1,6 @@
 use crate::constraint::Challenge;
 use ark_std::rand::Rng;
-use fast_poly::GpuField;
+use gpu_poly::GpuField;
 use std::ops::Deref;
 use std::ops::Index;
 

@@ -2,7 +2,7 @@
 
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
-use fast_poly::allocator::PageAlignedAllocator;
+use gpu_poly::allocator::PageAlignedAllocator;
 use mini_stark::constraint::are_eq;
 use mini_stark::Air;
 use mini_stark::Column;

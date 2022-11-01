@@ -8,7 +8,7 @@ use crate::Matrix;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
-use fast_poly::prelude::*;
+use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use sha2::Sha256;
@@ -95,7 +95,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     ) -> Matrix<A::Fp> {
         let trace_step = self.air.lde_blowup_factor();
         let _timer = Timer::new("=======CONSTRAINT EVALUATIOOOONS======");
-        let mut all_evaluations =
+        let all_evaluations =
             Constraint::evaluate_symbolic(constraints, challenges, trace_step, trace_lde);
         drop(_timer);
 

@@ -8,7 +8,7 @@ use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
 use digest::Digest;
 use digest::Output;
-use fast_poly::GpuField;
+use gpu_poly::GpuField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::ops::Deref;
