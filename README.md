@@ -42,7 +42,8 @@ Implementation of the [Brainf***](https://esolangs.org/wiki/Brainfuck) virtual m
 
 ```bash
 # source: https://esolangs.org
-export HELLO_WORLD_BF_SOURCE="++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
+export HELLO_WORLD_BF_SOURCE="++++++++[>++++[>++>+++>+++>+<<<<-]>+>+\
+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
 cargo run --release --features parallel,asm  --example bf --src $HELLO_WORLD_BF_SOURCE
 ```
 
