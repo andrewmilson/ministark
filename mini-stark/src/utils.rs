@@ -1,5 +1,6 @@
 use crate::merkle::MerkleTree;
 use crate::Column;
+use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::univariate::DensePolynomial;
@@ -248,13 +249,9 @@ impl<F: GpuField> Matrix<F> {
     }
 
     pub fn evaluate_at(&self, x: F) -> Vec<F> {
-        let mut evaluations = Vec::new();
-        for col in &self.0 {
-            // TODO: perf
-            let polynomial = DensePolynomial::from_coefficients_slice(col);
-            evaluations.push(polynomial.evaluate(&x));
-        }
-        evaluations
+        ark_std::cfg_iter!(self.0)
+            .map(|col| horner_evaluate(col, &x))
+            .collect()
     }
 
     pub fn get_row(&self, row: usize) -> Option<Vec<F>> {
@@ -418,4 +415,12 @@ pub fn fill_vanishing_polynomial<F: GpuField>(
                 acc *= &scaled_eval_generator
             })
         });
+}
+
+// taken from arkworks-rs
+/// Horner's method for polynomial evaluation
+pub fn horner_evaluate<F: Field>(poly_coeffs: &[F], point: &F) -> F {
+    poly_coeffs
+        .iter()
+        .rfold(F::zero(), move |result, coeff| result * point + coeff)
 }

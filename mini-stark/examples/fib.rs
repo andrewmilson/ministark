@@ -195,7 +195,7 @@ fn main() {
     let now = Instant::now();
     let options = ProofOptions::new(32, 4, 8, 8, 64);
     let prover = FibProver::new(options);
-    let trace = gen_trace(1048576 * 4);
+    let trace = gen_trace(1048576);
 
     let proof = prover.generate_proof(trace).unwrap();
     println!("Runtime: {:?}", now.elapsed());
