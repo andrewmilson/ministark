@@ -508,14 +508,13 @@ pub fn apply_drp<F: GpuField>(
     let n = evals.len();
     let domain = Radix2EvaluationDomain::new_coset(n, domain_offset).unwrap();
 
-    let coeffs = if n >= GpuIfft::<F>::MIN_SIZE {
+    let coeffs = if cfg!(feature = "gpu") && n >= GpuIfft::<F>::MIN_SIZE {
         let mut ifft = GpuIfft::from(domain);
         ifft.encode(&mut evals);
         ifft.execute();
         evals
     } else {
-        let coeffs = domain.ifft(&evals);
-        coeffs.to_vec_in(PageAlignedAllocator)
+        domain.ifft(&evals).to_vec_in(PageAlignedAllocator)
     };
 
     let alpha_powers = (0..folding_factor)
