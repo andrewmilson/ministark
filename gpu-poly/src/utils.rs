@@ -1,6 +1,4 @@
-#[cfg(target_arch = "aarch64")]
 use crate::allocator::PAGE_SIZE;
-#[cfg(target_arch = "aarch64")]
 use crate::GpuVec;
 use ark_ff::FftField;
 #[cfg(feature = "parallel")]
@@ -95,8 +93,6 @@ pub fn copy_to_private_buffer<T: Sized>(
 /// WARNING: keep the original data around or it will be freed.
 #[cfg(target_arch = "aarch64")]
 pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &GpuVec<T>) -> metal::Buffer {
-    use crate::allocator::PAGE_SIZE;
-    use crate::GpuVec;
     let byte_len = round_up_to_multiple(v.len() * std::mem::size_of::<T>(), *PAGE_SIZE);
     device.new_buffer_with_bytes_no_copy(
         v.as_ptr() as *mut std::ffi::c_void,

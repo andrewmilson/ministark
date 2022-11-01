@@ -532,7 +532,7 @@ fn ifft<F: GpuField>(evals: GpuVec<F>, domain: Radix2EvaluationDomain<F>) -> Gpu
     if domain.size() >= GpuFft::<F>::MIN_SIZE {
         let mut coeffs = evals;
         let mut ifft = GpuIfft::from(domain);
-        ifft.encode(&mut evals);
+        ifft.encode(&mut coeffs);
         ifft.execute();
         return coeffs;
     }

@@ -8,7 +8,6 @@ use crate::stage::Variant;
 use crate::utils::bit_reverse;
 use crate::utils::buffer_mut_no_copy;
 use crate::utils::fill_twiddles;
-use crate::FftDirection;
 use crate::GpuField;
 use crate::GpuVec;
 use ark_poly::EvaluationDomain;
@@ -18,10 +17,11 @@ use std::sync::Arc;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
 
-/// Represents a FFT direction
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-pub enum FftDirection {
+enum FftDirection {
+    /// FFT
     Forward,
+    /// IFFT
     Inverse,
 }
 
