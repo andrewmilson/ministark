@@ -536,7 +536,7 @@ pub fn apply_drp<F: GpuField>(
     let drp_domain = Radix2EvaluationDomain::new_coset(n / folding_factor, drp_offset).unwrap();
 
     // return the drp evals
-    if drp_domain.size() >= GpuFft::<F>::MIN_SIZE {
+    if cfg!(feature = "gpu") && drp_domain.size() >= GpuFft::<F>::MIN_SIZE {
         let mut fft = GpuFft::from(drp_domain);
         fft.encode(&mut drp_coeffs);
         fft.execute();
