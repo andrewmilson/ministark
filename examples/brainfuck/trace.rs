@@ -19,10 +19,10 @@ use ark_std::rand;
 use ark_std::UniformRand;
 use gpu_poly::allocator::PageAlignedAllocator;
 use gpu_poly::GpuVec;
-use mini_stark::challenges::Challenges;
-// use mini_stark::constraint::Challenge as _;
-use mini_stark::Matrix;
-use mini_stark::Trace;
+use ministark::challenges::Challenges;
+// use ministark::constraint::Challenge as _;
+use ministark::Matrix;
+use ministark::Trace;
 
 pub struct BrainfuckTrace {
     processor_base_trace: Matrix<Fp>,

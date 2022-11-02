@@ -10,7 +10,7 @@ use criterion::Criterion;
 use digest::Digest;
 use digest::Output;
 use gpu_poly::GpuField;
-use mini_stark::merkle::MerkleTree;
+use ministark::merkle::MerkleTree;
 use sha2::Sha256;
 
 const BENCHMARK_TREE_DEPTH: [usize; 4] = [14, 15, 16, 17];

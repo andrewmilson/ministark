@@ -5,7 +5,7 @@
 
 
 > **Warning**
-> Code is new and may change or be removed in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or get in touch 
+> Code is new and may change or be removed in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or register your interest https://forms.gle/SYrA9hbGQuivbHX5A
 
 An open-source STARKs allow generating proofs for general computation. 
 

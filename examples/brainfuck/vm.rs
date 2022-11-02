@@ -9,10 +9,10 @@ use crate::BrainfuckTrace;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
-use mini_stark::Matrix;
-use mini_stark::TraceInfo;
+use ministark::Matrix;
+use ministark::TraceInfo;
 
-type Fp = <BrainfuckTrace as mini_stark::Trace>::Fp;
+type Fp = <BrainfuckTrace as ministark::Trace>::Fp;
 
 /// Opcodes determined by the lexer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

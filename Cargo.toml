@@ -1,10 +1,10 @@
 [package]
-name = "mini-stark"
+name = "ministark"
 description = "GPU accelerated STARK engine"
 authors = ["Andrew Milson <andrew.j.milson@gmail.com>"]
 version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/andrewmilson/stark"
+repository = "https://github.com/andrewmilson/ministark"
 categories = ["cryptography"]
 readme = "README.md"
 

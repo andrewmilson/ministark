@@ -13,12 +13,12 @@ use ark_std::rand::Rng;
 use ark_std::UniformRand;
 use gpu_poly::allocator::PageAlignedAllocator;
 use gpu_poly::GpuField;
-use mini_stark::constraint::are_eq;
-use mini_stark::constraint::is_binary;
-use mini_stark::constraint::Challenge;
-use mini_stark::constraint::Column;
-use mini_stark::Constraint;
-use mini_stark::Matrix;
+use ministark::constraint::are_eq;
+use ministark::constraint::is_binary;
+use ministark::constraint::Challenge;
+use ministark::constraint::Column;
+use ministark::Constraint;
+use ministark::Matrix;
 
 // #[test]
 // fn constraint_degree_reduction() {

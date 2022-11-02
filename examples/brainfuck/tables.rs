@@ -19,7 +19,7 @@ pub enum Challenge {
     Eta,
 }
 
-impl mini_stark::constraint::Challenge for Challenge {
+impl ministark::constraint::Challenge for Challenge {
     fn index(&self) -> usize {
         *self as usize
     }
@@ -144,7 +144,7 @@ impl BrainfuckColumn for OutputExtensionColumn {
 
 macro_rules! impl_column {
     ($t:ty) => {
-        impl mini_stark::constraint::Column for $t {
+        impl ministark::constraint::Column for $t {
             fn index(&self) -> usize {
                 Self::FIRST_TRACE_COL_INDEX + *self as usize
             }

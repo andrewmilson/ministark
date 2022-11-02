@@ -12,9 +12,9 @@ use crate::tables::ProcessorExtensionColumn;
 use crate::vm::OpCode;
 use ark_ff::Zero;
 use gpu_poly::GpuField;
-use mini_stark::constraint::Challenge as _;
-use mini_stark::Column;
-use mini_stark::Constraint;
+use ministark::constraint::Challenge as _;
+use ministark::Column;
+use ministark::Constraint;
 use std::borrow::Borrow;
 
 impl ProcessorBaseColumn {

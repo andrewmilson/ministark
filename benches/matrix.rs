@@ -8,7 +8,7 @@ use criterion::Criterion;
 use digest::Digest;
 use gpu_poly::allocator::PageAlignedAllocator;
 use gpu_poly::GpuField;
-use mini_stark::Matrix;
+use ministark::Matrix;
 use sha2::Sha256;
 
 const BENCHMARK_MATRIX_DIMENSIONS: [(usize, usize); 4] =

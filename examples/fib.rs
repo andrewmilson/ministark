@@ -3,15 +3,15 @@
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
 use gpu_poly::allocator::PageAlignedAllocator;
-use mini_stark::constraint::are_eq;
-use mini_stark::Air;
-use mini_stark::Column;
-use mini_stark::Constraint;
-use mini_stark::Matrix;
-use mini_stark::ProofOptions;
-use mini_stark::Prover;
-use mini_stark::Trace;
-use mini_stark::TraceInfo;
+use ministark::constraint::are_eq;
+use ministark::Air;
+use ministark::Column;
+use ministark::Constraint;
+use ministark::Matrix;
+use ministark::ProofOptions;
+use ministark::Prover;
+use ministark::Trace;
+use ministark::TraceInfo;
 use std::time::Instant;
 
 struct FibTrace(Matrix<Fp>);

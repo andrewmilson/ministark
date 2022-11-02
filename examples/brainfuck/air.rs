@@ -2,10 +2,10 @@ use crate::tables;
 use ark_ff_optimized::fp64::Fp;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use mini_stark::Air;
-use mini_stark::Constraint;
-use mini_stark::ProofOptions;
-use mini_stark::TraceInfo;
+use ministark::Air;
+use ministark::Constraint;
+use ministark::ProofOptions;
+use ministark::TraceInfo;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct ExecutionInfo {

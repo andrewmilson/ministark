@@ -1,5 +1,5 @@
 use digest::Digest;
-use mini_stark::merkle::MerkleTree;
+use ministark::merkle::MerkleTree;
 use sha2::Sha256;
 
 #[test]
