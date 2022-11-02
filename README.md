@@ -1,13 +1,16 @@
-# MiniSTARK - GPU accelerated STARK engine
+> **Warning**
+> this code is new and may change or be removed in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or register your interest https://forms.gle/SYrA9hbGQuivbHX5A
+
+<div align="center">
+
+# Mini<i>STARK</i> ✨
+
+**GPU accelerated STARK prover and verifier**
 
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/andrewmilson/mini-stark/blob/main/LICENSE)
 [![stability-experimental](https://img.shields.io/badge/stability-experimental-orange.svg)](https://github.com/mkenney/software-guides/blob/master/STABILITY-BADGES.md#experimental)
 
-
-> **Warning**
-> Code is new and may change or be removed in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or register your interest https://forms.gle/SYrA9hbGQuivbHX5A
-
-An open-source STARKs allow generating proofs for general computation. 
+</div>
 
 My time working at Immutable left me fascinated with theoretical proof systems and their applications. I developed an all-consuming amateur interest for scalable transparent arguments of knowledge (STARKs). They give the ability to prove to a 3rd party that some computation with $n$ steps ran correctly. Proofs can be verified in $O(log^{2}(n))$ vs naive $O(n)$<sup>1</sup>.
 
