@@ -1,5 +1,14 @@
 # MiniSTARK - GPU accelerated STARK engine
 
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/andrewmilson/mini-stark/blob/main/LICENSE)
+[![stability-experimental](https://img.shields.io/badge/stability-experimental-orange.svg)](https://github.com/mkenney/software-guides/blob/master/STABILITY-BADGES.md#experimental)
+
+
+> **Warning**
+> Code is new and may change or be removed in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or get in touch 
+
+An open-source STARKs allow generating proofs for general computation. 
+
 My time working at Immutable left me fascinated with theoretical proof systems and their applications. I developed an all-consuming amateur interest for scalable transparent arguments of knowledge (STARKs). They give the ability to prove to a 3rd party that some computation with $n$ steps ran correctly. Proofs can be verified in $O(log^{2}(n))$ vs naive $O(n)$<sup>1</sup>.
 
 The library is primarily written in Rust but has been optimised by moving heavily parellisable polynomial arithmetic from the CPU to the GPU. Rust has poor support for coding GPUs so [Apple's metal shader language](https://developer.apple.com/metal/) was used instead. The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and [winterfell](https://github.com/novifinancial/winterfell) was heavily used as a reference for several components: fast Merkle Tree, DEEP composition polynomial, FRI, channels, overall design. This library runs around twice as fast as Winterfell at the moment but will evolve to be even faster and have lower memory requirements.

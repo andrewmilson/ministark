@@ -325,6 +325,7 @@ impl<F: GpuField> AddAssignStage<F> {
         dst_buffer: &mut metal::BufferRef,
         src_buffer: &metal::BufferRef,
     ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
         let command_encoder = command_buffer.new_compute_command_encoder();
         command_encoder.set_compute_pipeline_state(&self.pipeline);
         command_encoder.set_buffer(0, Some(dst_buffer), 0);
@@ -371,7 +372,9 @@ impl<F: GpuField> FillBuffStage<F> {
         dst_buffer: &mut metal::BufferRef,
         value: F,
     ) {
-        let command_encoder = command_buffer.new_compute_command_encoder();
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Serial);
         command_encoder.set_compute_pipeline_state(&self.pipeline);
         command_encoder.set_buffer(0, Some(dst_buffer), 0);
         command_encoder.set_bytes(

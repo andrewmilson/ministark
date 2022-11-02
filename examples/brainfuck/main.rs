@@ -2,6 +2,9 @@
 
 use air::BrainfuckAir;
 use air::ExecutionInfo;
+// use ark_ff::CubicExtConfig;
+// use ark_ff::Fp3;
+// use ark_ff::Fp3Config;
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
 use mini_stark::ProofOptions;
@@ -61,10 +64,31 @@ const HELLO_WORLD_SOURCE: &str = "
 > .                     print '\n'
 ";
 
+// pub type Fq3 = Fp3<Fq3Config>;
+
+// pub struct Fq3Config;
+
+// impl Fp3Config for Fq3Config {
+//     type Fp;
+
+//     const NONRESIDUE: Self::Fp;
+
+//     const FROBENIUS_COEFF_FP3_C1: &'static [Self::Fp];
+
+//     const FROBENIUS_COEFF_FP3_C2: &'static [Self::Fp];
+
+//     const TWO_ADICITY: u32;
+
+//     const TRACE_MINUS_ONE_DIV_TWO: &'static [u64];
+
+//     const QUADRATIC_NONRESIDUE_TO_T: ark_ff::Fp3<Self>;
+// }
+
 struct BrainfuckProver(ProofOptions);
 
 impl Prover for BrainfuckProver {
     type Fp = Fp;
+    // type Fq = Fq;
     type Air = BrainfuckAir;
     type Trace = BrainfuckTrace;
 
