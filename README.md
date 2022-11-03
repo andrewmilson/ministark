@@ -14,9 +14,9 @@
 
 My time working at Immutable left me fascinated with theoretical proof systems and their applications. I developed an all-consuming amateur interest for scalable transparent arguments of knowledge (STARKs). They give the ability to prove to a 3rd party that some computation with $n$ steps ran correctly. Proofs can be verified in $O(log^{2}(n))$ vs naive $O(n)$<sup>1</sup> ([Learn more about STARKS](https://starkware.co/stark/)). 
 
-The library is primarily written in Rust but has been optimized by moving heavily parallelizable polynomial arithmetic from the CPU to the GPU. Rust has poor support for programming GPUs so all the GPU code is written in [Metal](https://developer.apple.com/metal/). The Rust code is powered by [arkworks](https://github.com/arkworks-rs). There is plenty opportunities for increasing speed and reducing memory overhead.
+The library is primarily written in Rust but has been optimized by moving heavily parallelizable polynomial arithmetic from the CPU to the GPU. Rust has poor support for programming GPUs so all the GPU code is written in [Metal](https://developer.apple.com/metal/). The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and influenced by [Winterfell](https://github.com/novifinancial/winterfell). MiniSTARK has plenty of opportunities for increasing speed and reducing memory overhead.
 
-Constraints in MiniSTARK are represented as multivariate polynomial where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Challenges are represented in a similar way. Look at [Brainf***](mini-stark/examples/brainfuck/) for a full example.
+Constraints in MiniSTARK are represented as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Look at the [MiniSTARK brainf*** VM](mini-stark/examples/brainfuck/) for a full example.
 
 ```rust
 #[derive(Hint)]
@@ -50,7 +50,7 @@ let constraints = vec![
 
 TODO
 
-### Proving Fibonacci squence
+### Proving Fibonacci sequence
 
 ## Performance
 
@@ -97,14 +97,17 @@ cargo run --release --features parallel,asm  --example fib
 
 ## Coming soon (help wanted)
 
-- More tests and benchmarks
-- Making gpu-poly less `unsafe`
+- Support all prime fields with ECFFT (see [wborgeaud/ecfft-bn254](https://github.com/wborgeaud/ecfft-bn254))
 - CUDA support in `gpu-poly`
 - Periodic transition constraints
 - Speed optimizations that don't sacrifice readability
 - Memory reductions that don't sacrifice readability
 - Using more `arkworks` features where appropriate
+- Reduce proof size with batched Merkle proofs
 - Cairo VM prover implemented using MiniSTARK (similar to [giza](https://github.com/maxgillett/giza))
+- More tests and benchmarks
+- More GPU field implementations
+- Making gpu-poly less `unsafe`
 - Zero knowledge 
 
 ## Thank yous

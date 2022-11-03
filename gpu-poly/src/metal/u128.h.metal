@@ -182,6 +182,8 @@ public:
         return *this;
     }
 
+    // TODO: Could get better performance with  smaller limb size
+    // Not sure what word size is for M1 GPU
 #ifdef __LITTLE_ENDIAN__
     unsigned long low;
     unsigned long high;
