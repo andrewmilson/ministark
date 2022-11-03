@@ -12,11 +12,11 @@
 
 </div>
 
-My time working at Immutable left me fascinated with theoretical proof systems and their applications. I developed an all-consuming amateur interest for scalable transparent arguments of knowledge (STARKs). They give the ability to prove to a 3rd party that some computation with $n$ steps ran correctly. Proofs can be verified in $O(log^{2}(n))$ vs naive $O(n)$<sup>1</sup>.
+My time working at Immutable left me fascinated with theoretical proof systems and their applications. I developed an all-consuming amateur interest for scalable transparent arguments of knowledge (STARKs). They give the ability to prove to a 3rd party that some computation with $n$ steps ran correctly. Proofs can be verified in $O(log^{2}(n))$ vs naive $O(n)$<sup>1</sup> ([Learn more about STARKS](https://starkware.co/stark/)). 
 
-The library is primarily written in Rust but has been optimised by moving heavily parellisable polynomial arithmetic from the CPU to the GPU. Rust has poor support for coding GPUs so [Apple's metal shader language](https://developer.apple.com/metal/) was used instead. The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and [winterfell](https://github.com/novifinancial/winterfell) was heavily used as a reference for several components: fast Merkle Tree, DEEP composition polynomial, FRI, channels, overall design. This library runs around twice as fast as Winterfell at the moment but will evolve to be even faster and have lower memory requirements.
+The library is primarily written in Rust but has been optimized by moving heavily parallelizable polynomial arithmetic from the CPU to the GPU. Rust has poor support for programming GPUs so all the GPU code is written in [Metal](https://developer.apple.com/metal/). The Rust code is powered by [arkworks](https://github.com/arkworks-rs). There is plenty opportunities for increasing speed and reducing memory overhead.
 
-MiniSTARK is unique with how constraints are expressed over the execution trace. Constraints are represented symbolically as a multivariate polynomial where each variable represents a column of the execution trace ([Column](mini-stark/src/constraint.rs) trait) or one of the verifier's challenges ([Challenge](mini-stark/src/constraint.rs) trait). Bellow is a contrived example to illustrate how constraints are represented. Challenges are represented in a similar way. Look at the [Brainf***](mini-stark/examples/brainfuck/) for a full example.
+Constraints in MiniSTARK are represented as multivariate polynomial where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Challenges are represented in a similar way. Look at [Brainf***](mini-stark/examples/brainfuck/) for a full example.
 
 ```rust
 #[derive(Hint)]
@@ -32,21 +32,32 @@ enum ProcessorTable {
     // ...
 }
 
+// all must evaluate to 0 over the trace domain
 let constraints = vec![
     // cycle starts at zero
-    Cycle.first().equals(F::zero()),
-    
+    Cycle.first(),
     // cycle increases from one row to the next
     Cycle.curr() - Cycle.next() - F::one(),
-
     // cycle doesn't exceed expected
-    Cycle.last().equals(ExpectedCycles.get_hint()),
-    
+    Cycle.last() - ExpectedCycles.get_hint(),
     // ...
 ];
 ```
 
-## Examples
+## Demo
+
+### Proving Hello World in brainf***
+
+TODO
+
+### Proving Fibonacci squence
+
+## Performance
+
+
+
+
+<!-- ## Examples
 
 ### Brainf*** virtual machine
 
@@ -82,21 +93,21 @@ cargo run --release --features parallel,asm  --example fib
 
 ## TODO
 
-- debugging memory table. Remove constraint for memory stay the same clock cycle increase
+- debugging memory table. Remove constraint for memory stay the same clock cycle increase -->
 
-## Help wanted
+## Coming soon (help wanted)
 
-- More tests
-- More benchmarks
+- More tests and benchmarks
 - Making gpu-poly less `unsafe`
 - CUDA support in `gpu-poly`
+- Periodic transition constraints
 - Speed optimizations that don't sacrifice readability
 - Memory reductions that don't sacrifice readability
 - Using more `arkworks` features where appropriate
-- Cairo VM prover implemented using MiniSTARK (similar to (giza)[https://github.com/maxgillett/giza])
-- Enabling zero knowledge
+- Cairo VM prover implemented using MiniSTARK (similar to [giza](https://github.com/maxgillett/giza))
+- Zero knowledge 
 
-## STARK resources and thanks
+## Thank yous
 
 - [StarkWare](https://starkware.co/) - The company started by the people who invented STARKs. Learnt so many things from the people at this company. Love how public and open their educational material is. Just a few of the things I've enjoyed: GOAT [Eli Ben-Sasson's](https://twitter.com/EliBenSasson) screencasts, Cairo whitepaper ([Video](https://www.youtube.com/watch?v=DTVn0oYLVsE), [PDF](https://eprint.iacr.org/2021/1063.pdf)), [STARK 101](https://starkware.co/stark-101/), [DEEP Method Medium article](https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab)
 - [Alan Szepieniec](https://twitter.com/aszepieniec?lang=en) - The [Anatomy of a STARK](https://aszepieniec.github.io/stark-anatomy/) was probably the best practical resource I've read on STARKs to date. STARKs remained a mystery to me until I went through this word by word (it took a while to digest). Read through this and the magic of STARKs will start to make sense. [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) is a fantastic sequel to the STARK Anatomy series and is a practical guide to creating an AIR that proves programs written in the Brainf*** programming language.
