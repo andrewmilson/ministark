@@ -3,7 +3,7 @@
 
 <div align="center">
 
-# Mini<i>STARK</i> ✨
+# Mini<i>STARK</i> <sup>✨</sup>
 
 **GPU accelerated STARK prover and verifier**
 
@@ -107,7 +107,7 @@ cargo run --release --features parallel,asm  --example fib
 - Cairo VM prover implemented using MiniSTARK (similar to [giza](https://github.com/maxgillett/giza))
 - More tests and benchmarks
 - More GPU field implementations
-- Making gpu-poly less `unsafe`
+- Making gpu-poly less unsafe
 - Zero knowledge 
 
 ## Thank yous
