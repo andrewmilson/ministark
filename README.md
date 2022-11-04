@@ -12,11 +12,24 @@
 
 </div>
 
-My time working at Immutable left me fascinated with theoretical proof systems and their applications. I developed an all-consuming amateur interest for scalable transparent arguments of knowledge (STARKs). They give the ability to prove to a 3rd party that some computation with $n$ steps ran correctly. Proofs can be verified in $O(log^{2}(n))$ vs naive $O(n)$<sup>1</sup> ([Learn more about STARKS](https://starkware.co/stark/)). 
+Mini<i>STARK</i> allows you to prove the execution of arbitrary computations to anyone using the power of [STARKs]((https://starkware.co/stark/)). In the example above MiniSTARK is being used to prove "Hello World!" in the [Brainf**k](https://esolangs.org/wiki/Brainfuck) programming language. Anyone can verify the proof instantly.
 
-The library is primarily written in Rust but has been optimized by moving heavily parallelizable polynomial arithmetic from the CPU to the GPU. Rust has poor support for programming GPUs so all the GPU code is written in [Metal](https://developer.apple.com/metal/). The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and influenced by [Winterfell](https://github.com/novifinancial/winterfell). MiniSTARK has plenty of opportunities for increasing speed and reducing memory overhead.
+The library is primarily written in Rust but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and influenced by [Winterfell](https://github.com/novifinancial/winterfell). Mini<i>STARK</i> has plenty of opportunities for increasing speed and reducing memory overhead.
 
-Constraints in MiniSTARK are represented as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Look at the [MiniSTARK brainf*** VM](mini-stark/examples/brainfuck/) for a full example.
+## Demo
+
+### Proving Hello World in brainf***
+
+TODO
+
+### Proving Fibonacci sequence
+
+## Performance
+
+
+## Constraints in Mini<i>STARK</i>
+
+MiniSTARK represents constraints as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Look at the constraint implementation of [brainf***](mini-stark/examples/brainfuck/) for a full example.
 
 ```rust
 #[derive(Hint)]
@@ -43,19 +56,6 @@ let constraints = vec![
     // ...
 ];
 ```
-
-## Demo
-
-### Proving Hello World in brainf***
-
-TODO
-
-### Proving Fibonacci sequence
-
-## Performance
-
-
-
 
 <!-- ## Examples
 

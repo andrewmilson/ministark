@@ -1,6 +1,7 @@
 #![feature(allocator_api)]
 
 use ark_ff::One;
+use ark_ff::PrimeField;
 use ark_ff_optimized::fp64::Fp;
 use gpu_poly::allocator::PageAlignedAllocator;
 use ministark::constraint::are_eq;
@@ -192,6 +193,9 @@ fn gen_trace(n: usize) -> FibTrace {
 }
 
 fn main() {
+    println!("{:?}", Fp::TRACE_MINUS_ONE_DIV_TWO);
+    println!("{}", Fr::TRACE_MINUS_ONE_DIV_TWO);
+
     let now = Instant::now();
     let options = ProofOptions::new(32, 4, 8, 8, 64);
     let prover = FibProver::new(options);
