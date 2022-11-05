@@ -1,3 +1,4 @@
+use crate::cubic_extension::WrappedFq3;
 use crate::tables::BrainfuckColumn;
 use crate::tables::Challenge;
 use crate::tables::InputBaseColumn;
@@ -61,6 +62,7 @@ impl BrainfuckTrace {
 
 impl Trace for BrainfuckTrace {
     type Fp = Fp;
+    type Fq = WrappedFq3;
 
     const NUM_BASE_COLUMNS: usize = 16;
     const NUM_EXTENSION_COLUMNS: usize = 9;

@@ -1,4 +1,4 @@
-#![feature(allocator_api)]
+#![feature(allocator_api, const_if_match)]
 
 use air::BrainfuckAir;
 use air::ExecutionInfo;
@@ -17,6 +17,7 @@ use vm::simulate;
 
 mod air;
 mod constraints;
+mod cubic_extension;
 mod tables;
 mod trace;
 mod vm;
@@ -88,7 +89,7 @@ struct BrainfuckProver(ProofOptions);
 
 impl Prover for BrainfuckProver {
     type Fp = Fp;
-    // type Fq = Fq;
+    type Fq = cubic_extension::WrappedFq3;
     type Air = BrainfuckAir;
     type Trace = BrainfuckTrace;
 

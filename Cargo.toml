@@ -39,6 +39,7 @@ ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
 gpu-poly = { path = "./gpu-poly" }
 anyhow = "1.0.65"
+zeroize = { version = "1", default-features = false, features = ["zeroize_derive"] }
 rand = "0.8.5"
 thiserror = "1.0.37"
 rayon = { version = "1.5.3", optional = true }

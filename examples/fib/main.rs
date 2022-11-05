@@ -1,7 +1,6 @@
 #![feature(allocator_api)]
 
 use ark_ff::One;
-use ark_ff::PrimeField;
 use ark_ff_optimized::fp64::Fp;
 use gpu_poly::allocator::PageAlignedAllocator;
 use ministark::constraint::are_eq;
@@ -19,6 +18,7 @@ struct FibTrace(Matrix<Fp>);
 
 impl Trace for FibTrace {
     type Fp = Fp;
+    type Fq = Fp;
 
     const NUM_BASE_COLUMNS: usize = 8;
 
@@ -83,6 +83,7 @@ impl FibAir {
 
 impl Air for FibAir {
     type Fp = Fp;
+    type Fq = Fp;
     type PublicInputs = Fp;
 
     fn new(trace_info: TraceInfo, public_input: Fp, options: ProofOptions) -> Self {
@@ -125,6 +126,7 @@ struct FibProver(ProofOptions);
 
 impl Prover for FibProver {
     type Fp = Fp;
+    type Fq = Fp;
     type Air = FibAir;
     type Trace = FibTrace;
 

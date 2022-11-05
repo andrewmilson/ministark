@@ -22,8 +22,9 @@ pub enum ProvingError {
 
 pub trait Prover {
     type Fp: GpuField<FftField = Self::Fp> + FftField;
-    type Air: Air<Fp = Self::Fp>;
-    type Trace: Trace<Fp = Self::Fp>;
+    type Fq: GpuField<FftField = Self::Fp>;
+    type Air: Air<Fp = Self::Fp, Fq = Self::Fq>;
+    type Trace: Trace<Fp = Self::Fp, Fq = Self::Fq>;
 
     fn new(options: ProofOptions) -> Self;
 
@@ -82,6 +83,8 @@ pub trait Prover {
         let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =
             constraint_coposer.build_commitment(&challenges, &execution_trace_lde);
         channel.commit_composition_trace(composition_trace_lde_tree.root());
+
+        println!("Extension z: {}", channel.public_coin.draw::<Self::Fq>());
 
         let g = trace_domain.group_gen;
         let z = channel.get_ood_point();

@@ -1,3 +1,4 @@
+use crate::cubic_extension::WrappedFq3;
 use crate::tables;
 use ark_ff_optimized::fp64::Fp;
 use ark_serialize::CanonicalDeserialize;
@@ -25,6 +26,7 @@ pub struct BrainfuckAir {
 
 impl Air for BrainfuckAir {
     type Fp = Fp;
+    type Fq = WrappedFq3;
     type PublicInputs = ExecutionInfo;
 
     fn new(trace_info: TraceInfo, execution_info: ExecutionInfo, options: ProofOptions) -> Self {

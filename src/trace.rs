@@ -104,7 +104,8 @@ pub trait Trace {
     const NUM_BASE_COLUMNS: usize;
     const NUM_EXTENSION_COLUMNS: usize = 0;
 
-    type Fp: GpuField + FftField;
+    type Fp: GpuField<FftField = Self::Fp> + FftField;
+    type Fq: GpuField<FftField = Self::Fp>;
 
     /// Returns the number of rows in this trace.
     fn len(&self) -> usize;

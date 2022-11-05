@@ -27,6 +27,7 @@ use std::ops::Deref;
 
 pub trait Air {
     type Fp: GpuField<FftField = Self::Fp> + FftField;
+    type Fq: GpuField<FftField = Self::Fp>;
     // TODO: consider removing clone requirement
     type PublicInputs: CanonicalSerialize + CanonicalDeserialize + Clone;
 
