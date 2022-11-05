@@ -3,8 +3,11 @@ use crate::merkle::MerkleTree;
 use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
 use crate::utils::interleave;
+use ark_ff::FftField;
+use ark_ff::Field;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
-use ark_poly::Evaluations;
 use ark_poly::Polynomial;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
@@ -49,8 +52,8 @@ impl FriOptions {
         domain_size
     }
 
-    pub fn domain_offset<F: GpuField>(&self) -> F {
-        F::GENERATOR
+    pub fn domain_offset<F: GpuField>(&self) -> F::FftField {
+        F::FftField::GENERATOR
     }
 }
 
@@ -223,7 +226,7 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
         let alpha = channel.draw_fri_alpha();
         evaluations = apply_drp(
             evaluations,
-            self.options.domain_offset(),
+            self.options.domain_offset::<F>(),
             alpha,
             self.options.folding_factor,
         );
@@ -262,7 +265,7 @@ pub struct FriVerifier<F: GpuField, D: Digest> {
     layer_commitments: Vec<Output<D>>,
     layer_alphas: Vec<F>,
     proof: FriProof<F>,
-    domain: Radix2EvaluationDomain<F>,
+    domain: Radix2EvaluationDomain<F::FftField>,
 }
 
 impl<F: GpuField, D: Digest> FriVerifier<F, D> {
@@ -273,7 +276,7 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
         max_poly_degree: usize,
     ) -> Result<Self, VerificationError> {
         let folding_factor = options.folding_factor;
-        let domain_offset = options.domain_offset();
+        let domain_offset = options.domain_offset::<F>();
         let domain_size = max_poly_degree.next_power_of_two() * options.blowup_factor;
         let domain = Radix2EvaluationDomain::new_coset(domain_size, domain_offset).unwrap();
 
@@ -370,8 +373,7 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
                 .map(|(chunk, position)| {
                     let offset = domain_offset * domain_generator.pow([*position as u64]);
                     let domain = folding_domain.get_coset(offset).unwrap();
-                    let evals = Evaluations::from_vec_and_domain(chunk.to_vec(), domain);
-                    evals.interpolate()
+                    DensePolynomial::from_coefficients_vec(domain.ifft(chunk))
                 });
 
             // prepare for next layer
@@ -412,7 +414,7 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
 
 fn verify_remainder<F: GpuField, D: Digest, const N: usize>(
     commitment: Output<D>,
-    remainder_evals: Vec<F>,
+    mut remainder_evals: Vec<F>,
     max_degree: usize,
 ) -> Result<(), VerificationError> {
     if max_degree >= remainder_evals.len() {
@@ -442,8 +444,8 @@ fn verify_remainder<F: GpuField, D: Digest, const N: usize>(
         }
     } else {
         let domain = Radix2EvaluationDomain::new(remainder_evals.len()).unwrap();
-        let evals = Evaluations::from_vec_and_domain(remainder_evals, domain);
-        let poly = evals.interpolate();
+        domain.ifft_in_place(&mut remainder_evals);
+        let poly = DensePolynomial::from_coefficients_vec(remainder_evals);
 
         if poly.degree() > max_degree {
             Err(VerificationError::RemainderDegreeMismatch(max_degree))
@@ -497,7 +499,7 @@ pub trait ProverChannel<F: GpuField> {
 ///    └────────┴────┴────┴────┴────┘
 pub fn apply_drp<F: GpuField>(
     evals: GpuVec<F>,
-    domain_offset: F,
+    domain_offset: F::FftField,
     alpha: F,
     folding_factor: usize,
 ) -> GpuVec<F> {
@@ -527,7 +529,7 @@ pub fn apply_drp<F: GpuField>(
     fft(drp_coeffs, drp_domain)
 }
 
-fn ifft<F: GpuField>(evals: GpuVec<F>, domain: Radix2EvaluationDomain<F>) -> GpuVec<F> {
+fn ifft<F: GpuField>(evals: GpuVec<F>, domain: Radix2EvaluationDomain<F::FftField>) -> GpuVec<F> {
     #[cfg(feature = "gpu")]
     if domain.size() >= GpuFft::<F>::MIN_SIZE {
         let mut coeffs = evals;
@@ -541,7 +543,7 @@ fn ifft<F: GpuField>(evals: GpuVec<F>, domain: Radix2EvaluationDomain<F>) -> Gpu
     coeffs.to_vec_in(PageAlignedAllocator)
 }
 
-fn fft<F: GpuField>(coeffs: GpuVec<F>, domain: Radix2EvaluationDomain<F>) -> GpuVec<F> {
+fn fft<F: GpuField>(coeffs: GpuVec<F>, domain: Radix2EvaluationDomain<F::FftField>) -> GpuVec<F> {
     #[cfg(feature = "gpu")]
     if domain.size() >= GpuFft::<F>::MIN_SIZE {
         let mut evals = coeffs;

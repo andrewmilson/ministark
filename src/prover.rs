@@ -8,6 +8,7 @@ use crate::Air;
 use crate::Proof;
 use crate::ProofOptions;
 use crate::Trace;
+use ark_ff::FftField;
 use ark_ff::Field;
 use gpu_poly::GpuField;
 use sha2::Sha256;
@@ -20,7 +21,7 @@ pub enum ProvingError {
 }
 
 pub trait Prover {
-    type Fp: GpuField;
+    type Fp: GpuField<FftField = Self::Fp> + FftField;
     type Air: Air<Fp = Self::Fp>;
     type Trace: Trace<Fp = Self::Fp>;
 

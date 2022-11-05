@@ -10,6 +10,8 @@ use crate::utils::buffer_mut_no_copy;
 use crate::utils::fill_twiddles;
 use crate::GpuField;
 use crate::GpuVec;
+use ark_ff::One;
+use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
@@ -30,7 +32,7 @@ pub struct FftEncoder<'a, F: GpuField> {
     command_queue: Arc<metal::CommandQueue>,
     // twiddles_buffer references this memory
     // field exists to keep the memory around
-    _twiddles: GpuVec<F>,
+    _twiddles: GpuVec<F::FftField>,
     twiddles_buffer: metal::Buffer,
     scale_and_normalize_stage: Option<ScaleAndNormalizeGpuStage<F>>,
     butterfly_stages: Vec<FftGpuStage<F>>,
@@ -86,8 +88,8 @@ impl<'a, F: GpuField> GpuFft<'a, F> {
     }
 }
 
-impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuFft<'a, F> {
-    fn from(domain: Radix2EvaluationDomain<F>) -> Self {
+impl<'a, F: GpuField> From<Radix2EvaluationDomain<F::FftField>> for GpuFft<'a, F> {
+    fn from(domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         PLANNER.plan_fft(domain)
     }
 }
@@ -110,8 +112,8 @@ impl<'a, F: GpuField> GpuIfft<'a, F> {
     }
 }
 
-impl<'a, F: GpuField> From<Radix2EvaluationDomain<F>> for GpuIfft<'a, F> {
-    fn from(domain: Radix2EvaluationDomain<F>) -> Self {
+impl<'a, F: GpuField> From<Radix2EvaluationDomain<F::FftField>> for GpuIfft<'a, F> {
+    fn from(domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         PLANNER.plan_ifft(domain)
     }
 }
@@ -136,12 +138,15 @@ impl Planner {
         }
     }
 
-    pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> GpuFft<F> {
+    pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F::FftField>) -> GpuFft<F> {
         assert!(domain.size() >= GpuFft::<F>::MIN_SIZE);
         GpuFft(self.create_fft_encoder(FftDirection::Forward, domain))
     }
 
-    pub fn plan_ifft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F>) -> GpuIfft<F> {
+    pub fn plan_ifft<F: GpuField>(
+        &self,
+        domain: Radix2EvaluationDomain<F::FftField>,
+    ) -> GpuIfft<F> {
         assert!(domain.size() >= GpuIfft::<F>::MIN_SIZE);
         GpuIfft(self.create_fft_encoder(FftDirection::Inverse, domain))
     }
@@ -150,7 +155,7 @@ impl Planner {
     fn create_fft_encoder<F: GpuField>(
         &self,
         direction: FftDirection,
-        domain: Radix2EvaluationDomain<F>,
+        domain: Radix2EvaluationDomain<F::FftField>,
     ) -> FftEncoder<F> {
         let n = domain.size();
 
@@ -170,7 +175,7 @@ impl Planner {
         // encode(command_buffer, &mut twiddles_buffer, root); command_buffer.
         // commit(); // command_buffer.wait_until_completed();
 
-        _twiddles.resize(n / 2, F::zero());
+        _twiddles.resize(n / 2, F::FftField::zero());
         fill_twiddles(&mut _twiddles, root);
         bit_reverse(&mut _twiddles);
         let twiddles_buffer = buffer_mut_no_copy(self.command_queue.device(), &mut _twiddles);
@@ -187,7 +192,7 @@ impl Planner {
                     &self.library,
                     &self.command_queue,
                     n,
-                    domain.offset,
+                    domain.offset.into(),
                     F::one(),
                 ))
             }
@@ -196,8 +201,8 @@ impl Planner {
                 &self.library,
                 &self.command_queue,
                 n,
-                domain.offset_inv,
-                domain.size_inv,
+                domain.offset_inv.into(),
+                domain.size_inv.into(),
             ))
         };
 

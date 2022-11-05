@@ -1,6 +1,7 @@
 #![cfg(target_arch = "aarch64")]
 #![feature(allocator_api)]
 
+use ark_ff::FftField;
 use ark_ff_optimized::fp64::Fp;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
@@ -20,7 +21,7 @@ fn fft_bench<F: GpuField>(c: &mut Criterion, name: &str) {
     for n in BENCHMARK_INPUT_SIZES {
         let vals: Vec<F> = (0..n).map(|_| F::rand(&mut rng)).collect();
         let domain = Radix2EvaluationDomain::new(n).unwrap();
-        let coset = domain.get_coset(F::GENERATOR).unwrap();
+        let coset = domain.get_coset(F::FftField::GENERATOR).unwrap();
 
         group.bench_with_input(BenchmarkId::new("GpuFft", n), &n, |b, _| {
             let mut coeffs = vals.to_vec_in(PageAlignedAllocator);

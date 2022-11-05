@@ -2,6 +2,7 @@ use crate::challenges::Challenges;
 use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
 use crate::Matrix;
+use ark_ff::FftField;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
@@ -103,7 +104,7 @@ pub trait Trace {
     const NUM_BASE_COLUMNS: usize;
     const NUM_EXTENSION_COLUMNS: usize = 0;
 
-    type Fp: GpuField;
+    type Fp: GpuField + FftField;
 
     /// Returns the number of rows in this trace.
     fn len(&self) -> usize;

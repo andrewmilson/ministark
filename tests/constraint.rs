@@ -337,10 +337,10 @@ fn gen_binary_valued_matrix<F: GpuField>(n: usize, v1: F, v2: F) -> Matrix<F> {
 }
 
 fn assert_valid_over_transition_domain<F: GpuField>(
-    domain: Radix2EvaluationDomain<F>,
+    domain: Radix2EvaluationDomain<F::FftField>,
     poly_matrix: Matrix<F>,
 ) {
-    let mut x_values = domain.elements().collect::<Vec<F>>();
+    let mut x_values = domain.elements().map(|e| e.into()).collect::<Vec<F>>();
     // transition constraints apply to all rows except the last.
     x_values.pop();
     for (i, column) in poly_matrix.iter().enumerate() {

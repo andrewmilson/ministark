@@ -26,7 +26,7 @@ use rayon::prelude::*;
 use std::ops::Deref;
 
 pub trait Air {
-    type Fp: GpuField;
+    type Fp: GpuField<FftField = Self::Fp> + FftField;
     // TODO: consider removing clone requirement
     type PublicInputs: CanonicalSerialize + CanonicalDeserialize + Clone;
 

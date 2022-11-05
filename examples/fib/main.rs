@@ -193,9 +193,6 @@ fn gen_trace(n: usize) -> FibTrace {
 }
 
 fn main() {
-    println!("{:?}", Fp::TRACE_MINUS_ONE_DIV_TWO);
-    println!("{}", Fr::TRACE_MINUS_ONE_DIV_TWO);
-
     let now = Instant::now();
     let options = ProofOptions::new(32, 4, 8, 8, 64);
     let prover = FibProver::new(options);
@@ -205,11 +202,4 @@ fn main() {
     println!("Runtime: {:?}", now.elapsed());
 
     proof.verify().unwrap();
-
-    // let mut proof_bytes = Vec::new();
-    // proof
-    //     .unwrap()
-    //     .serialize_compressed(&mut proof_bytes)
-    //     .unwrap();
-    // println!("Result: {:?}kb", proof_bytes.len() / 1024);
 }

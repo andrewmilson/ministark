@@ -3,9 +3,8 @@
 use super::GpuField;
 use crate::allocator::PageAlignedAllocator;
 use crate::utils::buffer_no_copy;
+use crate::utils::distribute_powers;
 use crate::GpuVec;
-use ark_poly::EvaluationDomain;
-use ark_poly::Radix2EvaluationDomain;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy, Debug)]
@@ -127,7 +126,7 @@ impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
         let mut _scale_factors = Vec::with_capacity_in(n, PageAlignedAllocator);
         _scale_factors.resize(n, norm_factor);
         if !scale_factor.is_one() {
-            Radix2EvaluationDomain::distribute_powers(&mut _scale_factors, scale_factor);
+            distribute_powers(&mut _scale_factors, scale_factor);
         }
         let scale_factors_buffer = buffer_no_copy(command_queue.device(), &_scale_factors);
 

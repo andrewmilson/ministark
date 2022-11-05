@@ -1,5 +1,6 @@
 use crate::merkle::MerkleTree;
 use crate::Column;
+use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
@@ -75,7 +76,7 @@ impl<F: GpuField> Matrix<F> {
     }
 
     #[cfg(feature = "gpu")]
-    fn into_polynomials_gpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
+    fn into_polynomials_gpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         let mut ifft = GpuIfft::from(domain);
 
         for column in &mut self.0 {
@@ -88,13 +89,13 @@ impl<F: GpuField> Matrix<F> {
     }
 
     #[cfg(not(feature = "gpu"))]
-    fn into_polynomials_cpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
+    fn into_polynomials_cpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         self.0.iter_mut().for_each(|col| domain.ifft_in_place(col));
         self
     }
 
     /// Interpolates the columns of the polynomials over the domain
-    pub fn into_polynomials(self, domain: Radix2EvaluationDomain<F>) -> Self {
+    pub fn into_polynomials(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         #[cfg(not(feature = "gpu"))]
         return self.into_polynomials_cpu(domain);
         #[cfg(feature = "gpu")]
@@ -102,12 +103,12 @@ impl<F: GpuField> Matrix<F> {
     }
 
     /// Interpolates the columns of the matrix over the domain
-    pub fn interpolate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
+    pub fn interpolate(&self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         self.clone().into_polynomials(domain)
     }
 
     #[cfg(not(feature = "gpu"))]
-    fn into_evaluations_cpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
+    fn into_evaluations_cpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         for column in &mut self.0 {
             domain.fft_in_place(column);
         }
@@ -115,7 +116,7 @@ impl<F: GpuField> Matrix<F> {
     }
 
     #[cfg(feature = "gpu")]
-    fn into_evaluations_gpu(mut self, domain: Radix2EvaluationDomain<F>) -> Self {
+    fn into_evaluations_gpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         let mut fft = GpuFft::from(domain);
 
         for column in &mut self.0 {
@@ -128,7 +129,7 @@ impl<F: GpuField> Matrix<F> {
     }
 
     /// Evaluates the columns of the matrix
-    pub fn into_evaluations(self, domain: Radix2EvaluationDomain<F>) -> Self {
+    pub fn into_evaluations(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         #[cfg(not(feature = "gpu"))]
         return self.into_evaluations_cpu(domain);
         #[cfg(feature = "gpu")]
@@ -136,7 +137,7 @@ impl<F: GpuField> Matrix<F> {
     }
 
     /// Evaluates the columns of the matrix
-    pub fn evaluate(&self, domain: Radix2EvaluationDomain<F>) -> Self {
+    pub fn evaluate(&self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         self.clone().into_evaluations(domain)
     }
 
@@ -378,7 +379,7 @@ pub fn ceil_power_of_two(value: usize) -> usize {
 
 // Evaluates the vanishing polynomial for `vanish_domain` over `eval_domain`
 // E.g. evaluates `(x - v_0)(x - v_1)...(x - v_n-1)` over `eval_domain`
-pub fn fill_vanishing_polynomial<F: GpuField>(
+pub fn fill_vanishing_polynomial<F: FftField>(
     dst: &mut [F],
     vanish_domain: &Radix2EvaluationDomain<F>,
     eval_domain: &Radix2EvaluationDomain<F>,

@@ -12,9 +12,9 @@
 
 </div>
 
-Mini<i>STARK</i> allows you to prove the execution of arbitrary computations to anyone using the power of [STARKs]((https://starkware.co/stark/)). In the example above MiniSTARK is being used to prove "Hello World!" in the [Brainf**k](https://esolangs.org/wiki/Brainfuck) programming language. Anyone can verify the proof instantly.
+MiniSTARK allows you to prove the execution of arbitrary computations to anyone using the power of [STARKs]((https://starkware.co/stark/)). In the example above MiniSTARK is being used to prove "Hello World!" in the [Brainf**k](https://esolangs.org/wiki/Brainfuck) programming language. Anyone can verify the proof instantly.
 
-The library is primarily written in Rust but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and influenced by [Winterfell](https://github.com/novifinancial/winterfell). Mini<i>STARK</i> has plenty of opportunities for increasing speed and reducing memory overhead.
+The library is written Rust but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and influenced by [Winterfell](https://github.com/novifinancial/winterfell). MiniSTARK has plenty of opportunities for optimizations.
 
 ## Demo
 
@@ -27,7 +27,7 @@ TODO
 ## Performance
 
 
-## Constraints in Mini<i>STARK</i>
+## Defining AIR Constraints
 
 MiniSTARK represents constraints as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Look at the constraint implementation of [brainf***](mini-stark/examples/brainfuck/) for a full example.
 

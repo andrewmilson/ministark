@@ -1,4 +1,5 @@
 use crate::allocator::PAGE_SIZE;
+use crate::GpuField;
 use crate::GpuVec;
 use ark_ff::FftField;
 #[cfg(feature = "parallel")]
@@ -121,6 +122,27 @@ fn round_up_to_multiple(n: usize, multiple: usize) -> usize {
     } else {
         n.next_multiple_of(multiple)
     }
+}
+
+// adapted form arkworks
+/// Multiply the `i`-th element of `coeffs` with `g^i`.
+pub(crate) fn distribute_powers<F: GpuField>(coeffs: &mut [F], g: F) {
+    let n = coeffs.len();
+    #[cfg(not(feature = "parallel"))]
+    let chunk_size = n;
+    #[cfg(feature = "parallel")]
+    let chunk_size = std::cmp::max(n / rayon::current_num_threads().next_power_of_two(), 1024);
+
+    ark_std::cfg_chunks_mut!(coeffs, chunk_size)
+        .enumerate()
+        .for_each(|(chunk_offset, chunk)| {
+            let offset = g.pow([(chunk_offset * chunk_size) as u64]);
+            let mut pow = offset;
+            chunk.iter_mut().for_each(|coeff| {
+                *coeff *= pow;
+                pow *= &g
+            })
+        });
 }
 
 #[cfg(test)]
