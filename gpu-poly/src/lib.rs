@@ -24,7 +24,7 @@ impl GpuField for fp64::Fp {
     type FftField = Self;
 
     fn field_name() -> String {
-        "fp18446744069414584321".to_owned()
+        "p18446744069414584321_fp".to_string()
     }
 }
 

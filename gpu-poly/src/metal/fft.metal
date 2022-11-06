@@ -36,18 +36,18 @@ constant unsigned N [[ function_constant(0) ]];
 constant unsigned NUM_BOXES [[ function_constant(1) ]];
 
 // Performs a single itteration of Cooley-Tuckey radix-2 decimation-in-time (DIT)
-template<typename FieldT> kernel void
-FftSingle(device FieldT *vals [[ buffer(0) ]],
-        constant FieldT *twiddles [[ buffer(1) ]],
+template<typename CoeffFieldT, typename TwiddleFieldT = CoeffFieldT> kernel void
+FftSingle(device CoeffFieldT *vals [[ buffer(0) ]],
+        constant TwiddleFieldT *twiddles [[ buffer(1) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
     unsigned input_step = (N / NUM_BOXES) / 2;
     unsigned box_id = global_tid / input_step;
     unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
-    FieldT twiddle = twiddles[box_id];
-    FieldT p = vals[target_index];
-    FieldT tmp = vals[target_index + input_step];
-    FieldT q = tmp * twiddle;
+    TwiddleFieldT twiddle = twiddles[box_id];
+    CoeffFieldT p = vals[target_index];
+    CoeffFieldT tmp = vals[target_index + input_step];
+    CoeffFieldT q = tmp * twiddle;
 
     vals[target_index] = p + q;
     vals[target_index + input_step] = p - q;
@@ -128,10 +128,10 @@ GenerateTwiddles(device FieldT *dst [[ buffer(0) ]],
 //
 // TODO: Figure out poor perf reasons. Unrolls might cause instruction cache misses.
 // TODO: Theoretically should be faster due to use of threadgroup memory... but it's not :(
-template<typename FieldT> kernel void
-FftMultiple(device FieldT *vals [[ buffer(0) ]],
-        constant FieldT *twiddles [[ buffer(1) ]],
-        threadgroup FieldT *shared_array [[ threadgroup(0) ]],
+template<typename CoeffFieldT, typename TwiddleFieldT = CoeffFieldT> kernel void
+FftMultiple(device CoeffFieldT *vals [[ buffer(0) ]],
+        constant TwiddleFieldT *twiddles [[ buffer(1) ]],
+        threadgroup CoeffFieldT *shared_array [[ threadgroup(0) ]],
         unsigned group_id [[ threadgroup_position_in_grid ]],
         unsigned local_tid [[ thread_index_in_threadgroup ]]) {
 #pragma unroll
@@ -150,10 +150,10 @@ FftMultiple(device FieldT *vals [[ buffer(0) ]],
             unsigned box_id = global_tid / input_step;
             unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
-            FieldT p = shared_array[target_index];
-            FieldT twiddle = twiddles[box_id + group_id * (boxes / NUM_BOXES)];
-            FieldT tmp = shared_array[target_index + input_step];
-            FieldT q = tmp * twiddle;
+            CoeffFieldT p = shared_array[target_index];
+            TwiddleFieldT twiddle = twiddles[box_id + group_id * (boxes / NUM_BOXES)];
+            CoeffFieldT tmp = shared_array[target_index + input_step];
+            CoeffFieldT q = tmp * twiddle;
 
             shared_array[target_index] = p + q;
             shared_array[target_index + input_step] = p - q;
@@ -192,47 +192,70 @@ FftMultiple<P270497897142230380135924736767050121217::Fp>(
 // - 64 bit prime field (2^64−2^32+1 = 18446744069414584321)
 // - Polygon filed (usesed by Miden and Zero)
 // - Prime has many nice properties
-template [[ host_name("bit_reverse_fp18446744069414584321") ]] kernel void
+template [[ host_name("bit_reverse_p18446744069414584321_fp") ]] kernel void
 BitReverse<P18446744069414584321::Fp>(
         device P18446744069414584321::Fp*,
         unsigned);
-template [[ host_name("add_assign_fp18446744069414584321") ]] kernel void
+template [[ host_name("add_assign_p18446744069414584321_fp") ]] kernel void
 AddAssign<P18446744069414584321::Fp>(
         device P18446744069414584321::Fp*,
         constant P18446744069414584321::Fp*,
         unsigned);
-template [[ host_name("mul_assign_fp18446744069414584321") ]] kernel void
+template [[ host_name("mul_assign_p18446744069414584321_fp") ]] kernel void
 MulAssign<P18446744069414584321::Fp>(
         device P18446744069414584321::Fp*,
         constant P18446744069414584321::Fp*,
         unsigned);
-template [[ host_name("mul_pow_fp18446744069414584321") ]] kernel void
+template [[ host_name("mul_pow_p18446744069414584321_fp") ]] kernel void
 MulPow<P18446744069414584321::Fp>(
         device P18446744069414584321::Fp*,
         constant P18446744069414584321::Fp*,
         constant unsigned&,
         constant unsigned&,
         unsigned);
-template [[ host_name("fill_buff_fp18446744069414584321") ]] kernel void
+template [[ host_name("fill_buff_p18446744069414584321_fp") ]] kernel void
 FillBuff<P18446744069414584321::Fp>(
         device P18446744069414584321::Fp*,
         constant P18446744069414584321::Fp&,
         unsigned);
-template [[ host_name("generate_twiddles_fp18446744069414584321") ]] kernel void
+template [[ host_name("generate_twiddles_p18446744069414584321_fp") ]] kernel void
 GenerateTwiddles<P18446744069414584321::Fp>(
         device P18446744069414584321::Fp*,
         constant P18446744069414584321::Fp&,
         unsigned);
-template [[ host_name("fft_single_fp18446744069414584321") ]] kernel void
+template [[ host_name("fft_single_p18446744069414584321_fp") ]] kernel void
 FftSingle<P18446744069414584321::Fp>(
         device P18446744069414584321::Fp*,
         constant P18446744069414584321::Fp*,
         unsigned);
-template [[ host_name("fft_multiple_fp18446744069414584321") ]] kernel void
+template [[ host_name("fft_multiple_p18446744069414584321_fp") ]] kernel void
 FftMultiple<P18446744069414584321::Fp>(
         device P18446744069414584321::Fp*,
         constant P18446744069414584321::Fp*,
         threadgroup P18446744069414584321::Fp*,
+        unsigned,
+        unsigned);
+// ===========================================================
+// FFT for cubic extension of Fp=18446744069414584321
+template [[ host_name("bit_reverse_p18446744069414584321_fq3") ]] kernel void
+BitReverse<P18446744069414584321::Fq3>(
+        device P18446744069414584321::Fq3*,
+        unsigned);
+template [[ host_name("mul_assign_p18446744069414584321_fq3") ]] kernel void
+MulAssign<P18446744069414584321::Fq3>(
+        device P18446744069414584321::Fq3*,
+        constant P18446744069414584321::Fq3*,
+        unsigned);
+template [[ host_name("fft_single_p18446744069414584321_fq3") ]] kernel void
+FftSingle<P18446744069414584321::Fq3, P18446744069414584321::Fp>(
+        device P18446744069414584321::Fq3*,
+        constant P18446744069414584321::Fp*,
+        unsigned);
+template [[ host_name("fft_multiple_p18446744069414584321_fq3") ]] kernel void
+FftMultiple<P18446744069414584321::Fq3, P18446744069414584321::Fp>(
+        device P18446744069414584321::Fq3*,
+        constant P18446744069414584321::Fp*,
+        threadgroup P18446744069414584321::Fq3*,
         unsigned,
         unsigned);
 // ===========================================================

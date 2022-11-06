@@ -9,6 +9,7 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use gpu_poly::prelude::PageAlignedAllocator;
 use ministark::Matrix;
+use std::time::Instant;
 
 mod fq3;
 use fq3::Fq3;
@@ -18,7 +19,7 @@ fn main() {
     // Fp::one()]).unwrap(); let mut extension_element = Fq3::one();
     // let generator = Fp::TWO_ADIC_ROOT_OF_UNITY;
 
-    let n = 2048;
+    let n = 4194304;
     let mut rng = ark_std::test_rng();
     let column = (0..n)
         .map(|_| Fq3::rand(&mut rng))
@@ -28,10 +29,15 @@ fn main() {
     let my_matrix = Matrix::new(vec![column.to_vec_in(PageAlignedAllocator)]);
 
     let domain = Radix2EvaluationDomain::new(n).unwrap();
+
+    let now = Instant::now();
+
     let polys = my_matrix.interpolate(domain);
     let evals = polys.evaluate(domain);
 
-    assert_eq!(polys.0[0], column);
+    println!("Executed in: {:?}", now.elapsed());
+
+    assert_eq!(evals.0[0], column);
 
     // println!("one: {}", generator);
     // println!("generator: {}", generator);

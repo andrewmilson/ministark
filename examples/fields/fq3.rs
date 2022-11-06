@@ -67,6 +67,6 @@ impl GpuField for Fq3 {
     type FftField = Fp;
 
     fn field_name() -> String {
-        todo!()
+        "p18446744069414584321_fq3".to_string()
     }
 }

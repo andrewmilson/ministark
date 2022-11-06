@@ -26,6 +26,7 @@ fn fft_kernel_name<F: GpuField>(variant: Variant) -> String {
 }
 
 pub struct FftGpuStage<E> {
+    variant: Variant,
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
@@ -70,6 +71,7 @@ impl<F: GpuField> FftGpuStage<F> {
         let grid_dim = metal::MTLSize::new((n / 2).try_into().unwrap(), 1, 1);
 
         FftGpuStage {
+            variant,
             pipeline,
             threadgroup_dim,
             grid_dim,
@@ -85,10 +87,14 @@ impl<F: GpuField> FftGpuStage<F> {
     ) {
         let command_encoder = command_buffer.new_compute_command_encoder();
         command_encoder.set_compute_pipeline_state(&self.pipeline);
-        command_encoder.set_threadgroup_memory_length(
-            0,
-            (2048 * std::mem::size_of::<F>()).try_into().unwrap(),
-        );
+        // println!(
+        //     "Allocating shared memory: {}",
+        //     2048 * std::mem::size_of::<F>()
+        // );
+        if let Variant::Multiple = self.variant {
+            let num_bytes = (2048 * std::mem::size_of::<F>()).try_into().unwrap();
+            command_encoder.set_threadgroup_memory_length(0, num_bytes);
+        }
         command_encoder.set_buffer(0, Some(input_buffer), 0);
         command_encoder.set_buffer(1, Some(twiddles_buffer), 0);
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
