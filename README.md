@@ -14,7 +14,7 @@
 
 MiniSTARK allows you to prove the execution of arbitrary computations to anyone using the power of [STARKs]((https://starkware.co/stark/)). In the example above MiniSTARK is being used to prove "Hello World!" in the [Brainf**k](https://esolangs.org/wiki/Brainfuck) programming language. Anyone can verify the proof instantly.
 
-The library is written Rust but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code is build on [arkworks](https://github.com/arkworks-rs) and is influenced by [Winterfell](https://github.com/novifinancial/winterfell). MiniSTARK has plenty of opportunities for optimizations. If zero knowledge, optimizations or Eliptic Curve FFTs get you going then check out what's [coming soon](#coming-soon).
+The library is written Rust but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code is built on [arkworks](https://github.com/arkworks-rs) and is influenced by [Winterfell](https://github.com/novifinancial/winterfell). MiniSTARK has plenty of opportunities for optimizations. If zero knowledge, optimizations or Eliptic Curve FFTs get you going then check out what's [coming soon](#coming-soon).
 
 ## Demo
 

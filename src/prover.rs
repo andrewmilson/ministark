@@ -9,7 +9,6 @@ use crate::Proof;
 use crate::ProofOptions;
 use crate::Trace;
 use ark_ff::FftField;
-use ark_ff::Field;
 use gpu_poly::GpuField;
 use sha2::Sha256;
 
@@ -44,7 +43,8 @@ pub trait Prover {
 
         let trace_domain = air.trace_domain();
         let lde_domain = air.lde_domain();
-        let base_trace_polys = trace.base_columns().interpolate(trace_domain);
+        let base_trace = trace.base_columns();
+        let base_trace_polys = base_trace.interpolate(trace_domain);
         assert_eq!(Self::Trace::NUM_BASE_COLUMNS, base_trace_polys.num_cols());
         let base_trace_lde = base_trace_polys.evaluate(lde_domain);
         let base_trace_lde_tree = base_trace_lde.commit_to_rows();
@@ -52,30 +52,15 @@ pub trait Prover {
         let challenges = air.get_challenges(&mut channel.public_coin);
 
         #[cfg(debug_assertions)]
-        let mut execution_trace = trace.base_columns().clone();
-        let mut execution_trace_lde = base_trace_lde;
-        let mut execution_trace_polys = base_trace_polys;
-        let mut extension_trace_tree = None;
-        let mut num_extension_columns = 0;
-
-        if let Some(extension_trace) = trace.build_extension_columns(&challenges) {
-            num_extension_columns = extension_trace.num_cols();
-            let extension_trace_polys = extension_trace.interpolate(trace_domain);
-            let extension_trace_lde = extension_trace_polys.evaluate(lde_domain);
-            let extension_trace_lde_tree = extension_trace_lde.commit_to_rows();
-            channel.commit_extension_trace(extension_trace_lde_tree.root());
-
-            #[cfg(debug_assertions)]
-            execution_trace.append(extension_trace);
-            execution_trace_lde.append(extension_trace_lde);
-            execution_trace_polys.append(extension_trace_polys);
-            extension_trace_tree = Some(extension_trace_lde_tree);
-        }
-
+        let mut extension_trace = trace.build_extension_columns(&challenges);
+        let mut num_extension_columns = extension_trace.map_or(0, |t| t.num_cols());
         assert_eq!(Self::Trace::NUM_EXTENSION_COLUMNS, num_extension_columns);
+        let mut extension_trace_polys = extension_trace.map(|t| t.interpolate(trace_domain));
+        let mut extension_trace_lde = extension_trace_polys.map(|p| p.evaluate(trace_domain));
+        let mut extension_trace_tree = extension_trace_lde.map(|lde| lde.commit_to_rows());
 
         #[cfg(debug_assertions)]
-        air.validate_constraints(&challenges, &execution_trace);
+        air.validate_constraints(&challenges, base_trace, extension_trace.as_ref());
 
         let composition_coeffs = air.get_constraint_composition_coeffs(&mut channel.public_coin);
         let constraint_coposer = ConstraintComposer::new(&air, composition_coeffs);

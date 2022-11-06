@@ -19,9 +19,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Index;
 use std::ops::IndexMut;
-use std::ops::Mul;
 use std::ops::MulAssign;
-use std::process::Output;
 
 /// Matrix is an array of columns.
 pub struct Matrix<F>(pub Vec<GpuVec<F>>);
@@ -359,8 +357,12 @@ macro_rules! map {
 pub struct MatrixGroup<'a, Fp, Fq = Fp>(Vec<GroupItem<'a, Fp, Fq>>);
 
 impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq> {
-    fn new(items: Vec<GroupItem<'a, Fp, Fq>>) -> Self {
+    pub fn new(items: Vec<GroupItem<'a, Fp, Fq>>) -> Self {
         MatrixGroup(items)
+    }
+
+    pub fn append(&mut self, item: GroupItem<'a, Fp, Fq>) {
+        self.0.push(item)
     }
 
     fn num_rows(&self) -> usize {
@@ -372,6 +374,10 @@ impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq> {
         let expected = map!(self.0[0], num_rows);
         assert!(self.0.iter().all(|m| map!(m, num_rows) == expected));
         expected
+    }
+
+    pub fn num_cols(&self) -> usize {
+        self.0.iter().map(|m| map!(m, num_cols)).sum()
     }
 
     fn get_column(&self, index: usize) -> Col<'a, Fp, Fq> {
@@ -463,7 +469,7 @@ where
     }
 
     // TODO: step is related to constraints. Needs refactor
-    fn evaluate_symbolic(
+    pub fn evaluate_symbolic(
         &self,
         constraints: &[Constraint<Fq>],
         challenges: &[Fq],
@@ -490,10 +496,36 @@ where
         );
 
         #[cfg(feature = "gpu")]
-        self.evaluate_symbolic_gpu(&mut results.0, &constraints_without_challenges, step);
+        self.evaluate_symbolic_gpu(&mut results, &constraints_without_challenges, step);
         #[cfg(not(feature = "gpu"))]
         self.evaluate_symbolic_cpu(&mut results, &constraints_without_challenges, step);
 
         results
+    }
+}
+
+impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq>
+where
+    Fp: Into<Fq>,
+{
+    pub fn get_row(&self, row: usize) -> Option<Vec<Fq>> {
+        if row < self.num_rows() {
+            let res = Vec::new();
+            for i in 0..self.num_cols() {
+                res.push(match self.get_column(i) {
+                    Col::Fp(col) => col[row].into(),
+                    Col::Fq(col) => col[row],
+                })
+            }
+            Some(res)
+        } else {
+            None
+        }
+    }
+
+    pub fn rows(&self) -> Vec<Vec<Fq>> {
+        (0..self.num_rows())
+            .map(|row| self.get_row(row).unwrap())
+            .collect()
     }
 }

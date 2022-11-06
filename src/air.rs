@@ -1,6 +1,7 @@
 use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
 use crate::constraint::Element;
+use crate::matrix::MatrixGroup;
 use crate::random::PublicCoin;
 use crate::utils;
 use crate::utils::fill_vanishing_polynomial;
@@ -341,9 +342,13 @@ pub trait Air {
     fn validate_constraints(
         &self,
         challenges: &Challenges<Self::Fp>,
-        full_trace: &Matrix<Self::Fp>,
+        base_trace: &Matrix<Self::Fp>,
+        extension_trace: Option<&Matrix<Self::Fp>>,
     ) {
-        let mut col_indicies = vec![false; full_trace.num_cols()];
+        use crate::matrix::GroupItem;
+        let execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
+        extension_trace.map(|t| execution_trace.append(GroupItem::Fq(t)));
+        let mut col_indicies = vec![false; execution_trace.num_cols()];
         let mut challenge_indicies = vec![false; challenges.len()];
         for element in self.all_constraint_elements() {
             match element {
@@ -364,7 +369,7 @@ pub trait Air {
             }
         }
 
-        let trace_rows = full_trace.rows();
+        let trace_rows = execution_trace.rows();
         let first_row = trace_rows.first().unwrap();
         let last_row = trace_rows.last().unwrap();
 
