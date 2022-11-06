@@ -14,7 +14,7 @@
 
 MiniSTARK allows you to prove the execution of arbitrary computations to anyone using the power of [STARKs]((https://starkware.co/stark/)). In the example above MiniSTARK is being used to prove "Hello World!" in the [Brainf**k](https://esolangs.org/wiki/Brainfuck) programming language. Anyone can verify the proof instantly.
 
-The library is written Rust but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code is powered by [arkworks](https://github.com/arkworks-rs) and influenced by [Winterfell](https://github.com/novifinancial/winterfell). MiniSTARK has plenty of opportunities for optimizations.
+The library is written Rust but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code is build on [arkworks](https://github.com/arkworks-rs) and is influenced by [Winterfell](https://github.com/novifinancial/winterfell). MiniSTARK has plenty of opportunities for optimizations. If zero knowledge, optimizations or Eliptic Curve FFTs get you going then check out what's [coming soon](#coming-soon).
 
 ## Demo
 
@@ -95,7 +95,7 @@ cargo run --release --features parallel,asm  --example fib
 
 - debugging memory table. Remove constraint for memory stay the same clock cycle increase -->
 
-## Coming soon (help wanted)
+<h2 id="coming-soon">Coming soon (help wanted)</h2>
 
 - Support all prime fields with ECFFT (see [wborgeaud/ecfft-bn254](https://github.com/wborgeaud/ecfft-bn254))
 - CUDA support in `gpu-poly`
@@ -115,5 +115,3 @@ cargo run --release --features parallel,asm  --example fib
 - [StarkWare](https://starkware.co/) - The company started by the people who invented STARKs. Learnt so many things from the people at this company. Love how public and open their educational material is. Just a few of the things I've enjoyed: GOAT [Eli Ben-Sasson's](https://twitter.com/EliBenSasson) screencasts, Cairo whitepaper ([Video](https://www.youtube.com/watch?v=DTVn0oYLVsE), [PDF](https://eprint.iacr.org/2021/1063.pdf)), [STARK 101](https://starkware.co/stark-101/), [DEEP Method Medium article](https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab)
 - [Alan Szepieniec](https://twitter.com/aszepieniec?lang=en) - The [Anatomy of a STARK](https://aszepieniec.github.io/stark-anatomy/) was probably the best practical resource I've read on STARKs to date. STARKs remained a mystery to me until I went through this word by word (it took a while to digest). Read through this and the magic of STARKs will start to make sense. [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) is a fantastic sequel to the STARK Anatomy series and is a practical guide to creating an AIR that proves programs written in the Brainf*** programming language.
 - [Winterfell](https://github.com/novifinancial/winterfell) - A STARK prover and verifier developed at Facebook by [Bobbin Threadbare](https://twitter.com/bobbinth) and others. This repo was heavily used as a reference for several components: fast Merkle Tree, DEEP composition polynomial, channels, and STARK component traits. Bobbin's HackMD articles are great as well: [Miden VM program decoder](https://hackmd.io/_aaDBzbWRz6EwQQRtK1pzw), [Memory in Miden VM](https://hackmd.io/@bobbinth/HJr56BKKt), [u32 operations in Miden VM](https://hackmd.io/NC-yRmmtRQSvToTHb96e8Q#u32-operations-in-Miden-VM).
-
-<sup>1</sup> with 0.00000000000000000000000000000000000000000001% error (the same probability that a randomly picked atom in the universe belongs to your body)

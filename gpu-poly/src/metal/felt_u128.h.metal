@@ -184,6 +184,8 @@ private:
     }
 };
 
+namespace P270497897142230380135924736767050121217 {
+
 // STARK-friendly prime field (FP) with modulus `1 + 407 * 2^119`.
 //
 // The inspiration for this field came from the Anatomy of a STARK tutorial.
@@ -194,10 +196,12 @@ private:
 //  * R (Mongomery aux modulus) = 340282366920938463463374607431768211456 (1 << 128)
 //  * R_SQUARED = 227239200783092534449076146062029718070 (see Felt128 for generation)
 //  * N_PRIME = 270497897142230380135924736767050121215 (see Felt128 for generation)
-using FP270497897142230380135924736767050121217 = Felt128<
+using Fp = Felt128<
     /* =N **/ /*u128(*/ 14663720386718334976, 1 /*)*/,
     /* =R_SQUARED **/ /*u128(*/ 12318661758144933314, 6617259544868782646 /*)*/,
     /* =N_PRIME **/ /*u128(*/ 14663720386718334975, 18446744073709551615 /*)*/
     >;
+
+}
 
 #endif /* felt_u128_h */

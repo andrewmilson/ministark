@@ -380,7 +380,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
     pub fn into_deep_poly(mut self) -> Matrix<A::Fp> {
         let (alpha, beta) = self.composition_coeffs.degree;
 
-        // TODO: make multithreaded
+        // TODO: consider making multithreaded
         // Adjust the degree
         // P(x) * (alpha + x * beta)
         let mut last = A::Fp::zero();

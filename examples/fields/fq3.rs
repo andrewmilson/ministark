@@ -53,7 +53,7 @@ wrap_field!(Fq3; Fp3<Fq3Config>);
 
 impl MulAssign<Fp> for Fq3 {
     fn mul_assign(&mut self, rhs: Fp) {
-        self.0 *= Fp3::<Fq3Config>::from_base_prime_field(rhs);
+        self.0.mul_assign_by_base_field(&rhs)
     }
 }
 
