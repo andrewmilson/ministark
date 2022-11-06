@@ -8,6 +8,8 @@
     slice_as_chunks
 )]
 
+#[macro_use]
+mod macros;
 mod air;
 pub mod challenges;
 mod channel;

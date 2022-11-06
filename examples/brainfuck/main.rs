@@ -65,26 +65,6 @@ const HELLO_WORLD_SOURCE: &str = "
 > .                     print '\n'
 ";
 
-// pub type Fq3 = Fp3<Fq3Config>;
-
-// pub struct Fq3Config;
-
-// impl Fp3Config for Fq3Config {
-//     type Fp;
-
-//     const NONRESIDUE: Self::Fp;
-
-//     const FROBENIUS_COEFF_FP3_C1: &'static [Self::Fp];
-
-//     const FROBENIUS_COEFF_FP3_C2: &'static [Self::Fp];
-
-//     const TWO_ADICITY: u32;
-
-//     const TRACE_MINUS_ONE_DIV_TWO: &'static [u64];
-
-//     const QUADRATIC_NONRESIDUE_TO_T: ark_ff::Fp3<Self>;
-// }
-
 struct BrainfuckProver(ProofOptions);
 
 impl Prover for BrainfuckProver {
