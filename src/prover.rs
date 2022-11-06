@@ -84,8 +84,6 @@ pub trait Prover {
             constraint_coposer.build_commitment(&challenges, &execution_trace_lde);
         channel.commit_composition_trace(composition_trace_lde_tree.root());
 
-        println!("Extension z: {}", channel.public_coin.draw::<Self::Fq>());
-
         let g = trace_domain.group_gen;
         let z = channel.get_ood_point();
         let ood_execution_trace_evals = execution_trace_polys.evaluate_at(z);

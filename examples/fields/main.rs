@@ -1,10 +1,6 @@
 #![feature(allocator_api)]
 
-use ark_ff::FftField;
-use ark_ff::Field;
-use ark_ff::One;
 use ark_ff::UniformRand;
-use ark_ff_optimized::fp64::Fp;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use gpu_poly::prelude::PageAlignedAllocator;

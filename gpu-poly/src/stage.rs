@@ -87,11 +87,10 @@ impl<F: GpuField> FftGpuStage<F> {
     ) {
         let command_encoder = command_buffer.new_compute_command_encoder();
         command_encoder.set_compute_pipeline_state(&self.pipeline);
-        // println!(
-        //     "Allocating shared memory: {}",
-        //     2048 * std::mem::size_of::<F>()
-        // );
         if let Variant::Multiple = self.variant {
+            // TODO: make sure this doesn't allocate more than the max.
+            // Seems that it allows you to allocate more than the max
+            // but not sure what the consequences are.
             let num_bytes = (2048 * std::mem::size_of::<F>()).try_into().unwrap();
             command_encoder.set_threadgroup_memory_length(0, num_bytes);
         }

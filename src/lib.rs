@@ -16,6 +16,7 @@ mod channel;
 mod composer;
 pub mod constraint;
 pub mod fri;
+mod matrix;
 pub mod merkle;
 mod prover;
 mod random;
@@ -30,11 +31,11 @@ pub use constraint::Column;
 pub use constraint::Constraint;
 use fri::FriOptions;
 use fri::FriProof;
+pub use matrix::Matrix;
 pub use prover::Prover;
 use trace::Queries;
 pub use trace::Trace;
 pub use trace::TraceInfo;
-pub use utils::Matrix;
 
 // TODO: include ability to specify:
 // - base field
