@@ -1,8 +1,8 @@
-use crate::fq3::Fq3;
 use crate::tables;
-use ark_ff_optimized::fp64::Fp;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use gpu_poly::fields::p18446744069414584321::Fp;
+use gpu_poly::fields::p18446744069414584321::Fq3;
 use ministark::Air;
 use ministark::Constraint;
 use ministark::ProofOptions;

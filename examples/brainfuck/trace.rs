@@ -1,4 +1,3 @@
-use crate::fq3::Fq3;
 use crate::tables::BrainfuckColumn;
 use crate::tables::Challenge;
 use crate::tables::InputBaseColumn;
@@ -17,9 +16,10 @@ use ark_ff::One;
 use ark_ff::PrimeField;
 use ark_ff::UniformRand;
 use ark_ff::Zero;
-use ark_ff_optimized::fp64::Fp;
 use ark_std::rand;
 use gpu_poly::allocator::PageAlignedAllocator;
+use gpu_poly::fields::p18446744069414584321::Fp;
+use gpu_poly::fields::p18446744069414584321::Fq3;
 use gpu_poly::GpuVec;
 use ministark::challenges::Challenges;
 // use ministark::constraint::Challenge as _;

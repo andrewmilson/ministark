@@ -304,7 +304,7 @@ fn deep_composition_evaluations<A: Air>(
     let mut evals = vec![A::Fq::zero(); query_positions.len()];
 
     // add base trace
-    let next_z = z * &trace_domain.group_gen();
+    let next_z = z * trace_domain.group_gen();
     for ((&x, row), eval) in xs.iter().zip(base_trace_rows).zip(&mut evals) {
         for (i, &val) in row.iter().enumerate() {
             let (alpha, beta, _) = composition_coeffs.base_trace[i];
@@ -337,7 +337,7 @@ fn deep_composition_evaluations<A: Air>(
     // adjust degree
     let (alpha, beta) = composition_coeffs.degree;
     for (x, eval) in xs.into_iter().zip(&mut evals) {
-        *eval *= alpha + beta * &x;
+        *eval *= alpha + beta * x;
     }
 
     evals

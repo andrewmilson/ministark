@@ -93,7 +93,7 @@ pub trait Prover {
             execution_trace_polys.append(GroupItem::Fq(extension_trace_polys))
         }
         let ood_execution_trace_evals = execution_trace_polys.evaluate_at(z);
-        let ood_execution_trace_evals_next = execution_trace_polys.evaluate_at(z * &g);
+        let ood_execution_trace_evals_next = execution_trace_polys.evaluate_at(z * g);
         channel.send_ood_trace_states(&ood_execution_trace_evals, &ood_execution_trace_evals_next);
         let z_n = z.pow([composition_trace_polys.num_cols() as u64]);
         let ood_composition_trace_evals = composition_trace_polys.evaluate_at(z_n);
