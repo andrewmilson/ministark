@@ -344,6 +344,7 @@ impl<F: GpuField> Constraint<F> {
         result
     }
 
+    // TODO: remove
     #[cfg(feature = "gpu")]
     fn evaluate_symbolic_gpu(
         results: &mut [GpuVec<F>],
@@ -416,6 +417,7 @@ impl<F: GpuField> Constraint<F> {
         command_buffer.wait_until_completed();
     }
 
+    // TODO: remove
     #[cfg(not(feature = "gpu"))]
     fn evaluate_symbolic_cpu(
         results: &mut [GpuVec<F>],
@@ -465,6 +467,7 @@ impl<F: GpuField> Constraint<F> {
         }
     }
 
+    // TODO: remove
     // TODO: don't make this coupled to "trace"
     // TODO: https://en.wikipedia.org/wiki/Estrin%27s_scheme
     pub fn evaluate_symbolic(

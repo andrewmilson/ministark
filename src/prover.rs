@@ -107,19 +107,11 @@ pub trait Prover {
         let deep_composition_lde = deep_composition_poly.into_evaluations(lde_xs);
 
         let mut fri_prover = FriProver::<Self::Fp, Sha256>::new(air.options().into_fri_options());
-        // TODO: REMOVE CLONE NOT NEEDed
-        fri_prover.build_layers(
-            &mut channel,
-            deep_composition_lde.clone().try_into().unwrap(),
-        );
+        fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
 
         channel.grind_fri_commitments();
 
         let query_positions = channel.get_fri_query_positions();
-        println!(
-            "Should be deep: {}",
-            deep_composition_lde.0[0][query_positions[0]]
-        );
         let fri_proof = fri_prover.into_proof(&query_positions);
 
         let queries = Queries::new(

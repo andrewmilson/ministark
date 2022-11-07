@@ -1,4 +1,4 @@
-#![feature(allocator_api, const_if_match)]
+#![feature(allocator_api)]
 
 use air::BrainfuckAir;
 use air::ExecutionInfo;
@@ -23,7 +23,7 @@ mod trace;
 mod vm;
 
 /// Source: http://esoteric.sange.fi/brainfuck/bf-source/prog/fibonacci.txt
-const FIB_TO_55_SOURCE: &str = "
+const _FIB_TO_55_SOURCE: &str = "
 This determines how many numbers to generate:
     +++++++++++
 
@@ -95,7 +95,7 @@ fn main() {
     println!("{:?}", Fp::one());
 
     let now = Instant::now();
-    let program = compile(FIB_TO_55_SOURCE);
+    let program = compile(HELLO_WORLD_SOURCE);
     let mut output = Vec::new();
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
     println!("Output: {}", String::from_utf8(output).unwrap());

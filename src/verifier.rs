@@ -108,10 +108,6 @@ impl<A: Air> Proof<A> {
                     res
                 });
 
-        println!("actual: {}", calculated_ood_constraint_evaluation);
-        println!("EXPECTED: {}", provided_ood_constraint_evaluation);
-        // println!("ACTUAL: {:?}", calculated_ood_constraint_evaluations);
-
         if calculated_ood_constraint_evaluation != provided_ood_constraint_evaluation {
             return Err(InconsistentOodConstraintEvaluations);
         }

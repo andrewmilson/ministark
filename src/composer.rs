@@ -279,6 +279,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         let (alpha, beta) = self.composition_coeffs.degree;
 
         // TODO: consider making multithreaded
+        // TODO: consider using constraint system to compose polys
         // Adjust the degree
         // P(x) * (alpha + x * beta)
         let mut last = A::Fp::zero();
