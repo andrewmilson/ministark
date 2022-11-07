@@ -25,7 +25,7 @@ mod vm;
 /// Source: http://esoteric.sange.fi/brainfuck/bf-source/prog/fibonacci.txt
 const FIB_TO_55_SOURCE: &str = "
 This determines how many numbers to generate:
-    +++++++++
+    +++++++++++
 
 Program:
     >+>>>>++++++++++++++++++++++++++++++++++++++++++++
@@ -95,7 +95,7 @@ fn main() {
     println!("{:?}", Fp::one());
 
     let now = Instant::now();
-    let program = compile(HELLO_WORLD_SOURCE);
+    let program = compile(FIB_TO_55_SOURCE);
     let mut output = Vec::new();
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
     println!("Output: {}", String::from_utf8(output).unwrap());

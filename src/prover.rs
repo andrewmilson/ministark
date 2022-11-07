@@ -60,6 +60,9 @@ pub trait Prover {
         let extension_trace_polys = extension_trace.as_ref().map(|t| t.interpolate(trace_xs));
         let extension_trace_lde = extension_trace_polys.as_ref().map(|p| p.evaluate(lde_xs));
         let extension_trace_tree = extension_trace_lde.as_ref().map(|lde| lde.commit_to_rows());
+        if let Some(t) = extension_trace_tree.as_ref() {
+            channel.commit_extension_trace(t.root())
+        }
 
         #[cfg(debug_assertions)]
         air.validate_constraints(&challenges, base_trace, extension_trace.as_ref());

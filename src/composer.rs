@@ -178,20 +178,6 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let merkle_tree = composition_trace_lde.commit_to_rows();
         (composition_trace_lde, composition_trace_polys, merkle_tree)
     }
-
-    /// Ensures the post-division degree of the polynomial matches the expected
-    #[cfg(debug_assertions)]
-    fn validate_quotient_degree(&self, quotient: &[A::Fp], expected_degree: usize) {
-        use ark_poly::univariate::DensePolynomial;
-        use ark_poly::DenseUVPolynomial;
-        use ark_poly::Polynomial;
-
-        let coeffs = self.air.lde_domain().ifft(quotient);
-        let poly = DensePolynomial::from_coefficients_vec(coeffs);
-
-        // TODO: set up errors
-        assert_eq!(expected_degree, poly.degree());
-    }
 }
 
 pub struct DeepPolyComposer<'a, A: Air> {
@@ -316,12 +302,6 @@ pub struct DeepCompositionCoeffs<F> {
     pub constraints: Vec<F>,
     /// Degree adjustment composition coefficients
     pub degree: (F, F),
-}
-
-struct DegreeAdjustmentGroup<F> {
-    degree_adjustment: usize,
-    columns: Vec<GpuVec<F>>,
-    coeffs: Vec<(F, F)>,
 }
 
 /// Computes (P(x) - value) * k

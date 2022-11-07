@@ -355,9 +355,10 @@ pub trait Air {
     ) {
         use crate::matrix::GroupItem;
         let mut execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
-        extension_trace
-            .as_ref()
-            .map(|t| execution_trace.append(GroupItem::Fq(t)));
+        if let Some(t) = extension_trace.as_ref() {
+            execution_trace.append(GroupItem::Fq(t))
+        }
+
         let mut col_indicies = vec![false; execution_trace.num_cols()];
         let mut challenge_indicies = vec![false; challenges.len()];
         for element in self.all_constraint_elements() {
