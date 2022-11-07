@@ -1,4 +1,3 @@
-use crate::air::Divisor;
 use crate::challenges::Challenges;
 use crate::matrix::GroupItem;
 use crate::matrix::MatrixGroup;
@@ -32,83 +31,6 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         }
     }
 
-    #[cfg(feature = "gpu")]
-    fn generate_quotients_gpu(
-        &self,
-        mut constraint_evaluations: Matrix<A::Fp>,
-        divisor: &Divisor<A::Fp>,
-    ) -> Matrix<A::Fp> {
-        // Generate quotients
-        let _timer = Timer::new("=QQ====QUOTIENT EVALUATIOOOONS===QQ=");
-        let library = &PLANNER.library;
-        let command_queue = &PLANNER.command_queue;
-        let command_buffer = command_queue.new_command_buffer();
-        let multiplier = MulPowStage::<A::Fp>::new(library, divisor.len());
-        let divisor_buffer = buffer_no_copy(command_queue.device(), divisor);
-        // TODO: let's move GPU stuff out of here and make it readable in here.
-        for evaluations in &mut constraint_evaluations.0 {
-            let mut evaluations_buffer = buffer_no_copy(command_queue.device(), evaluations);
-            multiplier.encode(
-                command_buffer,
-                &mut evaluations_buffer,
-                &divisor_buffer,
-                1,
-                0,
-            );
-        }
-        command_buffer.commit();
-        command_buffer.wait_until_completed();
-
-        drop(_timer);
-
-        constraint_evaluations
-    }
-
-    #[cfg(not(feature = "gpu"))]
-    fn generate_quotients_cpu(
-        &self,
-        mut constraint_evaluations: Matrix<A::Fp>,
-        divisor: &Divisor<A::Fp>,
-    ) -> Matrix<A::Fp> {
-        let n = constraint_evaluations.num_rows();
-        #[cfg(not(feature = "parallel"))]
-        let chunk_size = n;
-        #[cfg(feature = "parallel")]
-        let chunk_size = std::cmp::max(n / rayon::current_num_threads().next_power_of_two(), 1024);
-
-        for column in &mut constraint_evaluations.0 {
-            ark_std::cfg_chunks_mut!(column, chunk_size)
-                .enumerate()
-                .for_each(|(chunk_offset, chunk)| {
-                    let offset = chunk_offset * chunk_size;
-                    for (i, quotient) in chunk.iter_mut().enumerate() {
-                        *quotient *= divisor[offset + i]
-                    }
-                });
-        }
-
-        constraint_evaluations
-    }
-
-    fn generate_quotients(
-        &self,
-        challenges: &Challenges<A::Fp>,
-        constraints: &[Constraint<A::Fp>],
-        trace_lde: &Matrix<A::Fp>,
-        divisor: &Divisor<A::Fp>,
-    ) -> Matrix<A::Fp> {
-        let trace_step = self.air.lde_blowup_factor();
-        let _timer = Timer::new("=======CONSTRAINT EVALUATIOOOONS======");
-        let all_evaluations =
-            Constraint::evaluate_symbolic(constraints, challenges, trace_step, trace_lde);
-        drop(_timer);
-
-        #[cfg(feature = "gpu")]
-        return self.generate_quotients_gpu(all_evaluations, divisor);
-        #[cfg(not(feature = "gpu"))]
-        return self.generate_quotients_cpu(all_evaluations, divisor);
-    }
-
     pub fn evaluate(
         &mut self,
         challenges: &Challenges<A::Fp>,
@@ -120,7 +42,9 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
         // add execution trace LDE
         lde_columns.append(GroupItem::Fp(base_trace_lde));
-        extension_trace_lde.map(|t| lde_columns.append(GroupItem::Fq(t)));
+        if let Some(extension_trace_lde) = extension_trace_lde {
+            lde_columns.append(GroupItem::Fq(extension_trace_lde))
+        }
 
         let boundary_constraints = self.air.boundary_constraints();
         let boundary_divisor_idx = lde_columns.num_cols();
@@ -188,7 +112,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
         // add degree adjustment LDEs
         for degree_adjustment_matrix in &degree_adjustment_matricies {
-            lde_columns.append(GroupItem::Fp(&degree_adjustment_matrix));
+            lde_columns.append(GroupItem::Fp(degree_adjustment_matrix));
         }
 
         let mut composition_constraint = Constraint::zero();
@@ -201,137 +125,13 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             let degree_adjustor = degree_adjustment_map.get(&degree_adjustment).unwrap();
 
             let (alpha, beta) = self.composition_coeffs.pop().unwrap();
+            // Constraint composition as in:
+            // https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab
             composition_constraint += constraint * divisor * (degree_adjustor * alpha + beta);
         }
 
         let lde_step = self.air.lde_blowup_factor();
         lde_columns.evaluate_symbolic(&[composition_constraint], challenges, lde_step)
-
-        // let boundary_divisor_index =
-
-        // let boundary_constraints = air.boundary_constraints();
-        // let transition_constraints = air.transition_constraints();
-        // let terminal_constraints = air.terminal_constraints();
-
-        // // let _timer = Timer::new("generating quotients");
-        // let boundary_quotients = self.generate_quotients(
-        //     challenges,
-        //     boundary_constraints,
-        //     trace_lde,
-        //     &boundary_divisor,
-        // );
-        // let transition_quotients = self.generate_quotients(
-        //     challenges,
-        //     transition_constraints,
-        //     trace_lde,
-        //     &transition_divisor,
-        // );
-        // let terminal_quotients = self.generate_quotients(
-        //     challenges,
-        //     terminal_constraints,
-        //     trace_lde,
-        //     &terminal_divisor,
-        // );
-        // // drop(_timer);
-
-        // let boundary_iter =
-        //     zip(boundary_constraints, boundary_quotients.0).map(|(c, q)| (c,
-        // q, &boundary_divisor)); let transition_iter =
-        // zip(transition_constraints, transition_quotients.0)
-        //     .map(|(c, q)| (c, q, &transition_divisor));
-        // let terminal_iter =
-        //     zip(terminal_constraints, terminal_quotients.0).map(|(c, q)| (c,
-        // q, &terminal_divisor));
-
-        // let _timer = Timer::new("asjusting degree");
-        // let trace_degree = air.trace_len() - 1;
-        // let composition_degree = air.composition_degree();
-        // let mut groups = BTreeMap::new();
-        // for (constraint, quotient, divisor) in
-        //     boundary_iter.chain(transition_iter).chain(terminal_iter)
-        // {
-        //     // TODO: handle case when degree is 0?
-        //     let evaluation_degree = constraint.degree() * trace_degree -
-        // divisor.degree;     #[cfg(debug_assertions)]
-        //     self.validate_quotient_degree(&quotient, evaluation_degree);
-        //     assert!(evaluation_degree <= composition_degree);
-        //     let degree_adjustment = composition_degree - evaluation_degree;
-
-        //     let group = groups
-        //         .entry(degree_adjustment)
-        //         .or_insert_with(|| DegreeAdjustmentGroup {
-        //             degree_adjustment,
-        //             columns: Vec::new(),
-        //             coeffs: Vec::new(),
-        //         });
-        //     group.columns.push(quotient);
-        //     // TODO: don't use pop. use index
-        //     group.coeffs.push(self.composition_coeffs.pop().unwrap());
-        // }
-
-        // // TODO: GPU
-        // let lde_domain = air.lde_domain();
-        // let mut accumulator = Matrix::new(vec![]);
-        // for (_, group) in groups.into_iter() {
-        //     let DegreeAdjustmentGroup {
-        //         degree_adjustment,
-        //         columns,
-        //         coeffs,
-        //     } = group;
-
-        //     // TODO this step can be skipped
-        //     let (alpha_cols, beta_cols) = ark_std::cfg_iter!(columns)
-        //         .zip(coeffs)
-        //         .map(|(column, (alpha, beta))| {
-        //             let n = column.len();
-        //             let mut alpha_col = Vec::with_capacity_in(n,
-        // PageAlignedAllocator);             let mut beta_col =
-        // Vec::with_capacity_in(n, PageAlignedAllocator);
-
-        //             for v in column {
-        //                 alpha_col.push(alpha * v);
-        //                 beta_col.push(beta * v);
-        //             }
-
-        //             (alpha_col, beta_col)
-        //         })
-        //         .unzip();
-
-        //     let mut alpha_col = Matrix::new(alpha_cols).sum_columns();
-
-        //     let _timer = Timer::new("===DEG ADJUSTOR===");
-
-        //     if degree_adjustment != 0 {
-        //         // TODO: make parallel. also this is hacky and needs to go
-        //         // modify domain to go from x to x^degree_adjustment
-        //         let mut adjust_domain = lde_domain;
-        //         adjust_domain.offset =
-        // adjust_domain.offset.pow([degree_adjustment as u64]);
-        //         adjust_domain.group_gen =
-        // adjust_domain.group_gen.pow([degree_adjustment as u64]);
-        //         for (v, x) in zip(&mut alpha_col.0[0],
-        // adjust_domain.elements()) {             *v *= x
-        //         }
-        //     }
-
-        //     // TODO: multithreaded but not faster. hmmm..
-        //     // let adjust_offset = lde_domain.offset.pow([degree_adjustment
-        // as u64]);     // let adjust_group_gen =
-        // lde_domain.group_gen.pow([degree_adjustment as u64]);     //
-        // Radix2EvaluationDomain::distribute_powers_and_mul_by_const(
-        //     //     &mut beta_col.0[0],
-        //     //     adjust_group_gen,
-        //     //     adjust_offset,
-        //     // );
-
-        //     drop(_timer);
-
-        //     accumulator.append(alpha_col);
-        //     accumulator.append(Matrix::new(beta_cols));
-        // }
-        // drop(_timer);
-
-        // accumulator.sum_columns()
     }
 
     fn trace_polys(&self, composed_evaluations: Matrix<A::Fp>) -> Matrix<A::Fp> {
@@ -441,6 +241,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         }
 
         if let Some(extension_trace_polys) = extension_trace_polys {
+            // TODO: not a huge fan of this of this num_base_column business
             let num_base_columns = self.air.trace_info().num_base_columns;
             for (i, poly) in extension_trace_polys.iter().enumerate() {
                 let (alpha, beta, _) = self.composition_coeffs.extension_trace[i];

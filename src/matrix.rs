@@ -417,7 +417,95 @@ where
         constraints: &[Constraint<Fq>],
         step: usize,
     ) {
-        todo!()
+        let n = self.num_rows();
+        let library = &PLANNER.library;
+        let command_queue = &PLANNER.command_queue;
+        let device = command_queue.device();
+        let command_buffer = command_queue.new_command_buffer();
+
+        let multiplier = MulPowStage::<Fq>::new(library, n);
+        let filler = FillBuffStage::<Fq>::new(library, n);
+        let adder = AddAssignStage::<Fq>::new(library, n);
+
+        let mut res_buffers = results
+            .iter_mut()
+            .map(|col| buffer_mut_no_copy(device, col))
+            .collect::<Vec<_>>();
+
+        let mut scratch_fq = GpuVec::<Fp>::with_capacity_in(n, PageAlignedAllocator);
+        unsafe { scratch_fq.set_len(n) }
+        let mut scratch_fq_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch_fq);
+
+        for (constraint, res_buffer) in constraints.iter().zip(&mut res_buffers) {
+            for (i, term) in constraint.0.iter().enumerate() {
+                if i == 0 {
+                    filler.encode(command_buffer, res_buffer, term.0);
+                    for (element, power) in &(term.1).0 {
+                        let (col_index, shift) = match element {
+                            Element::Curr(col_index) => (col_index, 0),
+                            Element::Next(col_index) => (col_index, step),
+                            _ => unreachable!(),
+                        };
+                        match self.get_column(*col_index) {
+                            Col::Fq(col) => {
+                                let column_buffer = buffer_no_copy(command_queue.device(), col);
+                                multiplier.encode(
+                                    command_buffer,
+                                    res_buffer,
+                                    &column_buffer,
+                                    *power,
+                                    shift,
+                                );
+                            }
+                            Col::Fp(col) => {
+                                let column_buffer = buffer_no_copy(command_queue.device(), col);
+                                multiplier.encode(
+                                    command_buffer,
+                                    res_buffer,
+                                    &column_buffer,
+                                    *power,
+                                    shift,
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    filler.encode(command_buffer, &mut scratch_fq_buffer, term.0);
+                    for (element, power) in &(term.1).0 {
+                        let (col_index, shift) = match element {
+                            Element::Curr(col_index) => (col_index, 0),
+                            Element::Next(col_index) => (col_index, step),
+                            _ => unreachable!(),
+                        };
+                        match self.get_column(*col_index) {
+                            Col::Fq(col) => {
+                                let column_buffer = buffer_no_copy(command_queue.device(), col);
+                                multiplier.encode(
+                                    command_buffer,
+                                    &mut scratch_fq_buffer,
+                                    &column_buffer,
+                                    *power,
+                                    shift,
+                                );
+                            }
+                            Col::Fp(col) => {
+                                let column_buffer = buffer_no_copy(command_queue.device(), col);
+                                multiplier.encode(
+                                    command_buffer,
+                                    &mut scratch_fq_buffer,
+                                    &column_buffer,
+                                    *power,
+                                    shift,
+                                );
+                            }
+                        }
+                    }
+                    adder.encode(command_buffer, res_buffer, &scratch_fq_buffer);
+                }
+            }
+        }
+        command_buffer.commit();
+        command_buffer.wait_until_completed();
     }
 
     #[cfg(not(feature = "gpu"))]
@@ -532,8 +620,7 @@ where
     pub fn evaluate_at(&self, x: Fq) -> Vec<Fq> {
         self.0
             .iter()
-            .map(|m| map!(m, evaluate_at, x))
-            .flatten()
+            .flat_map(|m| map!(m, evaluate_at, x))
             .collect()
     }
 }
