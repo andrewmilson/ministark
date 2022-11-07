@@ -296,11 +296,18 @@ pub trait Air {
 
         // execution trace coeffs
         let trace_info = self.trace_info();
-        let num_execution_trace_cols =
-            trace_info.num_base_columns + trace_info.num_extension_columns;
-        let mut execution_trace_coeffs = Vec::new();
-        for _ in 0..num_execution_trace_cols {
-            execution_trace_coeffs.push((
+        let mut base_trace_coeffs = Vec::new();
+        for _ in 0..trace_info.num_base_columns {
+            base_trace_coeffs.push((
+                Self::Fp::rand(&mut rng),
+                Self::Fp::rand(&mut rng),
+                Self::Fp::rand(&mut rng),
+            ));
+        }
+
+        let mut extension_trace_coeffs = Vec::new();
+        for _ in 0..trace_info.num_extension_columns {
+            extension_trace_coeffs.push((
                 Self::Fp::rand(&mut rng),
                 Self::Fp::rand(&mut rng),
                 Self::Fp::rand(&mut rng),
@@ -315,7 +322,8 @@ pub trait Air {
         }
 
         DeepCompositionCoeffs {
-            trace: execution_trace_coeffs,
+            base_trace: base_trace_coeffs,
+            extension_trace: extension_trace_coeffs,
             constraints: composition_trace_coeffs,
             degree: (Self::Fp::rand(&mut rng), Self::Fp::rand(&mut rng)),
         }
@@ -346,8 +354,10 @@ pub trait Air {
         extension_trace: Option<&Matrix<Self::Fp>>,
     ) {
         use crate::matrix::GroupItem;
-        let execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
-        extension_trace.map(|t| execution_trace.append(GroupItem::Fq(t)));
+        let mut execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
+        extension_trace
+            .as_ref()
+            .map(|t| execution_trace.append(GroupItem::Fq(t)));
         let mut col_indicies = vec![false; execution_trace.num_cols()];
         let mut challenge_indicies = vec![false; challenges.len()];
         for element in self.all_constraint_elements() {

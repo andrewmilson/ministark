@@ -1,5 +1,6 @@
 use ark_ff::FftField;
 use ark_ff::Field;
+use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
 #[cfg(feature = "parallel")]
@@ -94,4 +95,22 @@ where
     poly_coeffs
         .iter()
         .rfold(T::zero(), move |result, coeff| result * point + coeff)
+}
+
+// calculates `p / (x^a - b)` using synthetic division
+// https://en.wikipedia.org/wiki/Synthetic_division
+// remainder is discarded. code copied from Winterfell STARK
+pub fn synthetic_divide<F: Field>(coeffs: &mut [F], a: usize, b: F) {
+    assert!(!a.is_zero());
+    assert!(!b.is_zero());
+    assert!(coeffs.len() > a);
+    if a == 1 {
+        let mut c = F::zero();
+        for coeff in coeffs.iter_mut().rev() {
+            *coeff += b * c;
+            core::mem::swap(coeff, &mut c);
+        }
+    } else {
+        todo!()
+    }
 }

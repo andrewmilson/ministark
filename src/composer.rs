@@ -1,11 +1,16 @@
 use crate::air::Divisor;
 use crate::challenges::Challenges;
+use crate::matrix::GroupItem;
+use crate::matrix::MatrixGroup;
 use crate::merkle::MerkleTree;
+use crate::utils::synthetic_divide;
 use crate::utils::Timer;
 use crate::Air;
+use crate::Column;
 use crate::Constraint;
 use crate::Matrix;
 use ark_ff::Field;
+use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use gpu_poly::prelude::*;
@@ -13,7 +18,6 @@ use gpu_poly::prelude::*;
 use rayon::prelude::*;
 use sha2::Sha256;
 use std::collections::BTreeMap;
-use std::iter::zip;
 
 pub struct ConstraintComposer<'a, A: Air> {
     air: &'a A,
@@ -105,137 +109,229 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         return self.generate_quotients_cpu(all_evaluations, divisor);
     }
 
-    // output of the form `(boundary, transition, terminal)`
     pub fn evaluate(
         &mut self,
         challenges: &Challenges<A::Fp>,
-        trace_lde: &Matrix<A::Fp>,
+        base_trace_lde: &Matrix<A::Fp>,
+        extension_trace_lde: Option<&Matrix<A::Fp>>,
     ) -> Matrix<A::Fp> {
-        let air = self.air;
+        // create a matrix group with all the LDEs we need for composition
+        let mut lde_columns = MatrixGroup::default();
 
-        let _timer = Timer::new("genering divisors");
-        let boundary_divisor = air.boundary_constraint_divisor();
-        let transition_divisor = air.transition_constraint_divisor();
-        let terminal_divisor = air.terminal_constraint_divisor();
-        drop(_timer);
+        // add execution trace LDE
+        lde_columns.append(GroupItem::Fp(base_trace_lde));
+        extension_trace_lde.map(|t| lde_columns.append(GroupItem::Fq(t)));
 
-        let boundary_constraints = air.boundary_constraints();
-        let transition_constraints = air.transition_constraints();
-        let terminal_constraints = air.terminal_constraints();
+        let boundary_constraints = self.air.boundary_constraints();
+        let boundary_divisor_idx = lde_columns.num_cols();
+        let boundary_divisor = self.air.boundary_constraint_divisor();
+        let _boundary_divisor_matrix = Matrix::new(vec![boundary_divisor.lde]);
+        // add boundary constraint divisor LDE
+        lde_columns.append(GroupItem::Fp(&_boundary_divisor_matrix));
+        let boundary_iter = boundary_constraints
+            .iter()
+            .map(|c| (c, boundary_divisor_idx.curr(), boundary_divisor.degree));
 
-        // let _timer = Timer::new("generating quotients");
-        let boundary_quotients = self.generate_quotients(
-            challenges,
-            boundary_constraints,
-            trace_lde,
-            &boundary_divisor,
-        );
-        let transition_quotients = self.generate_quotients(
-            challenges,
-            transition_constraints,
-            trace_lde,
-            &transition_divisor,
-        );
-        let terminal_quotients = self.generate_quotients(
-            challenges,
-            terminal_constraints,
-            trace_lde,
-            &terminal_divisor,
-        );
-        // drop(_timer);
+        let transition_constraints = self.air.transition_constraints();
+        let transition_divisor_idx = lde_columns.num_cols();
+        let transition_divisor = self.air.transition_constraint_divisor();
+        let _transition_divisor_matrix = Matrix::new(vec![transition_divisor.lde]);
+        // add transition constraint divisor LDE
+        lde_columns.append(GroupItem::Fp(&_transition_divisor_matrix));
+        let transition_iter = transition_constraints
+            .iter()
+            .map(|c| (c, transition_divisor_idx.curr(), transition_divisor.degree));
 
-        let boundary_iter =
-            zip(boundary_constraints, boundary_quotients.0).map(|(c, q)| (c, q, &boundary_divisor));
-        let transition_iter = zip(transition_constraints, transition_quotients.0)
-            .map(|(c, q)| (c, q, &transition_divisor));
-        let terminal_iter =
-            zip(terminal_constraints, terminal_quotients.0).map(|(c, q)| (c, q, &terminal_divisor));
+        let terminal_constraints = self.air.terminal_constraints();
+        let terminal_divisor_idx = lde_columns.num_cols();
+        let terminal_divisor = self.air.terminal_constraint_divisor();
+        let _terminal_divisor_matrix = Matrix::new(vec![terminal_divisor.lde]);
+        // add terminal constraint divisor LDE
+        lde_columns.append(GroupItem::Fp(&_terminal_divisor_matrix));
+        let terminal_iter = terminal_constraints
+            .iter()
+            .map(|c| (c, terminal_divisor_idx.curr(), terminal_divisor.degree));
 
-        let _timer = Timer::new("asjusting degree");
-        let trace_degree = air.trace_len() - 1;
-        let composition_degree = air.composition_degree();
-        let mut groups = BTreeMap::new();
-        for (constraint, quotient, divisor) in
-            boundary_iter.chain(transition_iter).chain(terminal_iter)
+        // add degree adjustment LDEs
+        let trace_degree = self.air.trace_len() - 1;
+        let composition_degree = self.air.composition_degree();
+        let lde_domain = self.air.lde_domain();
+        let mut degree_adjustment_matricies = Vec::new();
+        let mut degree_adjustment_map = BTreeMap::<usize, Constraint<A::Fp>>::new();
+        for (constraint, _, divisor_degree) in boundary_iter
+            .clone()
+            .chain(transition_iter.clone())
+            .chain(terminal_iter.clone())
         {
-            // TODO: handle case when degree is 0?
-            let evaluation_degree = constraint.degree() * trace_degree - divisor.degree;
-            #[cfg(debug_assertions)]
-            self.validate_quotient_degree(&quotient, evaluation_degree);
+            let evaluation_degree = constraint.degree() * trace_degree - divisor_degree;
             assert!(evaluation_degree <= composition_degree);
             let degree_adjustment = composition_degree - evaluation_degree;
 
-            let group = groups
+            degree_adjustment_map
                 .entry(degree_adjustment)
-                .or_insert_with(|| DegreeAdjustmentGroup {
-                    degree_adjustment,
-                    columns: Vec::new(),
-                    coeffs: Vec::new(),
-                });
-            group.columns.push(quotient);
-            // TODO: don't use pop. use index
-            group.coeffs.push(self.composition_coeffs.pop().unwrap());
-        }
-
-        // TODO: GPU
-        let lde_domain = air.lde_domain();
-        let mut accumulator = Matrix::new(vec![]);
-        for (_, group) in groups.into_iter() {
-            let DegreeAdjustmentGroup {
-                degree_adjustment,
-                columns,
-                coeffs,
-            } = group;
-
-            // TODO this step can be skipped
-            let (alpha_cols, beta_cols) = ark_std::cfg_iter!(columns)
-                .zip(coeffs)
-                .map(|(column, (alpha, beta))| {
-                    let n = column.len();
-                    let mut alpha_col = Vec::with_capacity_in(n, PageAlignedAllocator);
-                    let mut beta_col = Vec::with_capacity_in(n, PageAlignedAllocator);
-
-                    for v in column {
-                        alpha_col.push(alpha * v);
-                        beta_col.push(beta * v);
+                .or_insert_with(|| {
+                    if degree_adjustment == 0 {
+                        Constraint::from(A::Fp::one())
+                    } else {
+                        let col_idx = lde_columns.num_cols() + degree_adjustment_matricies.len();
+                        let mut domain = lde_domain;
+                        // TODO: this is hacky. fix
+                        domain.offset = domain.offset.pow([degree_adjustment as u64]);
+                        domain.group_gen = domain.group_gen.pow([degree_adjustment as u64]);
+                        let column = domain.elements().collect::<Vec<_>>();
+                        let matrix = Matrix::new(vec![column.to_vec_in(PageAlignedAllocator)]);
+                        degree_adjustment_matricies.push(matrix);
+                        col_idx.curr()
                     }
-
-                    (alpha_col, beta_col)
-                })
-                .unzip();
-
-            let mut alpha_col = Matrix::new(alpha_cols).sum_columns();
-
-            let _timer = Timer::new("===DEG ADJUSTOR===");
-
-            if degree_adjustment != 0 {
-                // TODO: make parallel. also this is hacky and needs to go
-                // modify domain to go from x to x^degree_adjustment
-                let mut adjust_domain = lde_domain;
-                adjust_domain.offset = adjust_domain.offset.pow([degree_adjustment as u64]);
-                adjust_domain.group_gen = adjust_domain.group_gen.pow([degree_adjustment as u64]);
-                for (v, x) in zip(&mut alpha_col.0[0], adjust_domain.elements()) {
-                    *v *= x
-                }
-            }
-
-            // TODO: multithreaded but not faster. hmmm..
-            // let adjust_offset = lde_domain.offset.pow([degree_adjustment as u64]);
-            // let adjust_group_gen = lde_domain.group_gen.pow([degree_adjustment as u64]);
-            // Radix2EvaluationDomain::distribute_powers_and_mul_by_const(
-            //     &mut beta_col.0[0],
-            //     adjust_group_gen,
-            //     adjust_offset,
-            // );
-
-            drop(_timer);
-
-            accumulator.append(alpha_col);
-            accumulator.append(Matrix::new(beta_cols));
+                });
         }
-        drop(_timer);
 
-        accumulator.sum_columns()
+        // add degree adjustment LDEs
+        for degree_adjustment_matrix in &degree_adjustment_matricies {
+            lde_columns.append(GroupItem::Fp(&degree_adjustment_matrix));
+        }
+
+        let mut composition_constraint = Constraint::zero();
+        for (constraint, divisor, divisor_degree) in
+            boundary_iter.chain(transition_iter).chain(terminal_iter)
+        {
+            let evaluation_degree = constraint.degree() * trace_degree - divisor_degree;
+            assert!(evaluation_degree <= composition_degree);
+            let degree_adjustment = composition_degree - evaluation_degree;
+            let degree_adjustor = degree_adjustment_map.get(&degree_adjustment).unwrap();
+
+            let (alpha, beta) = self.composition_coeffs.pop().unwrap();
+            composition_constraint += constraint * divisor * (degree_adjustor * alpha + beta);
+        }
+
+        let lde_step = self.air.lde_blowup_factor();
+        lde_columns.evaluate_symbolic(&[composition_constraint], challenges, lde_step)
+
+        // let boundary_divisor_index =
+
+        // let boundary_constraints = air.boundary_constraints();
+        // let transition_constraints = air.transition_constraints();
+        // let terminal_constraints = air.terminal_constraints();
+
+        // // let _timer = Timer::new("generating quotients");
+        // let boundary_quotients = self.generate_quotients(
+        //     challenges,
+        //     boundary_constraints,
+        //     trace_lde,
+        //     &boundary_divisor,
+        // );
+        // let transition_quotients = self.generate_quotients(
+        //     challenges,
+        //     transition_constraints,
+        //     trace_lde,
+        //     &transition_divisor,
+        // );
+        // let terminal_quotients = self.generate_quotients(
+        //     challenges,
+        //     terminal_constraints,
+        //     trace_lde,
+        //     &terminal_divisor,
+        // );
+        // // drop(_timer);
+
+        // let boundary_iter =
+        //     zip(boundary_constraints, boundary_quotients.0).map(|(c, q)| (c,
+        // q, &boundary_divisor)); let transition_iter =
+        // zip(transition_constraints, transition_quotients.0)
+        //     .map(|(c, q)| (c, q, &transition_divisor));
+        // let terminal_iter =
+        //     zip(terminal_constraints, terminal_quotients.0).map(|(c, q)| (c,
+        // q, &terminal_divisor));
+
+        // let _timer = Timer::new("asjusting degree");
+        // let trace_degree = air.trace_len() - 1;
+        // let composition_degree = air.composition_degree();
+        // let mut groups = BTreeMap::new();
+        // for (constraint, quotient, divisor) in
+        //     boundary_iter.chain(transition_iter).chain(terminal_iter)
+        // {
+        //     // TODO: handle case when degree is 0?
+        //     let evaluation_degree = constraint.degree() * trace_degree -
+        // divisor.degree;     #[cfg(debug_assertions)]
+        //     self.validate_quotient_degree(&quotient, evaluation_degree);
+        //     assert!(evaluation_degree <= composition_degree);
+        //     let degree_adjustment = composition_degree - evaluation_degree;
+
+        //     let group = groups
+        //         .entry(degree_adjustment)
+        //         .or_insert_with(|| DegreeAdjustmentGroup {
+        //             degree_adjustment,
+        //             columns: Vec::new(),
+        //             coeffs: Vec::new(),
+        //         });
+        //     group.columns.push(quotient);
+        //     // TODO: don't use pop. use index
+        //     group.coeffs.push(self.composition_coeffs.pop().unwrap());
+        // }
+
+        // // TODO: GPU
+        // let lde_domain = air.lde_domain();
+        // let mut accumulator = Matrix::new(vec![]);
+        // for (_, group) in groups.into_iter() {
+        //     let DegreeAdjustmentGroup {
+        //         degree_adjustment,
+        //         columns,
+        //         coeffs,
+        //     } = group;
+
+        //     // TODO this step can be skipped
+        //     let (alpha_cols, beta_cols) = ark_std::cfg_iter!(columns)
+        //         .zip(coeffs)
+        //         .map(|(column, (alpha, beta))| {
+        //             let n = column.len();
+        //             let mut alpha_col = Vec::with_capacity_in(n,
+        // PageAlignedAllocator);             let mut beta_col =
+        // Vec::with_capacity_in(n, PageAlignedAllocator);
+
+        //             for v in column {
+        //                 alpha_col.push(alpha * v);
+        //                 beta_col.push(beta * v);
+        //             }
+
+        //             (alpha_col, beta_col)
+        //         })
+        //         .unzip();
+
+        //     let mut alpha_col = Matrix::new(alpha_cols).sum_columns();
+
+        //     let _timer = Timer::new("===DEG ADJUSTOR===");
+
+        //     if degree_adjustment != 0 {
+        //         // TODO: make parallel. also this is hacky and needs to go
+        //         // modify domain to go from x to x^degree_adjustment
+        //         let mut adjust_domain = lde_domain;
+        //         adjust_domain.offset =
+        // adjust_domain.offset.pow([degree_adjustment as u64]);
+        //         adjust_domain.group_gen =
+        // adjust_domain.group_gen.pow([degree_adjustment as u64]);
+        //         for (v, x) in zip(&mut alpha_col.0[0],
+        // adjust_domain.elements()) {             *v *= x
+        //         }
+        //     }
+
+        //     // TODO: multithreaded but not faster. hmmm..
+        //     // let adjust_offset = lde_domain.offset.pow([degree_adjustment
+        // as u64]);     // let adjust_group_gen =
+        // lde_domain.group_gen.pow([degree_adjustment as u64]);     //
+        // Radix2EvaluationDomain::distribute_powers_and_mul_by_const(
+        //     //     &mut beta_col.0[0],
+        //     //     adjust_group_gen,
+        //     //     adjust_offset,
+        //     // );
+
+        //     drop(_timer);
+
+        //     accumulator.append(alpha_col);
+        //     accumulator.append(Matrix::new(beta_cols));
+        // }
+        // drop(_timer);
+
+        // accumulator.sum_columns()
     }
 
     fn trace_polys(&self, composed_evaluations: Matrix<A::Fp>) -> Matrix<A::Fp> {
@@ -271,10 +367,11 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     pub fn build_commitment(
         mut self,
         challenges: &Challenges<A::Fp>,
-        execution_trace_lde: &Matrix<A::Fp>,
+        base_trace_lde: &Matrix<A::Fp>,
+        extension_trace_lde: Option<&Matrix<A::Fp>>,
     ) -> (Matrix<A::Fp>, Matrix<A::Fp>, MerkleTree<Sha256>) {
         let _timer = Timer::new("constraint evaluation");
-        let composed_evaluations = self.evaluate(challenges, execution_trace_lde);
+        let composed_evaluations = self.evaluate(challenges, base_trace_lde, extension_trace_lde);
         drop(_timer);
         let composition_trace_polys = self.trace_polys(composed_evaluations);
         let composition_trace_lde = composition_trace_polys.evaluate(self.air.lde_domain());
@@ -317,7 +414,8 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
 
     pub fn add_execution_trace_polys(
         &mut self,
-        polys: Matrix<A::Fp>,
+        base_trace_polys: Matrix<A::Fp>,
+        extension_trace_polys: Option<Matrix<A::Fp>>,
         ood_evals: Vec<A::Fp>,
         ood_evals_next: Vec<A::Fp>,
     ) {
@@ -332,13 +430,26 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         let mut t2_composition = Vec::with_capacity_in(n, PageAlignedAllocator);
         t2_composition.resize(n, A::Fp::zero());
 
-        for (i, poly) in polys.iter().enumerate() {
-            let (alpha, beta, _) = self.composition_coeffs.trace[i];
+        // TODO: clean up code
+        for (i, poly) in base_trace_polys.iter().enumerate() {
+            let (alpha, beta, _) = self.composition_coeffs.base_trace[i];
             let ood_eval = ood_evals[i];
             let ood_eval_next = ood_evals_next[i];
 
             acc_trace_poly::<A::Fp>(&mut t1_composition, poly, ood_eval, alpha);
             acc_trace_poly::<A::Fp>(&mut t2_composition, poly, ood_eval_next, beta);
+        }
+
+        if let Some(extension_trace_polys) = extension_trace_polys {
+            let num_base_columns = self.air.trace_info().num_base_columns;
+            for (i, poly) in extension_trace_polys.iter().enumerate() {
+                let (alpha, beta, _) = self.composition_coeffs.extension_trace[i];
+                let ood_eval = ood_evals[num_base_columns + i];
+                let ood_eval_next = ood_evals_next[num_base_columns + i];
+
+                acc_trace_poly::<A::Fp>(&mut t1_composition, poly, ood_eval, alpha);
+                acc_trace_poly::<A::Fp>(&mut t2_composition, poly, ood_eval_next, beta);
+            }
         }
 
         // TODO: multithread
@@ -396,8 +507,10 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
 }
 
 pub struct DeepCompositionCoeffs<F> {
-    /// Execution trace polynomial composition coefficients
-    pub trace: Vec<(F, F, F)>,
+    /// Base trace polynomial composition coefficients
+    pub base_trace: Vec<(F, F, F)>,
+    /// Base trace polynomial composition coefficients
+    pub extension_trace: Vec<(F, F, F)>,
     /// Composition poly trace column composition coefficients
     pub constraints: Vec<F>,
     /// Degree adjustment composition coefficients
@@ -419,22 +532,4 @@ fn acc_trace_poly<F: GpuField>(acc: &mut [F], poly: &[F], value: F, k: F) {
         .for_each(|(v, coeff)| *v += k * coeff);
     // -value * k
     acc[0] -= value * k;
-}
-
-// calculates `p / (x^a - b)` using synthetic division
-// https://en.wikipedia.org/wiki/Synthetic_division
-// remainder is discarded. code copied from Winterfell STARK
-fn synthetic_divide<F: GpuField>(coeffs: &mut [F], a: usize, b: F) {
-    assert!(!a.is_zero());
-    assert!(!b.is_zero());
-    assert!(coeffs.len() > a);
-    if a == 1 {
-        let mut c = F::zero();
-        for coeff in coeffs.iter_mut().rev() {
-            *coeff += b * c;
-            core::mem::swap(coeff, &mut c);
-        }
-    } else {
-        todo!()
-    }
 }

@@ -137,20 +137,23 @@ impl<A: Air> Proof<A> {
             .map(|_| rng.gen_range(0..lde_domain_size))
             .collect::<Vec<usize>>();
 
-        let num_base_columns = air.trace_info().num_base_columns;
-        let num_trace_columns = num_base_columns + air.trace_info().num_extension_columns;
-        let execution_trace_rows = trace_queries
-            .execution_trace_values
-            .chunks(num_trace_columns)
+        let base_trace_rows = trace_queries
+            .base_trace_values
+            .chunks(air.trace_info().num_base_columns)
             .collect::<Vec<&[A::Fp]>>();
+        let extension_trace_rows = if air.trace_info().num_extension_columns > 0 {
+            trace_queries
+                .extension_trace_values
+                .chunks(air.trace_info().num_extension_columns)
+                .collect::<Vec<&[A::Fp]>>()
+        } else {
+            Vec::new()
+        };
+
         let composition_trace_rows = trace_queries
             .composition_trace_values
             .chunks(air.ce_blowup_factor())
             .collect::<Vec<&[A::Fp]>>();
-        let (base_trace_rows, extension_trace_rows): (Vec<_>, Vec<_>) = execution_trace_rows
-            .iter()
-            .map(|row| row.split_at(num_base_columns))
-            .unzip();
 
         // base trace positions
         verify_positions::<Sha256>(
@@ -185,12 +188,15 @@ impl<A: Air> Proof<A> {
             &air,
             &query_positions,
             deep_coeffs,
-            execution_trace_rows,
+            base_trace_rows,
+            extension_trace_rows,
             composition_trace_rows,
             z,
             ood_trace_states,
             ood_constraint_evaluations,
         );
+
+        println!("First deep: {}", deep_evaluations[0]);
 
         Ok(fri_verifier.verify(&query_positions, &deep_evaluations)?)
     }
@@ -287,7 +293,8 @@ fn deep_composition_evaluations<A: Air>(
     air: &A,
     query_positions: &[usize],
     composition_coeffs: DeepCompositionCoeffs<A::Fp>,
-    execution_trace_rows: Vec<&[A::Fp]>,
+    base_trace_rows: Vec<&[A::Fp]>,
+    extension_trace_rows: Vec<&[A::Fp]>,
     composition_trace_rows: Vec<&[A::Fp]>,
     z: A::Fp,
     ood_trace_states: (Vec<A::Fp>, Vec<A::Fp>),
@@ -302,13 +309,25 @@ fn deep_composition_evaluations<A: Air>(
 
     let mut evals = vec![A::Fp::zero(); query_positions.len()];
 
-    // add execution trace
+    // add base trace
     let next_z = z * trace_domain.group_gen();
-    for ((&x, row), eval) in xs.iter().zip(execution_trace_rows).zip(&mut evals) {
+    for ((&x, row), eval) in xs.iter().zip(base_trace_rows).zip(&mut evals) {
         for (i, &value) in row.iter().enumerate() {
-            let (alpha, beta, _) = composition_coeffs.trace[i];
+            let (alpha, beta, _) = composition_coeffs.base_trace[i];
             let t1 = (value - ood_trace_states.0[i]) / (x - z);
             let t2 = (value - ood_trace_states.1[i]) / (x - next_z);
+            *eval += t1 * alpha + t2 * beta;
+        }
+    }
+
+    // add extension trace
+    let num_base_columns = air.trace_info().num_base_columns;
+    let next_z = z * trace_domain.group_gen();
+    for ((&x, row), eval) in xs.iter().zip(extension_trace_rows).zip(&mut evals) {
+        for (i, &value) in row.iter().enumerate() {
+            let (alpha, beta, _) = composition_coeffs.extension_trace[i];
+            let t1 = (value - ood_trace_states.0[num_base_columns + i]) / (x - z);
+            let t2 = (value - ood_trace_states.1[num_base_columns + i]) / (x - next_z);
             *eval += t1 * alpha + t2 * beta;
         }
     }

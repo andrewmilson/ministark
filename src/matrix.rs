@@ -354,6 +354,7 @@ macro_rules! map {
     }
 }
 
+#[derive(Default)]
 pub struct MatrixGroup<'a, Fp, Fq = Fp>(Vec<GroupItem<'a, Fp, Fq>>);
 
 impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq> {
@@ -372,7 +373,14 @@ impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq> {
 
         // Check all matricies have the same number of rows
         let expected = map!(self.0[0], num_rows);
-        assert!(self.0.iter().all(|m| map!(m, num_rows) == expected));
+        // TODO: consider debug assertions
+        for (i, matrix) in self.0.iter().enumerate() {
+            let actual = map!(matrix, num_rows);
+            assert_eq!(
+                expected, actual,
+                "expected matrix {i} to have {expected} rows but has {actual} rows"
+            );
+        }
         expected
     }
 
@@ -381,7 +389,20 @@ impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq> {
     }
 
     fn get_column(&self, index: usize) -> Col<'a, Fp, Fq> {
-        todo!()
+        let mut column_count = 0;
+        for matrix in &self.0 {
+            let num_cols = map!(matrix, num_cols);
+            if index < column_count + num_cols {
+                let matrix_index = index - column_count;
+                return match matrix {
+                    GroupItem::Fp(matrix) => Col::Fp(&matrix.0[matrix_index]),
+                    GroupItem::Fq(matrix) => Col::Fq(&matrix.0[matrix_index]),
+                };
+            }
+            column_count += num_cols;
+        }
+
+        panic!("column index {index} is out of range")
     }
 }
 
@@ -506,11 +527,24 @@ where
 
 impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq>
 where
+    Fq: for<'b> Add<&'b Fp, Output = Fq>,
+{
+    pub fn evaluate_at(&self, x: Fq) -> Vec<Fq> {
+        self.0
+            .iter()
+            .map(|m| map!(m, evaluate_at, x))
+            .flatten()
+            .collect()
+    }
+}
+
+impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq>
+where
     Fp: Into<Fq>,
 {
     pub fn get_row(&self, row: usize) -> Option<Vec<Fq>> {
         if row < self.num_rows() {
-            let res = Vec::new();
+            let mut res = Vec::new();
             for i in 0..self.num_cols() {
                 res.push(match self.get_column(i) {
                     Col::Fp(col) => col[row].into(),

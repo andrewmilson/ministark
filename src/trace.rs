@@ -10,7 +10,8 @@ use gpu_poly::GpuField;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct Queries<F: GpuField> {
-    pub execution_trace_values: Vec<F>,
+    pub base_trace_values: Vec<F>,
+    pub extension_trace_values: Vec<F>,
     pub composition_trace_values: Vec<F>,
     pub base_trace_proofs: Vec<MerkleProof>,
     pub extension_trace_proofs: Vec<MerkleProof>,
@@ -19,26 +20,35 @@ pub struct Queries<F: GpuField> {
 
 impl<F: GpuField> Queries<F> {
     pub fn new<D: Digest>(
-        execution_trace_lde: &Matrix<F>,
+        base_trace_lde: &Matrix<F>,
+        extension_trace_lde: Option<&Matrix<F>>,
         composition_trace_lde: &Matrix<F>,
         base_commitment: MerkleTree<D>,
         extension_commitment: Option<MerkleTree<D>>,
         composition_commitment: MerkleTree<D>,
         positions: &[usize],
     ) -> Self {
-        let mut execution_trace_values = Vec::new();
+        let mut base_trace_values = Vec::new();
+        let mut extension_trace_values = Vec::new();
         let mut composition_trace_values = Vec::new();
         let mut base_trace_proofs = Vec::new();
         let mut extension_trace_proofs = Vec::new();
         let mut composition_trace_proofs = Vec::new();
         for &position in positions {
             // execution trace
-            let execution_trace_row = execution_trace_lde.get_row(position).unwrap();
-            execution_trace_values.extend(execution_trace_row);
+            let base_trace_row = base_trace_lde.get_row(position).unwrap();
+            base_trace_values.extend(base_trace_row);
             let base_proof = base_commitment.prove(position).unwrap();
             base_trace_proofs.push(base_proof);
-            if let Some(extension_commitment) = &extension_commitment {
-                let extension_proof = extension_commitment.prove(position).unwrap();
+
+            if let Some(extension_trace_lde) = extension_trace_lde {
+                let extension_trace_row = extension_trace_lde.get_row(position).unwrap();
+                extension_trace_values.extend(extension_trace_row);
+                let extension_proof = extension_commitment
+                    .as_ref()
+                    .unwrap()
+                    .prove(position)
+                    .unwrap();
                 extension_trace_proofs.push(extension_proof);
             }
 
@@ -49,7 +59,8 @@ impl<F: GpuField> Queries<F> {
             composition_trace_proofs.push(composition_proof);
         }
         Queries {
-            execution_trace_values,
+            base_trace_values,
+            extension_trace_values,
             composition_trace_values,
             base_trace_proofs,
             extension_trace_proofs,
