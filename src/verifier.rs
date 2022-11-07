@@ -6,6 +6,7 @@ use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
 use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
+use crate::utils::evaluate_vanishing_polynomial;
 use crate::utils::Timer;
 use crate::Air;
 // use crate::channel::VerifierChannel;
@@ -84,7 +85,7 @@ impl<A: Air> Proof<A> {
             Output::<Sha256>::from_iter(composition_trace_commitment);
         public_coin.reseed(&composition_trace_commitment.deref());
 
-        let z = public_coin.draw::<A::Fp>();
+        let z = public_coin.draw::<A::Fq>();
         public_coin.reseed(&ood_trace_states.0);
         public_coin.reseed(&ood_trace_states.1);
         let calculated_ood_constraint_evaluation = ood_constraint_evaluation(
@@ -98,12 +99,12 @@ impl<A: Air> Proof<A> {
 
         // TODO: why not proof only include single value for constraint eval?
         public_coin.reseed(&ood_constraint_evaluations);
-        let mut acc = A::Fp::one();
+        let mut acc = A::Fq::one();
         let provided_ood_constraint_evaluation =
             ood_constraint_evaluations
                 .iter()
-                .fold(A::Fp::zero(), |mut res, value| {
-                    res += acc * value;
+                .fold(A::Fq::zero(), |mut res, value| {
+                    res += *value * acc;
                     acc *= z;
                     res
                 });
@@ -113,7 +114,7 @@ impl<A: Air> Proof<A> {
         }
 
         let deep_coeffs = air.get_deep_composition_coeffs(&mut public_coin);
-        let fri_verifier = FriVerifier::<A::Fp, Sha256>::new(
+        let fri_verifier = FriVerifier::<A::Fq, Sha256>::new(
             &mut public_coin,
             options.into_fri_options(),
             fri_proof,
@@ -141,7 +142,7 @@ impl<A: Air> Proof<A> {
             trace_queries
                 .extension_trace_values
                 .chunks(air.trace_info().num_extension_columns)
-                .collect::<Vec<&[A::Fp]>>()
+                .collect::<Vec<&[A::Fq]>>()
         } else {
             Vec::new()
         };
@@ -149,7 +150,7 @@ impl<A: Air> Proof<A> {
         let composition_trace_rows = trace_queries
             .composition_trace_values
             .chunks(air.ce_blowup_factor())
-            .collect::<Vec<&[A::Fp]>>();
+            .collect::<Vec<&[A::Fq]>>();
 
         // base trace positions
         verify_positions::<Sha256>(
@@ -192,20 +193,18 @@ impl<A: Air> Proof<A> {
             ood_constraint_evaluations,
         );
 
-        println!("First deep: {}", deep_evaluations[0]);
-
         Ok(fri_verifier.verify(&query_positions, &deep_evaluations)?)
     }
 }
 
 fn ood_constraint_evaluation<A: Air>(
-    mut composition_coefficients: Vec<(A::Fp, A::Fp)>,
-    challenges: &Challenges<A::Fp>,
-    curr_trace_evals: &[A::Fp],
-    next_trace_evals: &[A::Fp],
+    mut composition_coefficients: Vec<(A::Fq, A::Fq)>,
+    challenges: &Challenges<A::Fq>,
+    curr_trace_evals: &[A::Fq],
+    next_trace_evals: &[A::Fq],
     air: &A,
-    x: A::Fp,
-) -> A::Fp {
+    x: A::Fq,
+) -> A::Fq {
     // TODO: refactor constraint and their divisors so they are grouped together
     let boundary_constraints = air.boundary_constraints();
     let transition_constraints = air.transition_constraints();
@@ -219,11 +218,10 @@ fn ood_constraint_evaluation<A: Air>(
     let first_trace_x = A::Fp::one();
     let last_trace_x = trace_domain.group_gen_inv;
     // TODO docs
-    let boundary_divisor = (x - first_trace_x).inverse().unwrap();
-    let terminal_divisor = (x - last_trace_x).inverse().unwrap();
-    let transition_divisor = (x - last_trace_x)
-        * trace_domain
-            .evaluate_vanishing_polynomial(x)
+    let boundary_divisor = (x - first_trace_x.into()).inverse().unwrap();
+    let terminal_divisor = (x - last_trace_x.into()).inverse().unwrap();
+    let transition_divisor = (x - last_trace_x.into())
+        * evaluate_vanishing_polynomial(&trace_domain, x)
             .inverse()
             .unwrap();
 
@@ -238,7 +236,7 @@ fn ood_constraint_evaluation<A: Air>(
         .iter()
         .map(|constraint| (constraint, terminal_divisor, terminal_divisor_degree));
 
-    let mut result = A::Fp::zero();
+    let mut result = A::Fq::zero();
     let trace_degree = air.trace_len() - 1;
     let composition_degree = air.composition_degree();
     for (constraint, divisor, divisor_degree) in
@@ -288,14 +286,14 @@ fn verify_positions<D: Digest>(
 fn deep_composition_evaluations<A: Air>(
     air: &A,
     query_positions: &[usize],
-    composition_coeffs: DeepCompositionCoeffs<A::Fp>,
+    composition_coeffs: DeepCompositionCoeffs<A::Fq>,
     base_trace_rows: Vec<&[A::Fp]>,
-    extension_trace_rows: Vec<&[A::Fp]>,
-    composition_trace_rows: Vec<&[A::Fp]>,
-    z: A::Fp,
-    ood_trace_states: (Vec<A::Fp>, Vec<A::Fp>),
-    ood_constraint_evaluations: Vec<A::Fp>,
-) -> Vec<A::Fp> {
+    extension_trace_rows: Vec<&[A::Fq]>,
+    composition_trace_rows: Vec<&[A::Fq]>,
+    z: A::Fq,
+    ood_trace_states: (Vec<A::Fq>, Vec<A::Fq>),
+    ood_constraint_evaluations: Vec<A::Fq>,
+) -> Vec<A::Fq> {
     let trace_domain = air.trace_domain();
     let lde_domain = air.lde_domain();
     let xs = query_positions
@@ -303,27 +301,26 @@ fn deep_composition_evaluations<A: Air>(
         .map(|pos| lde_domain.element(*pos))
         .collect::<Vec<A::Fp>>();
 
-    let mut evals = vec![A::Fp::zero(); query_positions.len()];
+    let mut evals = vec![A::Fq::zero(); query_positions.len()];
 
     // add base trace
-    let next_z = z * trace_domain.group_gen();
+    let next_z = z * &trace_domain.group_gen();
     for ((&x, row), eval) in xs.iter().zip(base_trace_rows).zip(&mut evals) {
-        for (i, &value) in row.iter().enumerate() {
+        for (i, &val) in row.iter().enumerate() {
             let (alpha, beta, _) = composition_coeffs.base_trace[i];
-            let t1 = (value - ood_trace_states.0[i]) / (x - z);
-            let t2 = (value - ood_trace_states.1[i]) / (x - next_z);
+            let t1 = (val.into() - ood_trace_states.0[i]) / (x.into() - z);
+            let t2 = (val.into() - ood_trace_states.1[i]) / (x.into() - next_z);
             *eval += t1 * alpha + t2 * beta;
         }
     }
 
     // add extension trace
     let num_base_columns = air.trace_info().num_base_columns;
-    let next_z = z * trace_domain.group_gen();
     for ((&x, row), eval) in xs.iter().zip(extension_trace_rows).zip(&mut evals) {
-        for (i, &value) in row.iter().enumerate() {
+        for (i, &val) in row.iter().enumerate() {
             let (alpha, beta, _) = composition_coeffs.extension_trace[i];
-            let t1 = (value - ood_trace_states.0[num_base_columns + i]) / (x - z);
-            let t2 = (value - ood_trace_states.1[num_base_columns + i]) / (x - next_z);
+            let t1 = (val - ood_trace_states.0[num_base_columns + i]) / (x.into() - z);
+            let t2 = (val - ood_trace_states.1[num_base_columns + i]) / (x.into() - next_z);
             *eval += t1 * alpha + t2 * beta;
         }
     }
@@ -333,14 +330,14 @@ fn deep_composition_evaluations<A: Air>(
     for ((&x, row), eval) in xs.iter().zip(composition_trace_rows).zip(&mut evals) {
         for (i, &value) in row.iter().enumerate() {
             let alpha = composition_coeffs.constraints[i];
-            *eval += alpha * (value - ood_constraint_evaluations[i]) / (x - z_n);
+            *eval += alpha * (value - ood_constraint_evaluations[i]) / (x.into() - z_n);
         }
     }
 
     // adjust degree
     let (alpha, beta) = composition_coeffs.degree;
     for (x, eval) in xs.into_iter().zip(&mut evals) {
-        *eval *= alpha + x * beta;
+        *eval *= alpha + beta * &x;
     }
 
     evals

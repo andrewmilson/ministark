@@ -24,11 +24,17 @@ use digest::Digest;
 use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::ops::Add;
 use std::ops::Deref;
+use std::ops::Mul;
+use std::ops::MulAssign;
 
 pub trait Air {
-    type Fp: GpuField<FftField = Self::Fp> + FftField;
-    type Fq: GpuField<FftField = Self::Fp>;
+    type Fp: GpuField<FftField = Self::Fp> + FftField + Into<Self::Fq>;
+    type Fq: GpuField<FftField = Self::Fp>
+        + for<'a> MulAssign<&'a Self::Fp>
+        + for<'a> Mul<&'a Self::Fp, Output = Self::Fq>
+        + for<'a> Add<&'a Self::Fp, Output = Self::Fq>;
     // TODO: consider removing clone requirement
     type PublicInputs: CanonicalSerialize + CanonicalDeserialize + Clone;
 
@@ -137,15 +143,15 @@ pub trait Air {
         Radix2EvaluationDomain::new_coset(trace_len * lde_blowup_factor, offset).unwrap()
     }
 
-    fn boundary_constraints(&self) -> &[Constraint<Self::Fp>] {
+    fn boundary_constraints(&self) -> &[Constraint<Self::Fq>] {
         &[]
     }
 
-    fn transition_constraints(&self) -> &[Constraint<Self::Fp>] {
+    fn transition_constraints(&self) -> &[Constraint<Self::Fq>] {
         &[]
     }
 
-    fn terminal_constraints(&self) -> &[Constraint<Self::Fp>] {
+    fn terminal_constraints(&self) -> &[Constraint<Self::Fq>] {
         &[]
     }
 
@@ -253,7 +259,7 @@ pub trait Air {
         Divisor { lde, degree: 1 }
     }
 
-    fn get_challenges(&self, public_coin: &mut PublicCoin<impl Digest>) -> Challenges<Self::Fp> {
+    fn get_challenges(&self, public_coin: &mut PublicCoin<impl Digest>) -> Challenges<Self::Fq> {
         // TODO: change get_challenge_indices to a constraint iterator and extract the
         // constraint with the highest index
         let num_challenges = self
@@ -278,10 +284,10 @@ pub trait Air {
     fn get_constraint_composition_coeffs(
         &self,
         public_coin: &mut PublicCoin<impl Digest>,
-    ) -> Vec<(Self::Fp, Self::Fp)> {
+    ) -> Vec<(Self::Fq, Self::Fq)> {
         let mut rng = public_coin.draw_rng();
         (0..self.num_constraints())
-            .map(|_| (Self::Fp::rand(&mut rng), Self::Fp::rand(&mut rng)))
+            .map(|_| (Self::Fq::rand(&mut rng), Self::Fq::rand(&mut rng)))
             .collect()
     }
 
@@ -291,7 +297,7 @@ pub trait Air {
     fn get_deep_composition_coeffs(
         &self,
         public_coin: &mut PublicCoin<impl Digest>,
-    ) -> DeepCompositionCoeffs<Self::Fp> {
+    ) -> DeepCompositionCoeffs<Self::Fq> {
         let mut rng = public_coin.draw_rng();
 
         // execution trace coeffs
@@ -299,18 +305,18 @@ pub trait Air {
         let mut base_trace_coeffs = Vec::new();
         for _ in 0..trace_info.num_base_columns {
             base_trace_coeffs.push((
-                Self::Fp::rand(&mut rng),
-                Self::Fp::rand(&mut rng),
-                Self::Fp::rand(&mut rng),
+                Self::Fq::rand(&mut rng),
+                Self::Fq::rand(&mut rng),
+                Self::Fq::rand(&mut rng),
             ));
         }
 
         let mut extension_trace_coeffs = Vec::new();
         for _ in 0..trace_info.num_extension_columns {
             extension_trace_coeffs.push((
-                Self::Fp::rand(&mut rng),
-                Self::Fp::rand(&mut rng),
-                Self::Fp::rand(&mut rng),
+                Self::Fq::rand(&mut rng),
+                Self::Fq::rand(&mut rng),
+                Self::Fq::rand(&mut rng),
             ));
         }
 
@@ -318,14 +324,14 @@ pub trait Air {
         let num_composition_trace_cols = self.ce_blowup_factor();
         let mut composition_trace_coeffs = Vec::new();
         for _ in 0..num_composition_trace_cols {
-            composition_trace_coeffs.push(Self::Fp::rand(&mut rng));
+            composition_trace_coeffs.push(Self::Fq::rand(&mut rng));
         }
 
         DeepCompositionCoeffs {
             base_trace: base_trace_coeffs,
             extension_trace: extension_trace_coeffs,
             constraints: composition_trace_coeffs,
-            degree: (Self::Fp::rand(&mut rng), Self::Fp::rand(&mut rng)),
+            degree: (Self::Fq::rand(&mut rng), Self::Fq::rand(&mut rng)),
         }
     }
 
@@ -349,14 +355,14 @@ pub trait Air {
     #[cfg(debug_assertions)]
     fn validate_constraints(
         &self,
-        challenges: &Challenges<Self::Fp>,
+        challenges: &Challenges<Self::Fq>,
         base_trace: &Matrix<Self::Fp>,
-        extension_trace: Option<&Matrix<Self::Fp>>,
+        extension_trace: Option<&Matrix<Self::Fq>>,
     ) {
         use crate::matrix::GroupItem;
         let mut execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
-        if let Some(t) = extension_trace.as_ref() {
-            execution_trace.append(GroupItem::Fq(t))
+        if let Some(extension_trace) = extension_trace.as_ref() {
+            execution_trace.append(GroupItem::Fq(extension_trace))
         }
 
         let mut col_indicies = vec![false; execution_trace.num_cols()];

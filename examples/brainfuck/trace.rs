@@ -1,4 +1,4 @@
-use crate::cubic_extension::WrappedFq3;
+use crate::fq3::Fq3;
 use crate::tables::BrainfuckColumn;
 use crate::tables::Challenge;
 use crate::tables::InputBaseColumn;
@@ -12,12 +12,13 @@ use crate::tables::OutputExtensionColumn;
 use crate::tables::ProcessorBaseColumn;
 use crate::tables::ProcessorExtensionColumn;
 use crate::vm::OpCode;
+use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::PrimeField;
+use ark_ff::UniformRand;
 use ark_ff::Zero;
 use ark_ff_optimized::fp64::Fp;
 use ark_std::rand;
-use ark_std::UniformRand;
 use gpu_poly::allocator::PageAlignedAllocator;
 use gpu_poly::GpuVec;
 use ministark::challenges::Challenges;
@@ -62,7 +63,7 @@ impl BrainfuckTrace {
 
 impl Trace for BrainfuckTrace {
     type Fp = Fp;
-    type Fq = WrappedFq3;
+    type Fq = Fq3;
 
     const NUM_BASE_COLUMNS: usize = 16;
     const NUM_EXTENSION_COLUMNS: usize = 9;
@@ -73,8 +74,8 @@ impl Trace for BrainfuckTrace {
 
     fn build_extension_columns(
         &self,
-        challenges: &Challenges<Self::Fp>,
-    ) -> Option<Matrix<Self::Fp>> {
+        challenges: &Challenges<Self::Fq>,
+    ) -> Option<Matrix<Self::Fq>> {
         let Self {
             processor_base_trace,
             memory_base_trace,
@@ -86,8 +87,8 @@ impl Trace for BrainfuckTrace {
 
         // TODO: use different method
         let mut rng = rand::thread_rng();
-        let instr_initial = Fp::rand(&mut rng);
-        let mem_initial = Fp::rand(&mut rng);
+        let instr_initial = Fq3::rand(&mut rng);
+        let mem_initial = Fq3::rand(&mut rng);
 
         let processor_matrix =
             gen_processor_ext_matrix(instr_initial, mem_initial, challenges, processor_base_trace);
@@ -112,11 +113,11 @@ impl Trace for BrainfuckTrace {
 }
 
 fn gen_processor_ext_matrix(
-    instruction_permutation_initial: Fp,
-    memory_permutation_initial: Fp,
-    challenges: &Challenges<Fp>,
+    instruction_permutation_initial: Fq3,
+    memory_permutation_initial: Fq3,
+    challenges: &Challenges<Fq3>,
     base_matrix: &Matrix<Fp>,
-) -> Matrix<Fp> {
+) -> Matrix<Fq3> {
     use Challenge::*;
     use ProcessorBaseColumn::*;
     use ProcessorExtensionColumn::*;
@@ -124,15 +125,15 @@ fn gen_processor_ext_matrix(
     // prepare
     let mut instr_permutation_running_product = instruction_permutation_initial;
     let mut mem_permutation_running_product = memory_permutation_initial;
-    let mut input_running_evaluation = Fp::zero();
-    let mut output_running_evaluation = Fp::zero();
+    let mut input_running_evaluation = Fq3::zero();
+    let mut output_running_evaluation = Fq3::zero();
 
     // loop over all rows
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
         let curr_base_row = base_matrix.get_row(row).unwrap();
         let next_base_row = base_matrix.get_row(row + 1);
-        let mut extension_row = vec![Fp::zero(); ProcessorExtensionColumn::NUM_TRACE_COLUMNS];
+        let mut extension_row = vec![Fq3::zero(); ProcessorExtensionColumn::NUM_TRACE_COLUMNS];
 
         // Permutations columns
         extension_row[InstructionPermutation as usize] = instr_permutation_running_product;
@@ -140,13 +141,13 @@ fn gen_processor_ext_matrix(
         // if not padding
         if !curr_base_row[CurrInstr as usize].is_zero() {
             instr_permutation_running_product *= challenges[Alpha]
-                - challenges[A] * curr_base_row[Ip as usize]
-                - challenges[B] * curr_base_row[CurrInstr as usize]
-                - challenges[C] * curr_base_row[NextInstr as usize];
+                - challenges[A] * &curr_base_row[Ip as usize]
+                - challenges[B] * &curr_base_row[CurrInstr as usize]
+                - challenges[C] * &curr_base_row[NextInstr as usize];
             mem_permutation_running_product *= challenges[Beta]
-                - challenges[D] * curr_base_row[Cycle as usize]
-                - challenges[E] * curr_base_row[Mp as usize]
-                - challenges[F] * curr_base_row[MemVal as usize];
+                - challenges[D] * &curr_base_row[Cycle as usize]
+                - challenges[E] * &curr_base_row[Mp as usize]
+                - challenges[F] * &curr_base_row[MemVal as usize];
         }
 
         // Evaluation columns
@@ -155,10 +156,10 @@ fn gen_processor_ext_matrix(
         let curr_instr = curr_base_row[CurrInstr as usize].into_bigint().0[0];
         if curr_instr == OpCode::Read as u64 {
             let input_val = next_base_row.unwrap()[MemVal as usize];
-            input_running_evaluation = input_running_evaluation * challenges[Gamma] + input_val;
+            input_running_evaluation = input_running_evaluation * challenges[Gamma] + &input_val;
         } else if curr_instr == OpCode::Write as u64 {
             let output_val = next_base_row.unwrap()[MemVal as usize];
-            output_running_evaluation = output_running_evaluation * challenges[Delta] + output_val;
+            output_running_evaluation = output_running_evaluation * challenges[Delta] + &output_val;
         }
 
         extension_rows.push(extension_row);
@@ -174,10 +175,10 @@ fn gen_processor_ext_matrix(
 }
 
 fn gen_memory_ext_matrix(
-    memory_permutation_initial: Fp,
-    challenges: &Challenges<Fp>,
+    memory_permutation_initial: Fq3,
+    challenges: &Challenges<Fq3>,
     base_matrix: &Matrix<Fp>,
-) -> Matrix<Fp> {
+) -> Matrix<Fq3> {
     use Challenge::*;
     use MemoryBaseColumn::*;
     use MemoryExtensionColumn::*;
@@ -189,13 +190,13 @@ fn gen_memory_ext_matrix(
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
         let base_row: Vec<Fp> = base_matrix.iter().map(|column| column[row]).collect();
-        let mut extension_row = vec![Fp::zero(); MemoryExtensionColumn::NUM_TRACE_COLUMNS];
+        let mut extension_row = vec![Fq3::zero(); MemoryExtensionColumn::NUM_TRACE_COLUMNS];
         extension_row[Permutation as usize] = mem_permutation_running_product;
         if base_row[Dummy as usize].is_zero() {
             mem_permutation_running_product *= challenges[Beta]
-                - challenges[D] * base_row[Cycle as usize]
-                - challenges[E] * base_row[Mp as usize]
-                - challenges[F] * base_row[MemVal as usize];
+                - challenges[D] * &base_row[Cycle as usize]
+                - challenges[E] * &base_row[Mp as usize]
+                - challenges[F] * &base_row[MemVal as usize];
         }
         extension_rows.push(extension_row);
     }
@@ -204,24 +205,24 @@ fn gen_memory_ext_matrix(
 }
 
 fn gen_instruction_ext_matrix(
-    instruction_permutation_initial: Fp,
-    challenges: &Challenges<Fp>,
+    instruction_permutation_initial: Fq3,
+    challenges: &Challenges<Fq3>,
     base_matrix: &Matrix<Fp>,
-) -> Matrix<Fp> {
+) -> Matrix<Fq3> {
     use Challenge::*;
     use InstructionBaseColumn::*;
     use InstructionExtensionColumn::*;
 
     // prepare
     let mut permutation_running_product = instruction_permutation_initial;
-    let mut evaluation_running_sum = Fp::zero();
+    let mut evaluation_running_sum = Fq3::zero();
     let mut previous_address = -Fp::one();
 
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
         let curr_base_row = base_matrix.get_row(row).unwrap();
         let prev_base_row = base_matrix.get_row(row.wrapping_sub(1));
-        let mut extension_row = vec![Fp::zero(); InstructionExtensionColumn::NUM_TRACE_COLUMNS];
+        let mut extension_row = vec![Fq3::zero(); InstructionExtensionColumn::NUM_TRACE_COLUMNS];
 
         if !curr_base_row[CurrInstr as usize].is_zero()
             && row > 0
@@ -232,18 +233,18 @@ fn gen_instruction_ext_matrix(
             // make sure new row is not padding
             // and that the instruction address didn't just change
             permutation_running_product *= challenges[Alpha]
-                - challenges[A] * curr_base_row[Ip as usize]
-                - challenges[B] * curr_base_row[CurrInstr as usize]
-                - challenges[C] * curr_base_row[NextInstr as usize];
+                - challenges[A] * &curr_base_row[Ip as usize]
+                - challenges[B] * &curr_base_row[CurrInstr as usize]
+                - challenges[C] * &curr_base_row[NextInstr as usize];
         }
         extension_row[ProcessorPermutation as usize] = permutation_running_product;
 
         // evaluation argument
         if curr_base_row[Ip as usize] != previous_address {
             evaluation_running_sum = challenges[Eta] * evaluation_running_sum
-                + challenges[A] * curr_base_row[Ip as usize]
-                + challenges[B] * curr_base_row[CurrInstr as usize]
-                + challenges[C] * curr_base_row[NextInstr as usize];
+                + challenges[A] * &curr_base_row[Ip as usize]
+                + challenges[B] * &curr_base_row[CurrInstr as usize]
+                + challenges[C] * &curr_base_row[NextInstr as usize];
         }
         extension_row[ProgramEvaluation as usize] = evaluation_running_sum;
 
@@ -254,20 +255,20 @@ fn gen_instruction_ext_matrix(
     Matrix::new(into_columns(extension_rows))
 }
 
-fn gen_input_ext_matrix(challenges: &Challenges<Fp>, base_matrix: &Matrix<Fp>) -> Matrix<Fp> {
+fn gen_input_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>) -> Matrix<Fq3> {
     use Challenge::*;
     use InputBaseColumn::*;
     use InputExtensionColumn::*;
 
     // prepare
-    let mut running_evaluation = Fp::zero();
+    let mut running_evaluation = Fq3::zero();
 
     // loop over all rows
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
         let base_row = base_matrix.get_row(row).unwrap();
-        let mut extension_row = vec![Fp::zero(); InputExtensionColumn::NUM_TRACE_COLUMNS];
-        running_evaluation = running_evaluation * challenges[Gamma] + base_row[Value as usize];
+        let mut extension_row = vec![Fq3::zero(); InputExtensionColumn::NUM_TRACE_COLUMNS];
+        running_evaluation = running_evaluation * challenges[Gamma] + &base_row[Value as usize];
         extension_row[Evaluation as usize] = running_evaluation;
         // TODO:
         // if !self.len().is_zero() && i == self.len() - 1 {
@@ -279,21 +280,21 @@ fn gen_input_ext_matrix(challenges: &Challenges<Fp>, base_matrix: &Matrix<Fp>) -
     Matrix::new(into_columns(extension_rows))
 }
 
-fn gen_output_ext_matrix(challenges: &Challenges<Fp>, base_matrix: &Matrix<Fp>) -> Matrix<Fp> {
+fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>) -> Matrix<Fq3> {
     use Challenge::*;
     use OutputBaseColumn::*;
     use OutputExtensionColumn::*;
 
     // prepare
-    let mut running_evaluation = Fp::zero();
-    let mut evaluation_terminal = Fp::zero();
+    let mut running_evaluation = Fq3::zero();
+    let mut evaluation_terminal = Fq3::zero();
 
     // loop over all rows
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
         let base_row = base_matrix.get_row(row).unwrap();
-        let mut extension_row = vec![Fp::zero(); OutputExtensionColumn::NUM_TRACE_COLUMNS];
-        running_evaluation = running_evaluation * challenges[Delta] + base_row[Value as usize];
+        let mut extension_row = vec![Fq3::zero(); OutputExtensionColumn::NUM_TRACE_COLUMNS];
+        running_evaluation = running_evaluation * challenges[Delta] + &base_row[Value as usize];
         extension_row[Evaluation as usize] = running_evaluation;
         // TODO:
         // if !self.len().is_zero() && i == self.len() - 1 {
@@ -305,7 +306,7 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fp>, base_matrix: &Matrix<Fp>) 
     Matrix::new(into_columns(extension_rows))
 }
 
-pub fn into_columns(rows: Vec<Vec<Fp>>) -> Vec<GpuVec<Fp>> {
+pub fn into_columns<F: Field>(rows: Vec<Vec<F>>) -> Vec<GpuVec<F>> {
     if rows.is_empty() {
         Vec::new()
     } else {

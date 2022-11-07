@@ -14,6 +14,9 @@ use ark_ff::FftField;
 use ark_ff::Field;
 use gpu_poly::GpuField;
 use sha2::Sha256;
+use std::ops::Add;
+use std::ops::Mul;
+use std::ops::MulAssign;
 
 /// Errors that can occur during the proving stage
 #[derive(Debug)]
@@ -23,8 +26,11 @@ pub enum ProvingError {
 }
 
 pub trait Prover {
-    type Fp: GpuField<FftField = Self::Fp> + FftField;
-    type Fq: GpuField<FftField = Self::Fp>;
+    type Fp: GpuField<FftField = Self::Fp> + FftField + Into<Self::Fq>;
+    type Fq: GpuField<FftField = Self::Fp>
+        + for<'a> MulAssign<&'a Self::Fp>
+        + for<'a> Mul<&'a Self::Fp, Output = Self::Fq>
+        + for<'a> Add<&'a Self::Fp, Output = Self::Fq>;
     type Air: Air<Fp = Self::Fp, Fq = Self::Fq>;
     type Trace: Trace<Fp = Self::Fp, Fq = Self::Fq>;
 
@@ -84,10 +90,10 @@ pub trait Prover {
         let z = channel.get_ood_point();
         let mut execution_trace_polys = MatrixGroup::new(vec![GroupItem::Fp(&base_trace_polys)]);
         if let Some(extension_trace_polys) = extension_trace_polys.as_ref() {
-            execution_trace_polys.append(GroupItem::Fp(extension_trace_polys))
+            execution_trace_polys.append(GroupItem::Fq(extension_trace_polys))
         }
         let ood_execution_trace_evals = execution_trace_polys.evaluate_at(z);
-        let ood_execution_trace_evals_next = execution_trace_polys.evaluate_at(z * g);
+        let ood_execution_trace_evals_next = execution_trace_polys.evaluate_at(z * &g);
         channel.send_ood_trace_states(&ood_execution_trace_evals, &ood_execution_trace_evals_next);
         let z_n = z.pow([composition_trace_polys.num_cols() as u64]);
         let ood_composition_trace_evals = composition_trace_polys.evaluate_at(z_n);
@@ -106,7 +112,7 @@ pub trait Prover {
         let deep_composition_poly = deep_poly_composer.into_deep_poly();
         let deep_composition_lde = deep_composition_poly.into_evaluations(lde_xs);
 
-        let mut fri_prover = FriProver::<Self::Fp, Sha256>::new(air.options().into_fri_options());
+        let mut fri_prover = FriProver::<Self::Fq, Sha256>::new(air.options().into_fri_options());
         fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
 
         channel.grind_fri_commitments();

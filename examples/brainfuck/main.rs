@@ -7,6 +7,7 @@ use air::ExecutionInfo;
 // use ark_ff::Fp3Config;
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
+use fq3::Fq3;
 use ministark::ProofOptions;
 use ministark::Prover;
 use ministark::Trace;
@@ -17,7 +18,7 @@ use vm::simulate;
 
 mod air;
 mod constraints;
-mod cubic_extension;
+mod fq3;
 mod tables;
 mod trace;
 mod vm;
@@ -69,7 +70,7 @@ struct BrainfuckProver(ProofOptions);
 
 impl Prover for BrainfuckProver {
     type Fp = Fp;
-    type Fq = cubic_extension::WrappedFq3;
+    type Fq = Fq3;
     type Air = BrainfuckAir;
     type Trace = BrainfuckTrace;
 

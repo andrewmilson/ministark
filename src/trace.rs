@@ -7,22 +7,24 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use gpu_poly::GpuField;
+use std::ops::Add;
+use std::ops::MulAssign;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct Queries<F: GpuField> {
-    pub base_trace_values: Vec<F>,
-    pub extension_trace_values: Vec<F>,
-    pub composition_trace_values: Vec<F>,
+pub struct Queries<Fp: GpuField, Fq: GpuField> {
+    pub base_trace_values: Vec<Fp>,
+    pub extension_trace_values: Vec<Fq>,
+    pub composition_trace_values: Vec<Fq>,
     pub base_trace_proofs: Vec<MerkleProof>,
     pub extension_trace_proofs: Vec<MerkleProof>,
     pub composition_trace_proofs: Vec<MerkleProof>,
 }
 
-impl<F: GpuField> Queries<F> {
+impl<Fp: GpuField, Fq: GpuField> Queries<Fp, Fq> {
     pub fn new<D: Digest>(
-        base_trace_lde: &Matrix<F>,
-        extension_trace_lde: Option<&Matrix<F>>,
-        composition_trace_lde: &Matrix<F>,
+        base_trace_lde: &Matrix<Fp>,
+        extension_trace_lde: Option<&Matrix<Fq>>,
+        composition_trace_lde: &Matrix<Fq>,
         base_commitment: MerkleTree<D>,
         extension_commitment: Option<MerkleTree<D>>,
         composition_commitment: MerkleTree<D>,
@@ -115,8 +117,10 @@ pub trait Trace {
     const NUM_BASE_COLUMNS: usize;
     const NUM_EXTENSION_COLUMNS: usize = 0;
 
-    type Fp: GpuField<FftField = Self::Fp> + FftField;
-    type Fq: GpuField<FftField = Self::Fp>;
+    type Fp: GpuField<FftField = Self::Fp> + FftField + Into<Self::Fq>;
+    type Fq: GpuField<FftField = Self::Fp>
+        + for<'a> MulAssign<&'a Self::Fp>
+        + for<'a> Add<&'a Self::Fp, Output = Self::Fq>;
 
     /// Returns the number of rows in this trace.
     fn len(&self) -> usize;
@@ -129,8 +133,8 @@ pub trait Trace {
     /// Returns None if there are no columns that require this.
     fn build_extension_columns(
         &self,
-        _challenges: &Challenges<Self::Fp>,
-    ) -> Option<Matrix<Self::Fp>> {
+        _challenges: &Challenges<Self::Fq>,
+    ) -> Option<Matrix<Self::Fq>> {
         None
     }
 

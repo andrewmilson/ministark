@@ -17,14 +17,15 @@ use gpu_poly::prelude::*;
 use rayon::prelude::*;
 use sha2::Sha256;
 use std::collections::BTreeMap;
+use std::ops::Mul;
 
 pub struct ConstraintComposer<'a, A: Air> {
     air: &'a A,
-    composition_coeffs: Vec<(A::Fp, A::Fp)>,
+    composition_coeffs: Vec<(A::Fq, A::Fq)>,
 }
 
 impl<'a, A: Air> ConstraintComposer<'a, A> {
-    pub fn new(air: &'a A, composition_coeffs: Vec<(A::Fp, A::Fp)>) -> Self {
+    pub fn new(air: &'a A, composition_coeffs: Vec<(A::Fq, A::Fq)>) -> Self {
         ConstraintComposer {
             air,
             composition_coeffs,
@@ -33,10 +34,10 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
     pub fn evaluate(
         &mut self,
-        challenges: &Challenges<A::Fp>,
+        challenges: &Challenges<A::Fq>,
         base_trace_lde: &Matrix<A::Fp>,
-        extension_trace_lde: Option<&Matrix<A::Fp>>,
-    ) -> Matrix<A::Fp> {
+        extension_trace_lde: Option<&Matrix<A::Fq>>,
+    ) -> Matrix<A::Fq> {
         // create a matrix group with all the LDEs we need for composition
         let mut lde_columns = MatrixGroup::default();
 
@@ -81,7 +82,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let composition_degree = self.air.composition_degree();
         let lde_domain = self.air.lde_domain();
         let mut degree_adjustment_matricies = Vec::new();
-        let mut degree_adjustment_map = BTreeMap::<usize, Constraint<A::Fp>>::new();
+        let mut degree_adjustment_map = BTreeMap::<usize, Constraint<A::Fq>>::new();
         for (constraint, _, divisor_degree) in boundary_iter
             .clone()
             .chain(transition_iter.clone())
@@ -95,7 +96,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
                 .entry(degree_adjustment)
                 .or_insert_with(|| {
                     if degree_adjustment == 0 {
-                        Constraint::from(A::Fp::one())
+                        Constraint::from(A::Fq::one())
                     } else {
                         let col_idx = lde_columns.num_cols() + degree_adjustment_matricies.len();
                         let mut domain = lde_domain;
@@ -134,7 +135,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         lde_columns.evaluate_symbolic(&[composition_constraint], challenges, lde_step)
     }
 
-    fn trace_polys(&self, composed_evaluations: Matrix<A::Fp>) -> Matrix<A::Fp> {
+    fn trace_polys(&self, composed_evaluations: Matrix<A::Fq>) -> Matrix<A::Fq> {
         assert_eq!(composed_evaluations.num_cols(), 1);
         let mut composition_poly = composed_evaluations.into_polynomials(self.air.lde_domain());
 
@@ -166,10 +167,10 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     /// Output is of the form `(lde, poly, lde_merkle_tree)`
     pub fn build_commitment(
         mut self,
-        challenges: &Challenges<A::Fp>,
+        challenges: &Challenges<A::Fq>,
         base_trace_lde: &Matrix<A::Fp>,
-        extension_trace_lde: Option<&Matrix<A::Fp>>,
-    ) -> (Matrix<A::Fp>, Matrix<A::Fp>, MerkleTree<Sha256>) {
+        extension_trace_lde: Option<&Matrix<A::Fq>>,
+    ) -> (Matrix<A::Fq>, Matrix<A::Fq>, MerkleTree<Sha256>) {
         let _timer = Timer::new("constraint evaluation");
         let composed_evaluations = self.evaluate(challenges, base_trace_lde, extension_trace_lde);
         drop(_timer);
@@ -182,13 +183,13 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 
 pub struct DeepPolyComposer<'a, A: Air> {
     air: &'a A,
-    composition_coeffs: DeepCompositionCoeffs<A::Fp>,
-    z: A::Fp,
-    poly: GpuVec<A::Fp>,
+    composition_coeffs: DeepCompositionCoeffs<A::Fq>,
+    z: A::Fq,
+    poly: GpuVec<A::Fq>,
 }
 
 impl<'a, A: Air> DeepPolyComposer<'a, A> {
-    pub fn new(air: &'a A, composition_coeffs: DeepCompositionCoeffs<A::Fp>, z: A::Fp) -> Self {
+    pub fn new(air: &'a A, composition_coeffs: DeepCompositionCoeffs<A::Fq>, z: A::Fq) -> Self {
         let poly = Vec::with_capacity_in(air.trace_len(), PageAlignedAllocator);
         DeepPolyComposer {
             air,
@@ -201,20 +202,20 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
     pub fn add_execution_trace_polys(
         &mut self,
         base_trace_polys: Matrix<A::Fp>,
-        extension_trace_polys: Option<Matrix<A::Fp>>,
-        ood_evals: Vec<A::Fp>,
-        ood_evals_next: Vec<A::Fp>,
+        extension_trace_polys: Option<Matrix<A::Fq>>,
+        ood_evals: Vec<A::Fq>,
+        ood_evals_next: Vec<A::Fq>,
     ) {
         assert!(self.poly.is_empty());
 
         let trace_domain = self.air.trace_domain();
-        let next_z = self.z * trace_domain.group_gen();
+        let next_z = self.z * trace_domain.group_gen().into();
         let n = trace_domain.size();
 
         let mut t1_composition = Vec::with_capacity_in(n, PageAlignedAllocator);
-        t1_composition.resize(n, A::Fp::zero());
+        t1_composition.resize(n, A::Fq::zero());
         let mut t2_composition = Vec::with_capacity_in(n, PageAlignedAllocator);
-        t2_composition.resize(n, A::Fp::zero());
+        t2_composition.resize(n, A::Fq::zero());
 
         // TODO: clean up code
         for (i, poly) in base_trace_polys.iter().enumerate() {
@@ -222,8 +223,8 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
             let ood_eval = ood_evals[i];
             let ood_eval_next = ood_evals_next[i];
 
-            acc_trace_poly::<A::Fp>(&mut t1_composition, poly, ood_eval, alpha);
-            acc_trace_poly::<A::Fp>(&mut t2_composition, poly, ood_eval_next, beta);
+            acc_trace_poly::<A::Fp, A::Fq>(&mut t1_composition, poly, ood_eval, alpha);
+            acc_trace_poly(&mut t2_composition, poly, ood_eval_next, beta);
         }
 
         if let Some(extension_trace_polys) = extension_trace_polys {
@@ -234,8 +235,8 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
                 let ood_eval = ood_evals[num_base_columns + i];
                 let ood_eval_next = ood_evals_next[num_base_columns + i];
 
-                acc_trace_poly::<A::Fp>(&mut t1_composition, poly, ood_eval, alpha);
-                acc_trace_poly::<A::Fp>(&mut t2_composition, poly, ood_eval_next, beta);
+                acc_trace_poly(&mut t1_composition, poly, ood_eval, alpha);
+                acc_trace_poly(&mut t2_composition, poly, ood_eval_next, beta);
             }
         }
 
@@ -252,7 +253,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         assert!(self.poly.last().unwrap().is_zero());
     }
 
-    pub fn add_composition_trace_polys(&mut self, mut polys: Matrix<A::Fp>, ood_evals: Vec<A::Fp>) {
+    pub fn add_composition_trace_polys(&mut self, mut polys: Matrix<A::Fq>, ood_evals: Vec<A::Fq>) {
         assert!(!self.poly.is_empty());
 
         let z_n = self.z.pow([polys.num_cols() as u64]);
@@ -275,14 +276,14 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         assert!(self.poly.last().unwrap().is_zero());
     }
 
-    pub fn into_deep_poly(mut self) -> Matrix<A::Fp> {
+    pub fn into_deep_poly(mut self) -> Matrix<A::Fq> {
         let (alpha, beta) = self.composition_coeffs.degree;
 
         // TODO: consider making multithreaded
         // TODO: consider using constraint system to compose polys
         // Adjust the degree
         // P(x) * (alpha + x * beta)
-        let mut last = A::Fp::zero();
+        let mut last = A::Fq::zero();
         for coeff in &mut self.poly {
             let tmp = *coeff;
             *coeff *= alpha;
@@ -307,7 +308,10 @@ pub struct DeepCompositionCoeffs<F> {
 
 /// Computes (P(x) - value) * k
 /// Source https://github.com/novifinancial/winterfell
-fn acc_trace_poly<F: GpuField>(acc: &mut [F], poly: &[F], value: F, k: F) {
+fn acc_trace_poly<F: GpuField, T: GpuField>(acc: &mut [T], poly: &[F], value: T, k: T)
+where
+    T: for<'a> Mul<&'a F, Output = T>,
+{
     // P(x) * k
     ark_std::cfg_iter_mut!(acc)
         .zip(poly)

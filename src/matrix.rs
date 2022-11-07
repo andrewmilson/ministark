@@ -1,4 +1,5 @@
 use crate::constraint::Element;
+use crate::constraint::Term;
 use crate::merkle::MerkleTree;
 use crate::utils::horner_evaluate;
 use crate::Column;
@@ -6,6 +7,7 @@ use crate::Constraint;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
+use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use gpu_poly::prelude::*;

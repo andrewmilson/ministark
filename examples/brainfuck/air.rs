@@ -1,4 +1,4 @@
-use crate::cubic_extension::WrappedFq3;
+use crate::fq3::Fq3;
 use crate::tables;
 use ark_ff_optimized::fp64::Fp;
 use ark_serialize::CanonicalDeserialize;
@@ -19,14 +19,14 @@ pub struct BrainfuckAir {
     options: ProofOptions,
     trace_info: TraceInfo,
     execution_info: ExecutionInfo,
-    boundary_constraints: Vec<Constraint<Fp>>,
-    transition_constraints: Vec<Constraint<Fp>>,
+    boundary_constraints: Vec<Constraint<Fq3>>,
+    transition_constraints: Vec<Constraint<Fq3>>,
     // terminal_constraints: Vec<Constraint<Fp>>,
 }
 
 impl Air for BrainfuckAir {
     type Fp = Fp;
-    type Fq = WrappedFq3;
+    type Fq = Fq3;
     type PublicInputs = ExecutionInfo;
 
     fn new(trace_info: TraceInfo, execution_info: ExecutionInfo, options: ProofOptions) -> Self {
@@ -68,11 +68,11 @@ impl Air for BrainfuckAir {
         &self.execution_info
     }
 
-    fn transition_constraints(&self) -> &[Constraint<Self::Fp>] {
+    fn transition_constraints(&self) -> &[Constraint<Fq3>] {
         &self.transition_constraints
     }
 
-    fn boundary_constraints(&self) -> &[Constraint<Self::Fp>] {
+    fn boundary_constraints(&self) -> &[Constraint<Fq3>] {
         &self.boundary_constraints
     }
 

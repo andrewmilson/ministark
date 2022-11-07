@@ -57,6 +57,18 @@ pub fn ceil_power_of_two(value: usize) -> usize {
     }
 }
 
+// from arkworks
+/// This evaluates the vanishing polynomial for this domain at tau.
+pub fn evaluate_vanishing_polynomial<F: FftField, T: Field>(
+    domain: &Radix2EvaluationDomain<F>,
+    tau: T,
+) -> T
+where
+    F: Into<T>,
+{
+    tau.pow([domain.size() as u64]) - domain.coset_offset_pow_size().into()
+}
+
 // Evaluates the vanishing polynomial for `vanish_domain` over `eval_domain`
 // E.g. evaluates `(x - v_0)(x - v_1)...(x - v_n-1)` over `eval_domain`
 pub fn fill_vanishing_polynomial<F: FftField>(

@@ -20,8 +20,8 @@ pub struct ProverChannel<'a, A: Air, D: Digest> {
     extension_trace_commitment: Option<Output<D>>,
     composition_trace_commitment: Output<D>,
     fri_layer_commitments: Vec<Output<D>>,
-    ood_trace_states: (Vec<A::Fp>, Vec<A::Fp>),
-    ood_constraint_evaluations: Vec<A::Fp>,
+    ood_trace_states: (Vec<A::Fq>, Vec<A::Fq>),
+    ood_constraint_evaluations: Vec<A::Fq>,
     pow_nonce: u64,
 }
 
@@ -69,14 +69,14 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         self.public_coin.draw()
     }
 
-    pub fn send_ood_trace_states(&mut self, evals: &[A::Fp], next_evals: &[A::Fp]) {
+    pub fn send_ood_trace_states(&mut self, evals: &[A::Fq], next_evals: &[A::Fq]) {
         assert_eq!(evals.len(), next_evals.len());
         self.public_coin.reseed(&evals);
         self.public_coin.reseed(&next_evals);
         self.ood_trace_states = (evals.to_vec(), next_evals.to_vec());
     }
 
-    pub fn send_ood_constraint_evaluations(&mut self, evals: &[A::Fp]) {
+    pub fn send_ood_constraint_evaluations(&mut self, evals: &[A::Fq]) {
         self.public_coin.reseed(&evals);
         self.ood_constraint_evaluations = evals.to_vec();
     }
@@ -114,8 +114,8 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
 
     pub fn build_proof(
         self,
-        trace_queries: Queries<A::Fp>,
-        fri_proof: FriProof<A::Fp>,
+        trace_queries: Queries<A::Fp, A::Fq>,
+        fri_proof: FriProof<A::Fq>,
     ) -> Proof<A> {
         Proof {
             options: *self.air.options(),
@@ -134,7 +134,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
 }
 
 // FRI prover channel implementation
-impl<'a, A: Air, D: Digest> fri::ProverChannel<A::Fp> for ProverChannel<'a, A, D> {
+impl<'a, A: Air, D: Digest> fri::ProverChannel<A::Fq> for ProverChannel<'a, A, D> {
     type Digest = D;
 
     fn commit_fri_layer(&mut self, commitment: &Output<D>) {
@@ -142,7 +142,7 @@ impl<'a, A: Air, D: Digest> fri::ProverChannel<A::Fp> for ProverChannel<'a, A, D
         self.fri_layer_commitments.push(commitment.clone());
     }
 
-    fn draw_fri_alpha(&mut self) -> A::Fp {
+    fn draw_fri_alpha(&mut self) -> A::Fq {
         self.public_coin.draw()
     }
 }
