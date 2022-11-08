@@ -15,7 +15,6 @@ use objc::rc::autoreleasepool;
 fn fft() {
     autoreleasepool(|| {
         let domains = [
-            Radix2EvaluationDomain::new(1024).unwrap(),
             Radix2EvaluationDomain::new(2048).unwrap(),
             Radix2EvaluationDomain::new(4096).unwrap(),
             Radix2EvaluationDomain::new_coset(2048, Fp::GENERATOR).unwrap(),

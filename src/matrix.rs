@@ -416,7 +416,7 @@ impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq>
 where
     Fq: GpuMulAssign<Fp>,
 {
-    // #[cfg(feature = "gpu")]
+    #[cfg(feature = "gpu")]
     fn evaluate_symbolic_gpu(
         &self,
         results: &mut [GpuVec<Fq>],

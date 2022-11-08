@@ -85,9 +85,10 @@ impl Trace for BrainfuckTrace {
             ..
         } = self;
 
+        // TODO: use random numbers again
         let mut rng = rand::thread_rng();
-        let instr_initial = Fq3::one(); //Fq3::rand(&mut rng);
-        let mem_initial = Fq3::one(); //Fq3::rand(&mut rng);
+        let instr_initial = Fq3::rand(&mut rng);
+        let mem_initial = Fq3::rand(&mut rng);
 
         let processor_matrix =
             gen_processor_ext_matrix(instr_initial, mem_initial, challenges, processor_base_trace);

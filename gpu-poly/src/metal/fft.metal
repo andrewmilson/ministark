@@ -35,7 +35,7 @@ constant unsigned N [[ function_constant(0) ]];
 // └─────────────────────────┘ └─────────────────────┘ └───────────────────┘
 constant unsigned NUM_BOXES [[ function_constant(1) ]];
 
-// Performs a single itteration of Cooley-Tuckey radix-2 decimation-in-time (DIT)
+// Performs a single itteration of Cooley-Tuckey FFT
 template<typename CoeffFieldT, typename TwiddleFieldT = CoeffFieldT> kernel void
 FftSingle(device CoeffFieldT *vals [[ buffer(0) ]],
         constant TwiddleFieldT *twiddles [[ buffer(1) ]],
@@ -122,10 +122,7 @@ GenerateTwiddles(device FieldT *dst [[ buffer(0) ]],
     dst[i] = tmp.pow(ri);
 }
 
-// Performs multiple itteration stages of Cooley-Tuckey radix-2 decimation-in-time (DIT)
-//
-// Template param "F" represents the type of field element.
-//
+// Performs multiple itteration stages of Cooley-Tuckey FFT
 // TODO: Figure out poor perf reasons. Unrolls might cause instruction cache misses.
 // TODO: Theoretically should be faster due to use of threadgroup memory... but it's not :(
 template<typename CoeffFieldT, typename TwiddleFieldT = CoeffFieldT> kernel void

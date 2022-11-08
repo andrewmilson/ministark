@@ -31,6 +31,11 @@ namespace p18446744069414584321
 
         Fp pow(unsigned exp)
         {
+            // TODO: consider removing.
+            // if (exp == 1) {
+            //     return *this;
+            // }
+
             Fp res = ONE;
 
             while (exp > 0)
@@ -148,6 +153,11 @@ namespace p18446744069414584321
         // TODO: make util function
         Fq3 pow(unsigned exp)
         {
+            // TODO: investige. for some reason removing this makes tests fail
+            if (exp == 1) {
+                return *this;
+            }
+
             Fq3 res = Fq3(Fp(Fp::ONE), Fp(0), Fp(0));
 
             while (exp > 0) {
@@ -155,6 +165,8 @@ namespace p18446744069414584321
                     res = res * *this;
                 }
                 exp >>= 1;
+                // TODO: this doesn't need to be done on the last itteration.
+                // may already be optimized away by the compiler. Not sure.
                 *this = *this * *this;
             }
 

@@ -10,6 +10,7 @@ use objc::rc::autoreleasepool;
 
 pub mod p18446744069414584321 {
     use super::*;
+    use ark_ff::Field;
     use gpu_poly::fields::p18446744069414584321::Fp;
     use gpu_poly::fields::p18446744069414584321::Fq3;
 
@@ -94,6 +95,9 @@ pub mod p18446744069414584321 {
     #[test]
     fn mul_pow_fq3() {
         autoreleasepool(|| {
+            use ark_ff::One;
+            println!("{:?}", Fq3::one());
+
             let n = 2048;
             let mut rng = &mut ark_std::test_rng();
             let mut a = (0..n)
@@ -109,7 +113,7 @@ pub mod p18446744069414584321 {
                 .copied()
                 .zip(&b)
                 .map(|(mut a, b)| {
-                    a *= b;
+                    a *= b.square() * b;
                     a
                 })
                 .collect::<Vec<Fq3>>()
@@ -120,7 +124,7 @@ pub mod p18446744069414584321 {
             let command_buffer = command_queue.new_command_buffer();
 
             let multiplier = MulPowStage::<Fq3>::new(&PLANNER.library, n);
-            multiplier.encode(command_buffer, &mut a_buffer, &b_buffer, 1, 0);
+            multiplier.encode(command_buffer, &mut a_buffer, &b_buffer, 3, 0);
             command_buffer.commit();
             command_buffer.wait_until_completed();
 
