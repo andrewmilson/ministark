@@ -223,7 +223,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
             let ood_eval = ood_evals[i];
             let ood_eval_next = ood_evals_next[i];
 
-            acc_trace_poly::<A::Fp, A::Fq>(&mut t1_composition, poly, ood_eval, alpha);
+            acc_trace_poly(&mut t1_composition, poly, ood_eval, alpha);
             acc_trace_poly(&mut t2_composition, poly, ood_eval_next, beta);
         }
 
