@@ -1,8 +1,4 @@
-// A suite of functions for performing decimation-in-time (DIT)
-// and decimation-in-frequency (DIF) number theory transforms.
-//
-// Code is has been optimized and may be difficult to reason 
-// about. Refer to README.md for a higher lever explanation.
+// TODO: move functions unreleated to FFT to there own file.
 
 #include <metal_stdlib>
 #include "felt_u128.h.metal"
@@ -36,6 +32,7 @@ constant unsigned N [[ function_constant(0) ]];
 constant unsigned NUM_BOXES [[ function_constant(1) ]];
 
 // Performs a single itteration of Cooley-Tuckey FFT
+// Code is has been optimized and may be difficult to reason about
 template<typename CoeffFieldT, typename TwiddleFieldT = CoeffFieldT> kernel void
 FftSingle(device CoeffFieldT *vals [[ buffer(0) ]],
         constant TwiddleFieldT *twiddles [[ buffer(1) ]],
@@ -123,6 +120,7 @@ GenerateTwiddles(device FieldT *dst [[ buffer(0) ]],
 }
 
 // Performs multiple itteration stages of Cooley-Tuckey FFT
+// Code is has been optimized and may be difficult to reason about
 // TODO: Figure out poor perf reasons. Unrolls might cause instruction cache misses.
 // TODO: Theoretically should be faster due to use of threadgroup memory... but it's not :(
 template<typename CoeffFieldT, typename TwiddleFieldT = CoeffFieldT> kernel void
