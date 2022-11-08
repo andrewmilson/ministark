@@ -9,14 +9,11 @@ use crate::utils::Timer;
 use crate::Air;
 use crate::Proof;
 use crate::ProofOptions;
+use crate::StarkExtensionOf;
 use crate::Trace;
-use ark_ff::FftField;
 use ark_ff::Field;
-use gpu_poly::GpuField;
+use gpu_poly::GpuFftField;
 use sha2::Sha256;
-use std::ops::Add;
-use std::ops::Mul;
-use std::ops::MulAssign;
 
 /// Errors that can occur during the proving stage
 #[derive(Debug)]
@@ -26,11 +23,8 @@ pub enum ProvingError {
 }
 
 pub trait Prover {
-    type Fp: GpuField<FftField = Self::Fp> + FftField + Into<Self::Fq>;
-    type Fq: GpuField<FftField = Self::Fp>
-        + for<'a> MulAssign<&'a Self::Fp>
-        + for<'a> Mul<&'a Self::Fp, Output = Self::Fq>
-        + for<'a> Add<&'a Self::Fp, Output = Self::Fq>;
+    type Fp: GpuFftField;
+    type Fq: StarkExtensionOf<Self::Fp>;
     type Air: Air<Fp = Self::Fp, Fq = Self::Fq>;
     type Trace: Trace<Fp = Self::Fp, Fq = Self::Fq>;
 
@@ -86,7 +80,7 @@ pub trait Prover {
             );
         channel.commit_composition_trace(composition_trace_lde_tree.root());
 
-        let g = trace_xs.group_gen;
+        let g = &trace_xs.group_gen;
         let z = channel.get_ood_point();
         let mut execution_trace_polys = MatrixGroup::new(vec![GroupItem::Fp(&base_trace_polys)]);
         if let Some(extension_trace_polys) = extension_trace_polys.as_ref() {

@@ -70,13 +70,13 @@ BitReverse(device FieldT *vals [[ buffer(0) ]],
 }
 
 // Performs bit reversal 
-template<typename FieldT> kernel void
-MulAssign(device FieldT *lhs_vals [[ buffer(0) ]],
-        constant FieldT *rhs_vals [[ buffer(1) ]],
+template<typename LHSFieldT, typename RHSFieldT = LHSFieldT> kernel void
+MulAssign(device LHSFieldT *lhs [[ buffer(0) ]],
+        constant RHSFieldT *rhs [[ buffer(1) ]],
         unsigned i [[ thread_position_in_grid ]]) {
-    FieldT lhs = lhs_vals[i];
-    FieldT rhs = rhs_vals[i];
-    lhs_vals[i] = lhs * rhs;
+    LHSFieldT lhs_val = lhs[i];
+    RHSFieldT rhs_val = rhs[i];
+    lhs[i] = lhs_val * rhs_val;
 }
 
 // Performs bit reversal 
@@ -90,20 +90,19 @@ AddAssign(device FieldT *lhs_vals [[ buffer(0) ]],
 }
 
 // TODO: I want to move fft unrelated kernels into their own .metal
-// dst[i] *= src[i] ^ exponent
-// preconditions: 1 <= exponent <= 16
-template<typename FieldT> kernel void
-MulPow(device FieldT *dst [[ buffer(0) ]],
-        constant FieldT *src [[ buffer(1) ]],
+// lhs[i] *= rhs[i + shift] ^ exponent
+template<typename LHSFieldT, typename RHSFieldT = LHSFieldT> kernel void
+MulPow(device LHSFieldT *lhs [[ buffer(0) ]],
+        constant RHSFieldT *rhs [[ buffer(1) ]],
         constant unsigned &exponent [[ buffer(2) ]],
         constant unsigned &shift [[ buffer(3) ]],
         unsigned global_tid [[ thread_position_in_grid ]]) {
-    unsigned dst_idx = global_tid;
-    unsigned src_idx = (global_tid + shift) % N;
+    unsigned lhs_idx = global_tid;
+    unsigned rhs_idx = (global_tid + shift) % N;
 
-    FieldT src_val = src[src_idx];
-    FieldT dst_val = dst[dst_idx];
-    dst[dst_idx] = dst_val * src_val.pow(exponent);
+    LHSFieldT lhs_val = lhs[lhs_idx];
+    RHSFieldT rhs_val = rhs[rhs_idx];
+    lhs[lhs_idx] = lhs_val * rhs_val.pow(exponent);
 }
 
 template<typename FieldT> kernel void
@@ -197,17 +196,17 @@ template [[ host_name("bit_reverse_p18446744069414584321_fp") ]] kernel void
 BitReverse<p18446744069414584321::Fp>(
         device p18446744069414584321::Fp*,
         unsigned);
-template [[ host_name("add_assign_p18446744069414584321_fp") ]] kernel void
+template [[ host_name("add_assign_LHS_p18446744069414584321_fp_RHS_p18446744069414584321_fp") ]] kernel void
 AddAssign<p18446744069414584321::Fp>(
         device p18446744069414584321::Fp*,
         constant p18446744069414584321::Fp*,
         unsigned);
-template [[ host_name("mul_assign_p18446744069414584321_fp") ]] kernel void
+template [[ host_name("mul_assign_LHS_p18446744069414584321_fp_RHS_p18446744069414584321_fp") ]] kernel void
 MulAssign<p18446744069414584321::Fp>(
         device p18446744069414584321::Fp*,
         constant p18446744069414584321::Fp*,
         unsigned);
-template [[ host_name("mul_pow_p18446744069414584321_fp") ]] kernel void
+template [[ host_name("mul_pow_LHS_p18446744069414584321_fp_RHS_p18446744069414584321_fp") ]] kernel void
 MulPow<p18446744069414584321::Fp>(
         device p18446744069414584321::Fp*,
         constant p18446744069414584321::Fp*,
@@ -242,10 +241,39 @@ template [[ host_name("bit_reverse_p18446744069414584321_fq3") ]] kernel void
 BitReverse<p18446744069414584321::Fq3>(
         device p18446744069414584321::Fq3*,
         unsigned);
-template [[ host_name("mul_assign_p18446744069414584321_fq3") ]] kernel void
+template [[ host_name("add_assign_LHS_p18446744069414584321_fq3_RHS_p18446744069414584321_fq3") ]] kernel void
+AddAssign<p18446744069414584321::Fq3>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fq3*,
+        unsigned);
+template [[ host_name("mul_assign_LHS_p18446744069414584321_fq3_RHS_p18446744069414584321_fq3") ]] kernel void
 MulAssign<p18446744069414584321::Fq3>(
         device p18446744069414584321::Fq3*,
         constant p18446744069414584321::Fq3*,
+        unsigned);
+template [[ host_name("fill_buff_p18446744069414584321_fq3") ]] kernel void
+FillBuff<p18446744069414584321::Fq3>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fq3&,
+        unsigned);
+template [[ host_name("mul_assign_LHS_p18446744069414584321_fq3_RHS_p18446744069414584321_fp") ]] kernel void
+MulAssign<p18446744069414584321::Fq3, p18446744069414584321::Fp>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fp*,
+        unsigned);
+template [[ host_name("mul_pow_LHS_p18446744069414584321_fq3_RHS_p18446744069414584321_fq3") ]] kernel void
+MulPow<p18446744069414584321::Fq3>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fq3*,
+        constant unsigned&,
+        constant unsigned&,
+        unsigned);
+template [[ host_name("mul_pow_LHS_p18446744069414584321_fq3_RHS_p18446744069414584321_fp") ]] kernel void
+MulPow<p18446744069414584321::Fq3, p18446744069414584321::Fp>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fp*,
+        constant unsigned&,
+        constant unsigned&,
         unsigned);
 template [[ host_name("fft_single_p18446744069414584321_fq3") ]] kernel void
 FftSingle<p18446744069414584321::Fq3, p18446744069414584321::Fp>(

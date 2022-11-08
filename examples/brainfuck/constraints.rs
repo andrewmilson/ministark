@@ -87,7 +87,6 @@ impl ProcessorBaseColumn {
             // max degree: 7
             let deselector = if_not_instr(instr, CurrInstr.curr());
 
-            // TODO: mul assign
             // account for padding and deactivate all polynomials if curr instruction is 0
             constraints.0 += &deselector * &instr_constraints.0 * CurrInstr.curr();
             constraints.1 += &deselector * &instr_constraints.1 * CurrInstr.curr();
@@ -145,7 +144,6 @@ impl ProcessorExtensionColumn {
                 * instr_zerofier(CurrInstr.curr())
                 * (MemoryPermutation.curr() - MemoryPermutation.next()),
             // running evaluation for input tape
-            // TODO: think can remove CurrInstr.curr() from the start here.
             CurrInstr.curr()
                 * if_not_instr(OpCode::Read, CurrInstr.curr())
                 * (InputEvaluation.next()

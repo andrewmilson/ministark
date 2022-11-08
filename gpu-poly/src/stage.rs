@@ -4,6 +4,7 @@ use super::GpuField;
 use crate::allocator::PageAlignedAllocator;
 use crate::utils::buffer_no_copy;
 use crate::utils::distribute_powers;
+use crate::GpuMulAssign;
 use crate::GpuVec;
 use std::marker::PhantomData;
 
@@ -121,7 +122,10 @@ impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
     ) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("mul_assign_{}", F::field_name()), None)
+            .get_function(
+                &format!("mul_assign_LHS_{}_RHS_{}", F::field_name(), F::field_name()),
+                None,
+            )
             .unwrap();
         let pipeline = library
             .device()
@@ -226,14 +230,17 @@ impl<F: GpuField> BitReverseGpuStage<F> {
     }
 }
 
-pub struct MulPowStage<F> {
+pub struct MulPowStage<Lhs, Rhs = Lhs> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
-    _phantom: PhantomData<F>,
+    _phantom: PhantomData<(Lhs, Rhs)>,
 }
 
-impl<F: GpuField> MulPowStage<F> {
+impl<LhsF: GpuField, RhsF: GpuField> MulPowStage<LhsF, RhsF>
+where
+    LhsF: GpuMulAssign<RhsF>,
+{
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let constants = metal::FunctionConstantValues::new();
@@ -245,7 +252,14 @@ impl<F: GpuField> MulPowStage<F> {
         );
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("mul_pow_{}", F::field_name()), Some(constants))
+            .get_function(
+                &format!(
+                    "mul_pow_LHS_{}_RHS_{}",
+                    LhsF::field_name(),
+                    RhsF::field_name()
+                ),
+                Some(constants),
+            )
             .unwrap();
         let pipeline = library
             .device()
@@ -304,7 +318,10 @@ impl<F: GpuField> AddAssignStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("add_assign_{}", F::field_name()), None)
+            .get_function(
+                &format!("add_assign_LHS_{}_RHS_{}", F::field_name(), F::field_name()),
+                None,
+            )
             .unwrap();
         let pipeline = library
             .device()
@@ -376,9 +393,9 @@ impl<F: GpuField> FillBuffStage<F> {
         dst_buffer: &mut metal::BufferRef,
         value: F,
     ) {
-        // let command_encoder = command_buffer.new_compute_command_encoder();
-        let command_encoder = command_buffer
-            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Serial);
+        let command_encoder = command_buffer.new_compute_command_encoder();
+        // let command_encoder = command_buffer
+        //     .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Serial);
         command_encoder.set_compute_pipeline_state(&self.pipeline);
         command_encoder.set_buffer(0, Some(dst_buffer), 0);
         command_encoder.set_bytes(

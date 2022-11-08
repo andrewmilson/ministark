@@ -11,6 +11,7 @@ use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use gpu_poly::prelude::*;
+use gpu_poly::GpuMulAssign;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::cmp::Ordering;
@@ -19,7 +20,6 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Index;
 use std::ops::IndexMut;
-use std::ops::MulAssign;
 
 /// Matrix is an array of columns.
 pub struct Matrix<F>(pub Vec<GpuVec<F>>);
@@ -100,6 +100,9 @@ impl<F: GpuField> Matrix<F> {
 
     /// Interpolates the columns of the polynomials over the domain
     pub fn into_polynomials(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+        // TODO: using the newtype pattern for type safety would be cool
+        // i.e. take as input Matrix<Evaluations> and return Matrix<Polynomials>
+        // https://doc.rust-lang.org/book/ch19-04-advanced-types.html
         #[cfg(not(feature = "gpu"))]
         return self.into_polynomials_cpu(domain);
         #[cfg(feature = "gpu")]
@@ -134,6 +137,9 @@ impl<F: GpuField> Matrix<F> {
 
     /// Evaluates the columns of the matrix
     pub fn into_evaluations(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+        // TODO: using the newtype pattern for type safety would be cool
+        // i.e. take as input Matrix<Polynomials> and return Matrix<Evaluations>
+        // https://doc.rust-lang.org/book/ch19-04-advanced-types.html
         #[cfg(not(feature = "gpu"))]
         return self.into_evaluations_cpu(domain);
         #[cfg(feature = "gpu")]
@@ -408,9 +414,9 @@ impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq> {
 
 impl<'a, Fp: GpuField, Fq: GpuField> MatrixGroup<'a, Fp, Fq>
 where
-    Fq: for<'b> MulAssign<&'b Fp>,
+    Fq: GpuMulAssign<Fp>,
 {
-    #[cfg(feature = "gpu")]
+    // #[cfg(feature = "gpu")]
     fn evaluate_symbolic_gpu(
         &self,
         results: &mut [GpuVec<Fq>],
@@ -423,85 +429,69 @@ where
         let device = command_queue.device();
         let command_buffer = command_queue.new_command_buffer();
 
-        let multiplier = MulPowStage::<Fq>::new(library, n);
-        let filler = FillBuffStage::<Fq>::new(library, n);
-        let adder = AddAssignStage::<Fq>::new(library, n);
+        let mul_fp = MulPowStage::<Fp>::new(library, n);
+        let mul_fq = MulPowStage::<Fq>::new(library, n);
+        let mul_fq_by_fp = MulPowStage::<Fq, Fp>::new(library, n);
+        let fill_fq = FillBuffStage::<Fq>::new(library, n);
+        let fill_fp = FillBuffStage::<Fp>::new(library, n);
+        let add_fq = AddAssignStage::<Fq>::new(library, n);
 
         let mut res_buffers = results
             .iter_mut()
             .map(|col| buffer_mut_no_copy(device, col))
             .collect::<Vec<_>>();
 
-        let mut scratch_fq = GpuVec::<Fp>::with_capacity_in(n, PageAlignedAllocator);
+        let mut scratch_fp = GpuVec::<Fp>::with_capacity_in(n, PageAlignedAllocator);
+        unsafe { scratch_fp.set_len(n) }
+        let mut scratch_fp_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch_fp);
+
+        let mut scratch_fq = GpuVec::<Fq>::with_capacity_in(n, PageAlignedAllocator);
         unsafe { scratch_fq.set_len(n) }
         let mut scratch_fq_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch_fq);
 
         for (constraint, res_buffer) in constraints.iter().zip(&mut res_buffers) {
-            for (i, term) in constraint.0.iter().enumerate() {
-                if i == 0 {
-                    filler.encode(command_buffer, res_buffer, term.0);
-                    for (element, power) in &(term.1).0 {
-                        let (col_index, shift) = match element {
-                            Element::Curr(col_index) => (col_index, 0),
-                            Element::Next(col_index) => (col_index, step),
-                            _ => unreachable!(),
-                        };
-                        match self.get_column(*col_index) {
-                            Col::Fq(col) => {
-                                let column_buffer = buffer_no_copy(command_queue.device(), col);
-                                multiplier.encode(
-                                    command_buffer,
-                                    res_buffer,
-                                    &column_buffer,
-                                    *power,
-                                    shift,
-                                );
-                            }
-                            Col::Fp(col) => {
-                                let column_buffer = buffer_no_copy(command_queue.device(), col);
-                                multiplier.encode(
-                                    command_buffer,
-                                    res_buffer,
-                                    &column_buffer,
-                                    *power,
-                                    shift,
-                                );
-                            }
+            // TODO: take advantage of i
+            for (_i, Term(coeff, variables)) in constraint.0.iter().enumerate() {
+                fill_fp.encode(command_buffer, &mut scratch_fp_buffer, Fp::one());
+                fill_fq.encode(command_buffer, &mut scratch_fq_buffer, *coeff);
+                for (element, power) in &variables.0 {
+                    let (col_index, shift) = match element {
+                        Element::Curr(col_index) => (col_index, 0),
+                        Element::Next(col_index) => (col_index, step),
+                        _ => unreachable!(),
+                    };
+                    match self.get_column(*col_index) {
+                        Col::Fp(col) => {
+                            let column_buffer = buffer_no_copy(command_queue.device(), col);
+                            mul_fp.encode(
+                                command_buffer,
+                                &mut scratch_fp_buffer,
+                                &column_buffer,
+                                *power,
+                                shift,
+                            );
+                        }
+                        Col::Fq(col) => {
+                            let column_buffer = buffer_no_copy(command_queue.device(), col);
+                            mul_fq.encode(
+                                command_buffer,
+                                &mut scratch_fq_buffer,
+                                &column_buffer,
+                                *power,
+                                shift,
+                            );
                         }
                     }
-                } else {
-                    filler.encode(command_buffer, &mut scratch_fq_buffer, term.0);
-                    for (element, power) in &(term.1).0 {
-                        let (col_index, shift) = match element {
-                            Element::Curr(col_index) => (col_index, 0),
-                            Element::Next(col_index) => (col_index, step),
-                            _ => unreachable!(),
-                        };
-                        match self.get_column(*col_index) {
-                            Col::Fq(col) => {
-                                let column_buffer = buffer_no_copy(command_queue.device(), col);
-                                multiplier.encode(
-                                    command_buffer,
-                                    &mut scratch_fq_buffer,
-                                    &column_buffer,
-                                    *power,
-                                    shift,
-                                );
-                            }
-                            Col::Fp(col) => {
-                                let column_buffer = buffer_no_copy(command_queue.device(), col);
-                                multiplier.encode(
-                                    command_buffer,
-                                    &mut scratch_fq_buffer,
-                                    &column_buffer,
-                                    *power,
-                                    shift,
-                                );
-                            }
-                        }
-                    }
-                    adder.encode(command_buffer, res_buffer, &scratch_fq_buffer);
                 }
+                // TODO: use mul assign here
+                mul_fq_by_fp.encode(
+                    command_buffer,
+                    &mut scratch_fq_buffer,
+                    &scratch_fp_buffer,
+                    1,
+                    0,
+                );
+                add_fq.encode(command_buffer, res_buffer, &scratch_fq_buffer);
             }
         }
         command_buffer.commit();
@@ -562,7 +552,7 @@ where
                         scratch_fq
                             .iter_mut()
                             .zip(&scratch_fp)
-                            .for_each(|(s_fq, s_fp)| *s_fq *= s_fp);
+                            .for_each(|(s_fq, s_fp)| *s_fq *= *s_fp);
                         if i == 0 {
                             for (result, scratch) in chunk.iter_mut().zip(&scratch_fq) {
                                 *result = *scratch;

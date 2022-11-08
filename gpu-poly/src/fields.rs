@@ -1,6 +1,6 @@
 use crate::GpuFftField;
 use crate::GpuField;
-use crate::GpuMul;
+use crate::GpuMulAssign;
 use ark_ff::BigInt;
 use ark_ff::Field;
 use ark_ff::Fp3;
@@ -25,7 +25,7 @@ pub mod p18446744069414584321 {
         }
     }
 
-    impl GpuMul<fp64::Fp, fp64::Fp> for fp64::Fp {}
+    impl GpuMulAssign<fp64::Fp> for fp64::Fp {}
 
     impl GpuFftField for fp64::Fp {}
 
@@ -96,7 +96,9 @@ pub mod p18446744069414584321 {
         }
     }
 
-    impl GpuMul<Fp, Fq3> for Fq3 {}
+    impl GpuMulAssign<Fp> for Fq3 {}
+
+    impl GpuMulAssign<Fq3> for Fq3 {}
 
     impl GpuField for Fq3 {
         type FftField = Fp;

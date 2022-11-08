@@ -218,9 +218,9 @@ fn ood_constraint_evaluation<A: Air>(
     let first_trace_x = A::Fp::one();
     let last_trace_x = trace_domain.group_gen_inv;
     // TODO docs
-    let boundary_divisor = (x - first_trace_x.into()).inverse().unwrap();
-    let terminal_divisor = (x - last_trace_x.into()).inverse().unwrap();
-    let transition_divisor = (x - last_trace_x.into())
+    let boundary_divisor = (x - A::Fq::from(first_trace_x)).inverse().unwrap();
+    let terminal_divisor = (x - A::Fq::from(last_trace_x)).inverse().unwrap();
+    let transition_divisor = (x - A::Fq::from(last_trace_x))
         * evaluate_vanishing_polynomial(&trace_domain, x)
             .inverse()
             .unwrap();
@@ -304,12 +304,12 @@ fn deep_composition_evaluations<A: Air>(
     let mut evals = vec![A::Fq::zero(); query_positions.len()];
 
     // add base trace
-    let next_z = z * trace_domain.group_gen();
+    let next_z = z * &trace_domain.group_gen();
     for ((&x, row), eval) in xs.iter().zip(base_trace_rows).zip(&mut evals) {
         for (i, &val) in row.iter().enumerate() {
             let (alpha, beta, _) = composition_coeffs.base_trace[i];
-            let t1 = (val.into() - ood_trace_states.0[i]) / (x.into() - z);
-            let t2 = (val.into() - ood_trace_states.1[i]) / (x.into() - next_z);
+            let t1 = (A::Fq::from(val) - ood_trace_states.0[i]) / (A::Fq::from(x) - z);
+            let t2 = (A::Fq::from(val) - ood_trace_states.1[i]) / (A::Fq::from(x) - next_z);
             *eval += t1 * alpha + t2 * beta;
         }
     }
@@ -319,8 +319,8 @@ fn deep_composition_evaluations<A: Air>(
     for ((&x, row), eval) in xs.iter().zip(extension_trace_rows).zip(&mut evals) {
         for (i, &val) in row.iter().enumerate() {
             let (alpha, beta, _) = composition_coeffs.extension_trace[i];
-            let t1 = (val - ood_trace_states.0[num_base_columns + i]) / (x.into() - z);
-            let t2 = (val - ood_trace_states.1[num_base_columns + i]) / (x.into() - next_z);
+            let t1 = (val - ood_trace_states.0[num_base_columns + i]) / (A::Fq::from(x) - z);
+            let t2 = (val - ood_trace_states.1[num_base_columns + i]) / (A::Fq::from(x) - next_z);
             *eval += t1 * alpha + t2 * beta;
         }
     }
@@ -330,13 +330,13 @@ fn deep_composition_evaluations<A: Air>(
     for ((&x, row), eval) in xs.iter().zip(composition_trace_rows).zip(&mut evals) {
         for (i, &value) in row.iter().enumerate() {
             let alpha = composition_coeffs.constraints[i];
-            *eval += alpha * (value - ood_constraint_evaluations[i]) / (x.into() - z_n);
+            *eval += alpha * (value - ood_constraint_evaluations[i]) / (A::Fq::from(x) - z_n);
         }
     }
 
     // adjust degree
     let (alpha, beta) = composition_coeffs.degree;
-    for (x, eval) in xs.into_iter().zip(&mut evals) {
+    for (x, eval) in xs.iter().zip(&mut evals) {
         *eval *= alpha + beta * x;
     }
 

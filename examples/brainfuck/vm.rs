@@ -196,7 +196,7 @@ pub fn simulate(
         register.cycle += 1;
         register.curr_instr = program.get(register.ip).map_or(0, |&x| x);
         register.next_instr = program.get(register.ip + 1).map_or(0, |&x| x);
-        register.mem_val = tape[register.mp].into(); // TODO: Change to u8
+        register.mem_val = tape[register.mp].into();
     }
 
     // Collect final state into execution tables

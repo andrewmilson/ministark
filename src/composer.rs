@@ -209,7 +209,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         assert!(self.poly.is_empty());
 
         let trace_domain = self.air.trace_domain();
-        let next_z = self.z * trace_domain.group_gen().into();
+        let next_z = self.z * A::Fq::from(trace_domain.group_gen());
         let n = trace_domain.size();
 
         let mut t1_composition = Vec::with_capacity_in(n, PageAlignedAllocator);

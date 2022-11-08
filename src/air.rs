@@ -9,6 +9,7 @@ use crate::utils::Timer;
 use crate::Constraint;
 use crate::Matrix;
 use crate::ProofOptions;
+use crate::StarkExtensionOf;
 use crate::TraceInfo;
 use ark_ff::batch_inversion;
 use ark_ff::FftField;
@@ -22,19 +23,14 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use gpu_poly::prelude::*;
+use gpu_poly::GpuFftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::ops::Add;
 use std::ops::Deref;
-use std::ops::Mul;
-use std::ops::MulAssign;
 
 pub trait Air {
-    type Fp: GpuField<FftField = Self::Fp> + FftField + Into<Self::Fq>;
-    type Fq: GpuField<FftField = Self::Fp>
-        + for<'a> MulAssign<&'a Self::Fp>
-        + for<'a> Mul<&'a Self::Fp, Output = Self::Fq>
-        + for<'a> Add<&'a Self::Fp, Output = Self::Fq>;
+    type Fp: GpuFftField;
+    type Fq: StarkExtensionOf<Self::Fp>;
     // TODO: consider removing clone requirement
     type PublicInputs: CanonicalSerialize + CanonicalDeserialize + Clone;
 

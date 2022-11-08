@@ -114,6 +114,9 @@ namespace p18446744069414584321
 
         Fq3 operator*(const Fq3 rhs) const 
         {
+            // Devegili OhEig Scott Dahab --- Multiplication and Squaring on
+            // AbstractPairing-Friendly
+            // Fields.pdf; Section 4 (Karatsuba)
             Fp a = rhs.c0;
             Fp b = rhs.c1;
             Fp c = rhs.c2;

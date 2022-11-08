@@ -31,8 +31,13 @@ pub use constraint::Column;
 pub use constraint::Constraint;
 use fri::FriOptions;
 use fri::FriProof;
+use gpu_poly::GpuFftField;
+use gpu_poly::GpuField;
+use gpu_poly::GpuMulAssign;
 pub use matrix::Matrix;
 pub use prover::Prover;
+use std::ops::Add;
+use std::ops::Mul;
 use trace::Queries;
 pub use trace::Trace;
 pub use trace::TraceInfo;
@@ -103,4 +108,24 @@ pub struct Proof<A: Air> {
     pub public_inputs: A::PublicInputs,
     pub ood_trace_states: (Vec<A::Fq>, Vec<A::Fq>),
     pub ood_constraint_evaluations: Vec<A::Fq>,
+}
+
+pub trait StarkExtensionOf<Fp: GpuFftField>:
+    GpuField<FftField = Fp>
+    + for<'a> Mul<&'a Fp, Output = Self>
+    + for<'a> Add<&'a Fp, Output = Self>
+    + GpuMulAssign<Fp>
+    + From<Fp>
+{
+}
+
+impl<T, F> StarkExtensionOf<F> for T
+where
+    F: GpuFftField,
+    T: GpuField<FftField = F>
+        + for<'a> Mul<&'a F, Output = T>
+        + for<'a> Add<&'a F, Output = T>
+        + GpuMulAssign<F>
+        + From<F>,
+{
 }
