@@ -1,5 +1,5 @@
 > **Warning**
-> this code is new and may change or be removed in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or register your interest https://forms.gle/SYrA9hbGQuivbHX5A
+> this code is new and will change in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or register your interest https://forms.gle/SYrA9hbGQuivbHX5A
 
 <div align="center">
 
@@ -50,9 +50,9 @@ let constraints = vec![
     // cycle starts at zero
     Cycle.first(),
     // cycle increases from one row to the next
-    Cycle.curr() - Cycle.next() - F::one(),
+    Cycle.curr() - Cycle.next() - 1,
     // cycle doesn't exceed expected
-    Cycle.last() - ExpectedCycles.get_hint(),
+    Cycle.last() - ExpectedCycles,
     // ...
 ];
 ```
