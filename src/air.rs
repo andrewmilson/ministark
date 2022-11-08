@@ -356,6 +356,7 @@ pub trait Air {
         extension_trace: Option<&Matrix<Self::Fq>>,
     ) {
         use crate::matrix::GroupItem;
+        use crate::utils::print_row;
         let mut execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
         if let Some(extension_trace) = extension_trace.as_ref() {
             execution_trace.append(GroupItem::Fq(extension_trace))
@@ -395,6 +396,9 @@ pub trait Air {
         // check terminal constraints
         for (i, constraint) in self.terminal_constraints().iter().enumerate() {
             let eval = constraint.evaluate(challenges, last_row, &[]);
+            if !eval.is_zero() {
+                print_row(last_row);
+            }
             assert!(eval.is_zero(), "terminal {i} mismatch");
         }
 

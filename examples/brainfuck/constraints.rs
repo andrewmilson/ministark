@@ -26,6 +26,7 @@ impl ProcessorBaseColumn {
             Mp.curr(),
             MemVal.curr(),
             MemValInv.curr(),
+            Dummy.curr(),
         ]
     }
 
@@ -101,6 +102,11 @@ impl ProcessorBaseColumn {
             Cycle.next() - Cycle.curr() - one,
             MemVal.curr() * &mem_val_is_zero,
             MemValInv.curr() * &mem_val_is_zero,
+            // dummy has to be zero or one
+            (Dummy.next() - one) * Dummy.next(),
+            // dummy indicates if the row is padding
+            instr_zerofier(CurrInstr.curr()) * (Dummy.curr() - F::one())
+                + CurrInstr.curr() * Dummy.curr(),
         ]
     }
 }
@@ -109,6 +115,62 @@ impl ProcessorExtensionColumn {
     pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use ProcessorExtensionColumn::*;
         vec![InputEvaluation.curr(), OutputEvaluation.curr()]
+    }
+
+    pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use Challenge::Alpha;
+        use Challenge::Beta;
+        use Challenge::Delta;
+        use Challenge::Gamma;
+        use Challenge::A;
+        use Challenge::B;
+        use Challenge::C;
+        use ProcessorBaseColumn::*;
+        use ProcessorExtensionColumn::*;
+        let res = vec![
+            // TODO: can clean this up. generate in a loop
+            // running product for instruction permutation:
+            // 1. instruction and processor are not padding
+            (InstructionBaseColumn::Dummy.curr() - F::one())
+                * (Dummy.curr() - F::one())
+                * (InstructionExtensionColumn::ProcessorPermutation.curr()
+                    * (Alpha.get_challenge()
+                        - A.get_challenge() * InstructionBaseColumn::Ip.curr()
+                        - B.get_challenge() * InstructionBaseColumn::CurrInstr.curr()
+                        - C.get_challenge() * InstructionBaseColumn::NextInstr.curr())
+                    - InstructionPermutation.curr()
+                        * (Alpha.get_challenge()
+                            - A.get_challenge() * Ip.curr()
+                            - B.get_challenge() * CurrInstr.curr()
+                            - C.get_challenge() * NextInstr.curr()))
+                // 2. instruction is padding but processor is not
+                + InstructionBaseColumn::Dummy.curr()
+                    * (Dummy.curr() - F::one())
+                    * (InstructionExtensionColumn::ProcessorPermutation.curr()
+                        - InstructionPermutation.curr()
+                            * (Alpha.get_challenge()
+                                - A.get_challenge() * Ip.curr()
+                                - B.get_challenge() * CurrInstr.curr()
+                                - C.get_challenge() * NextInstr.curr()))
+                // 3. processor is padding but instruction is not
+                + (InstructionBaseColumn::Dummy.curr() - F::one())
+                    * Dummy.curr()
+                    * (InstructionExtensionColumn::ProcessorPermutation.curr()
+                        * (Alpha.get_challenge()
+                            - A.get_challenge() * InstructionBaseColumn::Ip.curr()
+                            - B.get_challenge() * InstructionBaseColumn::CurrInstr.curr()
+                            - C.get_challenge() * InstructionBaseColumn::NextInstr.curr())
+                        - InstructionPermutation.curr())
+                // 4. processor and instruction are padding
+                + InstructionBaseColumn::Dummy.curr()
+                * Dummy.curr()
+                * (InstructionExtensionColumn::ProcessorPermutation.curr()
+                    - InstructionPermutation.curr()),
+        ];
+
+        println!("Degree is: {}", res[0].degree());
+
+        res
     }
 
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
@@ -131,8 +193,7 @@ impl ProcessorExtensionColumn {
                         - B.get_challenge() * CurrInstr.curr()
                         - C.get_challenge() * NextInstr.curr())
                     - InstructionPermutation.next())
-                + instr_zerofier(CurrInstr.curr())
-                    * (InstructionPermutation.curr() - InstructionPermutation.next()),
+                + Dummy.curr() * (InstructionPermutation.curr() - InstructionPermutation.next()),
             // running product for memory table permutation
             CurrInstr.curr()
                 * (MemoryPermutation.curr()
@@ -141,7 +202,7 @@ impl ProcessorExtensionColumn {
                         - Challenge::E.get_challenge() * Mp.curr()
                         - Challenge::F.get_challenge() * MemVal.curr())
                     - MemoryPermutation.next())
-                * instr_zerofier(CurrInstr.curr())
+                * Dummy.curr()
                 * (MemoryPermutation.curr() - MemoryPermutation.next()),
             // running evaluation for input tape
             CurrInstr.curr()
@@ -216,7 +277,7 @@ impl MemoryExtensionColumn {
 impl InstructionBaseColumn {
     pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use InstructionBaseColumn::*;
-        vec![Ip.curr()]
+        vec![Ip.curr(), Dummy.curr()]
     }
 
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
@@ -232,6 +293,10 @@ impl InstructionBaseColumn {
             (Ip.next() - Ip.curr() - one) * (CurrInstr.next() - CurrInstr.curr()),
             // if address is the same, then next instruction is also
             (Ip.next() - Ip.curr() - one) * (NextInstr.next() - NextInstr.curr()),
+            // dummy has to be zero or one
+            (Dummy.next() - one) * Dummy.next(),
+            // dummy indicates if the row is padding
+            instr_zerofier(CurrInstr.curr()) * Dummy.curr() * CurrInstr.curr() * Dummy.curr(),
         ]
     }
 }
@@ -272,8 +337,7 @@ impl InstructionExtensionColumn {
                             - A.get_challenge() * Ip.next()
                             - B.get_challenge() * CurrInstr.next()
                             - C.get_challenge() * NextInstr.next()))
-                + instr_zerofier(CurrInstr.curr())
-                    * (ProcessorPermutation.next() - ProcessorPermutation.curr())
+                + Dummy.curr() * (ProcessorPermutation.next() - ProcessorPermutation.curr())
                 + (Ip.curr() - Ip.next())
                     * (ProcessorPermutation.curr() - ProcessorPermutation.next()),
             // - no evaluation change if `ip` remains the same

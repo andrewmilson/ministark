@@ -65,7 +65,8 @@ impl Trace for BrainfuckTrace {
     type Fp = Fp;
     type Fq = Fq3;
 
-    const NUM_BASE_COLUMNS: usize = 16;
+    // const NUM_BASE_COLUMNS: usize = 18;
+    const NUM_BASE_COLUMNS: usize = 18;
     const NUM_EXTENSION_COLUMNS: usize = 9;
 
     fn len(&self) -> usize {
@@ -133,7 +134,7 @@ fn gen_processor_ext_matrix(
     for row in 0..base_matrix.num_rows() {
         let curr_base_row = base_matrix.get_row(row).unwrap();
         let next_base_row = base_matrix.get_row(row + 1);
-        let mut extension_row = vec![Fq3::zero(); ProcessorExtensionColumn::NUM_TRACE_COLUMNS];
+        let mut extension_row = [Fq3::zero(); ProcessorExtensionColumn::NUM_TRACE_COLUMNS];
 
         // Permutations columns
         extension_row[InstructionPermutation as usize] = instr_permutation_running_product;
@@ -165,6 +166,8 @@ fn gen_processor_ext_matrix(
         extension_rows.push(extension_row);
     }
 
+    println!("expected terminal {}", instr_permutation_running_product);
+
     // TODO:
     // self.extended_matrix = Some(extended_matrix);
     // self.instr_permutation_terminal = Some(instr_permutation_running_product);
@@ -190,7 +193,7 @@ fn gen_memory_ext_matrix(
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
         let base_row: Vec<Fp> = base_matrix.iter().map(|column| column[row]).collect();
-        let mut extension_row = vec![Fq3::zero(); MemoryExtensionColumn::NUM_TRACE_COLUMNS];
+        let mut extension_row = [Fq3::zero(); MemoryExtensionColumn::NUM_TRACE_COLUMNS];
         extension_row[Permutation as usize] = mem_permutation_running_product;
         if base_row[Dummy as usize].is_zero() {
             mem_permutation_running_product *= challenges[Beta]
@@ -222,7 +225,7 @@ fn gen_instruction_ext_matrix(
     for row in 0..base_matrix.num_rows() {
         let curr_base_row = base_matrix.get_row(row).unwrap();
         let prev_base_row = base_matrix.get_row(row.wrapping_sub(1));
-        let mut extension_row = vec![Fq3::zero(); InstructionExtensionColumn::NUM_TRACE_COLUMNS];
+        let mut extension_row = [Fq3::zero(); InstructionExtensionColumn::NUM_TRACE_COLUMNS];
 
         if !curr_base_row[CurrInstr as usize].is_zero()
             && row > 0
@@ -252,6 +255,8 @@ fn gen_instruction_ext_matrix(
         extension_rows.push(extension_row);
     }
 
+    println!("expected  instr terminal {}", permutation_running_product);
+
     Matrix::new(into_columns(extension_rows))
 }
 
@@ -267,7 +272,7 @@ fn gen_input_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>) 
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
         let base_row = base_matrix.get_row(row).unwrap();
-        let mut extension_row = vec![Fq3::zero(); InputExtensionColumn::NUM_TRACE_COLUMNS];
+        let mut extension_row = [Fq3::zero(); InputExtensionColumn::NUM_TRACE_COLUMNS];
         running_evaluation = running_evaluation * challenges[Gamma] + &base_row[Value as usize];
         extension_row[Evaluation as usize] = running_evaluation;
         // TODO:
@@ -293,7 +298,7 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>)
     let mut extension_rows = Vec::new();
     for row in 0..base_matrix.num_rows() {
         let base_row = base_matrix.get_row(row).unwrap();
-        let mut extension_row = vec![Fq3::zero(); OutputExtensionColumn::NUM_TRACE_COLUMNS];
+        let mut extension_row = [Fq3::zero(); OutputExtensionColumn::NUM_TRACE_COLUMNS];
         running_evaluation = running_evaluation * challenges[Delta] + &base_row[Value as usize];
         extension_row[Evaluation as usize] = running_evaluation;
         // TODO:
@@ -306,7 +311,7 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>)
     Matrix::new(into_columns(extension_rows))
 }
 
-pub fn into_columns<F: Field>(rows: Vec<Vec<F>>) -> Vec<GpuVec<F>> {
+pub fn into_columns<F: Field, const N: usize>(rows: Vec<[F; N]>) -> Vec<GpuVec<F>> {
     if rows.is_empty() {
         Vec::new()
     } else {

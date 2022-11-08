@@ -34,11 +34,12 @@ pub enum ProcessorBaseColumn {
     Mp, // memory pointer
     MemVal,
     MemValInv,
+    Dummy, // indicate if a row is padding
 }
 
 #[derive(Clone, Copy)]
 pub enum ProcessorExtensionColumn {
-    InstructionPermutation,
+    InstructionPermutation, // 18
     MemoryPermutation,
     InputEvaluation,
     OutputEvaluation,
@@ -62,6 +63,7 @@ pub enum InstructionBaseColumn {
     Ip,
     CurrInstr,
     NextInstr,
+    Dummy, // indicate if a row is padding
 }
 
 #[derive(Clone, Copy)]
@@ -92,7 +94,7 @@ pub enum OutputExtensionColumn {
 
 impl BrainfuckColumn for ProcessorBaseColumn {
     const FIRST_TRACE_COL_INDEX: usize = ProcessorBaseColumn::Cycle as usize;
-    const LAST_TRACE_COL_INDEX: usize = ProcessorBaseColumn::MemValInv as usize;
+    const LAST_TRACE_COL_INDEX: usize = ProcessorBaseColumn::Dummy as usize;
 }
 
 impl BrainfuckColumn for MemoryBaseColumn {
@@ -102,7 +104,7 @@ impl BrainfuckColumn for MemoryBaseColumn {
 
 impl BrainfuckColumn for InstructionBaseColumn {
     const FIRST_TRACE_COL_INDEX: usize = MemoryBaseColumn::LAST_TRACE_COL_INDEX + 1;
-    const LAST_TRACE_COL_INDEX: usize = Self::FIRST_TRACE_COL_INDEX + Self::NextInstr as usize;
+    const LAST_TRACE_COL_INDEX: usize = Self::FIRST_TRACE_COL_INDEX + Self::Dummy as usize;
 }
 
 impl BrainfuckColumn for InputBaseColumn {

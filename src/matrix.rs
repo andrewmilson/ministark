@@ -53,7 +53,9 @@ impl<F: GpuField> Matrix<F> {
         }
         // Check all columns have the same length
         let expected_len = self.0[0].len();
-        assert!(self.0.iter().all(|col| col.len() == expected_len));
+        for (i, col) in self.0.iter().enumerate() {
+            assert_eq!(expected_len, col.len(), "length of column {i} is invalid")
+        }
         expected_len
     }
 

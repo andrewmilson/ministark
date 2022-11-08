@@ -21,8 +21,7 @@ pub struct BrainfuckAir {
     execution_info: ExecutionInfo,
     boundary_constraints: Vec<Constraint<Fq3>>,
     transition_constraints: Vec<Constraint<Fq3>>,
-    // TODO:
-    // terminal_constraints: Vec<Constraint<Fp>>,
+    terminal_constraints: Vec<Constraint<Fq3>>,
 }
 
 impl Air for BrainfuckAir {
@@ -56,6 +55,8 @@ impl Air for BrainfuckAir {
                 tables::OutputExtensionColumn::boundary_constraints(),
             ]
             .concat(),
+            terminal_constraints: vec![tables::ProcessorExtensionColumn::terminal_constraints()]
+                .concat(),
         }
     }
 
@@ -73,6 +74,10 @@ impl Air for BrainfuckAir {
 
     fn boundary_constraints(&self) -> &[Constraint<Fq3>] {
         &self.boundary_constraints
+    }
+
+    fn terminal_constraints(&self) -> &[Constraint<Fq3>] {
+        &self.terminal_constraints
     }
 
     fn trace_info(&self) -> &TraceInfo {
