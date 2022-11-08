@@ -29,7 +29,7 @@ TODO
 
 ## Defining AIR Constraints
 
-MiniSTARK represents constraints as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Look at the constraint implementation of [brainf***](mini-stark/examples/brainfuck/) for a full example.
+MiniSTARK represents constraints as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Look at the constraint implementation of [brainf***](examples/brainfuck/) for a full example.
 
 ```rust
 #[derive(Hint)]
