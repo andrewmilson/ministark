@@ -1,10 +1,6 @@
-# Fast Poly
+# GPU Poly
 
-Optimized for Apple Silicon the Fast Poly finite-field polynomial library uses the fast fourier transform, GPU acceleration, and Montgomery arithmetic to achieve ridiculous 100-1000x speedups over CPU polynomial libraries.
-
-- **100x faster polynomial multiplication**
-- **100x faster polynomial interpolation**
-- **100x faster polynomial evaluation**
+This library contains GPU optimized polynomial arithmetic. The code is written in the Metal programming language so currently only supports Apple Silicon. This library achieves up to a 10x speedup over CPU implementation. In future support for CUDA will be added. Please get in touch if you want to help with the CUDA implementation. I only have an Apple laptop so writing and evaluating CUDA code is not so easy for me.
 
 # Usage
 

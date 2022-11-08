@@ -2,9 +2,6 @@
 
 use air::BrainfuckAir;
 use air::ExecutionInfo;
-// use ark_ff::CubicExtConfig;
-// use ark_ff::Fp3;
-// use ark_ff::Fp3Config;
 use ark_ff::One;
 use gpu_poly::fields::p18446744069414584321::Fp;
 use gpu_poly::fields::p18446744069414584321::Fq3;

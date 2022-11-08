@@ -141,13 +141,13 @@ fn gen_processor_ext_matrix(
         // if not padding
         if !curr_base_row[CurrInstr as usize].is_zero() {
             instr_permutation_running_product *= challenges[Alpha]
-                - challenges[A] * &curr_base_row[Ip as usize]
-                - challenges[B] * &curr_base_row[CurrInstr as usize]
-                - challenges[C] * &curr_base_row[NextInstr as usize];
+                - challenges[A] * curr_base_row[Ip as usize]
+                - challenges[B] * curr_base_row[CurrInstr as usize]
+                - challenges[C] * curr_base_row[NextInstr as usize];
             mem_permutation_running_product *= challenges[Beta]
-                - challenges[D] * &curr_base_row[Cycle as usize]
-                - challenges[E] * &curr_base_row[Mp as usize]
-                - challenges[F] * &curr_base_row[MemVal as usize];
+                - challenges[D] * curr_base_row[Cycle as usize]
+                - challenges[E] * curr_base_row[Mp as usize]
+                - challenges[F] * curr_base_row[MemVal as usize];
         }
 
         // Evaluation columns
@@ -194,9 +194,9 @@ fn gen_memory_ext_matrix(
         extension_row[Permutation as usize] = mem_permutation_running_product;
         if base_row[Dummy as usize].is_zero() {
             mem_permutation_running_product *= challenges[Beta]
-                - challenges[D] * &base_row[Cycle as usize]
-                - challenges[E] * &base_row[Mp as usize]
-                - challenges[F] * &base_row[MemVal as usize];
+                - challenges[D] * base_row[Cycle as usize]
+                - challenges[E] * base_row[Mp as usize]
+                - challenges[F] * base_row[MemVal as usize];
         }
         extension_rows.push(extension_row);
     }
@@ -233,18 +233,18 @@ fn gen_instruction_ext_matrix(
             // make sure new row is not padding
             // and that the instruction address didn't just change
             permutation_running_product *= challenges[Alpha]
-                - challenges[A] * &curr_base_row[Ip as usize]
-                - challenges[B] * &curr_base_row[CurrInstr as usize]
-                - challenges[C] * &curr_base_row[NextInstr as usize];
+                - challenges[A] * curr_base_row[Ip as usize]
+                - challenges[B] * curr_base_row[CurrInstr as usize]
+                - challenges[C] * curr_base_row[NextInstr as usize];
         }
         extension_row[ProcessorPermutation as usize] = permutation_running_product;
 
         // evaluation argument
         if curr_base_row[Ip as usize] != previous_address {
             evaluation_running_sum = challenges[Eta] * evaluation_running_sum
-                + challenges[A] * &curr_base_row[Ip as usize]
-                + challenges[B] * &curr_base_row[CurrInstr as usize]
-                + challenges[C] * &curr_base_row[NextInstr as usize];
+                + challenges[A] * curr_base_row[Ip as usize]
+                + challenges[B] * curr_base_row[CurrInstr as usize]
+                + challenges[C] * curr_base_row[NextInstr as usize];
         }
         extension_row[ProgramEvaluation as usize] = evaluation_running_sum;
 

@@ -75,20 +75,18 @@ pub mod p18446744069414584321 {
     impl Mul<&Fp> for Fq3 {
         type Output = Fq3;
 
-        fn mul(self, rhs: &Fp) -> Self::Output {
-            let mut tmp = self;
-            tmp.0.mul_assign_by_base_field(rhs);
-            tmp
+        fn mul(mut self, rhs: &Fp) -> Self::Output {
+            self.0.mul_assign_by_base_field(rhs);
+            self
         }
     }
 
     impl Mul<Fp> for Fq3 {
         type Output = Fq3;
 
-        fn mul(self, rhs: Fp) -> Self::Output {
-            let mut tmp = self;
-            tmp.0.mul_assign_by_base_field(&rhs);
-            tmp
+        fn mul(mut self, rhs: Fp) -> Self::Output {
+            self.0.mul_assign_by_base_field(&rhs);
+            self
         }
     }
 
