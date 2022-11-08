@@ -45,11 +45,11 @@ enum ProcessorTable {
     // ...
 }
 
-// all must evaluate to 0 over the trace domain
+// all must evaluate to `0`
 let constraints = vec![
-    // cycle starts at zero
+    // cycle starts at `0`
     Cycle.first(),
-    // cycle increases from one row to the next
+    // each row, the cycle increases by `1`
     Cycle.curr() - Cycle.next() - 1,
     // cycle doesn't exceed expected
     Cycle.last() - ExpectedCycles,
@@ -97,7 +97,7 @@ cargo run --release --features parallel,asm  --example fib
 
 <h2 id="coming-soon">Coming soon (help wanted)</h2>
 
-- Support all prime fields with ECFFT (see [wborgeaud/ecfft-bn254](https://github.com/wborgeaud/ecfft-bn254))
+- Support Bitcoin's fields with ECFFT (see [wborgeaud/ecfft-bn254](https://github.com/wborgeaud/ecfft-bn254))
 - CUDA support in `gpu-poly`
 - Periodic transition constraints
 - Speed optimizations that don't sacrifice readability

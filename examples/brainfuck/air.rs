@@ -21,6 +21,7 @@ pub struct BrainfuckAir {
     execution_info: ExecutionInfo,
     boundary_constraints: Vec<Constraint<Fq3>>,
     transition_constraints: Vec<Constraint<Fq3>>,
+    // TODO:
     // terminal_constraints: Vec<Constraint<Fp>>,
 }
 
@@ -45,18 +46,16 @@ impl Air for BrainfuckAir {
                 tables::OutputExtensionColumn::transition_constraints(),
             ]
             .concat(),
-            // TODO
-            boundary_constraints: vec![],
-            //     tables::ProcessorBaseColumn::boundary_constraints(),
-            //     tables::ProcessorExtensionColumn::boundary_constraints(),
-            //     tables::MemoryBaseColumn::boundary_constraints(),
-            //     tables::MemoryExtensionColumn::boundary_constraints(),
-            //     tables::InstructionBaseColumn::boundary_constraints(),
-            //     tables::InstructionExtensionColumn::boundary_constraints(),
-            //     tables::InputExtensionColumn::boundary_constraints(),
-            //     tables::OutputExtensionColumn::boundary_constraints(),
-            // ]
-            // .concat(),
+            boundary_constraints: vec![
+                tables::ProcessorBaseColumn::boundary_constraints(),
+                tables::ProcessorExtensionColumn::boundary_constraints(),
+                tables::MemoryBaseColumn::boundary_constraints(),
+                tables::InstructionBaseColumn::boundary_constraints(),
+                tables::InstructionExtensionColumn::boundary_constraints(),
+                tables::InputExtensionColumn::boundary_constraints(),
+                tables::OutputExtensionColumn::boundary_constraints(),
+            ]
+            .concat(),
         }
     }
 

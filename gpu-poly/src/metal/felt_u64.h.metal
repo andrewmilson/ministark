@@ -4,7 +4,7 @@
 #include "u128.h.metal"
 
 // Fields that use prime 18446744069414584321
-namespace P18446744069414584321
+namespace p18446744069414584321
 {
 
     // Prime field

@@ -28,10 +28,10 @@ impl ministark::constraint::Challenge for Challenge {
 #[derive(Clone, Copy)]
 pub enum ProcessorBaseColumn {
     Cycle,
-    Ip,
+    Ip, // instruction pointer
     CurrInstr,
     NextInstr,
-    Mp,
+    Mp, // memory pointer
     MemVal,
     MemValInv,
 }

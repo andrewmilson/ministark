@@ -113,6 +113,7 @@ FillBuff(device FieldT *dst [[ buffer(0) ]],
     dst[global_tid] = value;
 }
 
+// TODO: not being used. Consider removing
 template<typename FieldT> kernel void
 GenerateTwiddles(device FieldT *dst [[ buffer(0) ]],
         constant FieldT &root [[ buffer(1) ]],
@@ -176,15 +177,15 @@ FftMultiple(device CoeffFieldT *vals [[ buffer(0) ]],
 // - 128 bit prime field
 // - from Stark Anatomy series
 template [[ host_name("fft_single_fp270497897142230380135924736767050121217") ]] kernel void
-FftSingle<P270497897142230380135924736767050121217::Fp>(
-        device P270497897142230380135924736767050121217::Fp*,
-        constant P270497897142230380135924736767050121217::Fp*,
+FftSingle<p270497897142230380135924736767050121217::Fp>(
+        device p270497897142230380135924736767050121217::Fp*,
+        constant p270497897142230380135924736767050121217::Fp*,
         unsigned);
 template [[ host_name("fft_multiple_fp270497897142230380135924736767050121217") ]] kernel void
-FftMultiple<P270497897142230380135924736767050121217::Fp>(
-        device P270497897142230380135924736767050121217::Fp*,
-        constant P270497897142230380135924736767050121217::Fp*,
-        threadgroup P270497897142230380135924736767050121217::Fp*,
+FftMultiple<p270497897142230380135924736767050121217::Fp>(
+        device p270497897142230380135924736767050121217::Fp*,
+        constant p270497897142230380135924736767050121217::Fp*,
+        threadgroup p270497897142230380135924736767050121217::Fp*,
         unsigned,
         unsigned);
 // ===========================================================
@@ -193,69 +194,69 @@ FftMultiple<P270497897142230380135924736767050121217::Fp>(
 // - Polygon filed (usesed by Miden and Zero)
 // - Prime has many nice properties
 template [[ host_name("bit_reverse_p18446744069414584321_fp") ]] kernel void
-BitReverse<P18446744069414584321::Fp>(
-        device P18446744069414584321::Fp*,
+BitReverse<p18446744069414584321::Fp>(
+        device p18446744069414584321::Fp*,
         unsigned);
 template [[ host_name("add_assign_p18446744069414584321_fp") ]] kernel void
-AddAssign<P18446744069414584321::Fp>(
-        device P18446744069414584321::Fp*,
-        constant P18446744069414584321::Fp*,
+AddAssign<p18446744069414584321::Fp>(
+        device p18446744069414584321::Fp*,
+        constant p18446744069414584321::Fp*,
         unsigned);
 template [[ host_name("mul_assign_p18446744069414584321_fp") ]] kernel void
-MulAssign<P18446744069414584321::Fp>(
-        device P18446744069414584321::Fp*,
-        constant P18446744069414584321::Fp*,
+MulAssign<p18446744069414584321::Fp>(
+        device p18446744069414584321::Fp*,
+        constant p18446744069414584321::Fp*,
         unsigned);
 template [[ host_name("mul_pow_p18446744069414584321_fp") ]] kernel void
-MulPow<P18446744069414584321::Fp>(
-        device P18446744069414584321::Fp*,
-        constant P18446744069414584321::Fp*,
+MulPow<p18446744069414584321::Fp>(
+        device p18446744069414584321::Fp*,
+        constant p18446744069414584321::Fp*,
         constant unsigned&,
         constant unsigned&,
         unsigned);
 template [[ host_name("fill_buff_p18446744069414584321_fp") ]] kernel void
-FillBuff<P18446744069414584321::Fp>(
-        device P18446744069414584321::Fp*,
-        constant P18446744069414584321::Fp&,
+FillBuff<p18446744069414584321::Fp>(
+        device p18446744069414584321::Fp*,
+        constant p18446744069414584321::Fp&,
         unsigned);
 template [[ host_name("generate_twiddles_p18446744069414584321_fp") ]] kernel void
-GenerateTwiddles<P18446744069414584321::Fp>(
-        device P18446744069414584321::Fp*,
-        constant P18446744069414584321::Fp&,
+GenerateTwiddles<p18446744069414584321::Fp>(
+        device p18446744069414584321::Fp*,
+        constant p18446744069414584321::Fp&,
         unsigned);
 template [[ host_name("fft_single_p18446744069414584321_fp") ]] kernel void
-FftSingle<P18446744069414584321::Fp>(
-        device P18446744069414584321::Fp*,
-        constant P18446744069414584321::Fp*,
+FftSingle<p18446744069414584321::Fp>(
+        device p18446744069414584321::Fp*,
+        constant p18446744069414584321::Fp*,
         unsigned);
 template [[ host_name("fft_multiple_p18446744069414584321_fp") ]] kernel void
-FftMultiple<P18446744069414584321::Fp>(
-        device P18446744069414584321::Fp*,
-        constant P18446744069414584321::Fp*,
-        threadgroup P18446744069414584321::Fp*,
+FftMultiple<p18446744069414584321::Fp>(
+        device p18446744069414584321::Fp*,
+        constant p18446744069414584321::Fp*,
+        threadgroup p18446744069414584321::Fp*,
         unsigned,
         unsigned);
 // ===========================================================
 // FFT for cubic extension of Fp=18446744069414584321
 template [[ host_name("bit_reverse_p18446744069414584321_fq3") ]] kernel void
-BitReverse<P18446744069414584321::Fq3>(
-        device P18446744069414584321::Fq3*,
+BitReverse<p18446744069414584321::Fq3>(
+        device p18446744069414584321::Fq3*,
         unsigned);
 template [[ host_name("mul_assign_p18446744069414584321_fq3") ]] kernel void
-MulAssign<P18446744069414584321::Fq3>(
-        device P18446744069414584321::Fq3*,
-        constant P18446744069414584321::Fq3*,
+MulAssign<p18446744069414584321::Fq3>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fq3*,
         unsigned);
 template [[ host_name("fft_single_p18446744069414584321_fq3") ]] kernel void
-FftSingle<P18446744069414584321::Fq3, P18446744069414584321::Fp>(
-        device P18446744069414584321::Fq3*,
-        constant P18446744069414584321::Fp*,
+FftSingle<p18446744069414584321::Fq3, p18446744069414584321::Fp>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fp*,
         unsigned);
 template [[ host_name("fft_multiple_p18446744069414584321_fq3") ]] kernel void
-FftMultiple<P18446744069414584321::Fq3, P18446744069414584321::Fp>(
-        device P18446744069414584321::Fq3*,
-        constant P18446744069414584321::Fp*,
-        threadgroup P18446744069414584321::Fq3*,
+FftMultiple<p18446744069414584321::Fq3, p18446744069414584321::Fp>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fp*,
+        threadgroup p18446744069414584321::Fq3*,
         unsigned,
         unsigned);
 // ===========================================================

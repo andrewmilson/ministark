@@ -18,6 +18,17 @@ use ministark::Constraint;
 use std::borrow::Borrow;
 
 impl ProcessorBaseColumn {
+    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use ProcessorBaseColumn::*;
+        vec![
+            Cycle.curr(),
+            Ip.curr(),
+            Mp.curr(),
+            MemVal.curr(),
+            MemValInv.curr(),
+        ]
+    }
+
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use ProcessorBaseColumn::*;
         let one = F::one();
@@ -96,6 +107,11 @@ impl ProcessorBaseColumn {
 }
 
 impl ProcessorExtensionColumn {
+    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use ProcessorExtensionColumn::*;
+        vec![InputEvaluation.curr(), OutputEvaluation.curr()]
+    }
+
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use Challenge::Alpha;
         use Challenge::Beta;
@@ -150,6 +166,11 @@ impl ProcessorExtensionColumn {
 }
 
 impl MemoryBaseColumn {
+    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use MemoryBaseColumn::*;
+        vec![Cycle.curr(), Mp.curr(), MemVal.curr()]
+    }
+
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use MemoryBaseColumn::*;
         let one = F::one();
@@ -271,6 +292,12 @@ impl InstructionExtensionColumn {
 }
 
 impl InputExtensionColumn {
+    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use InputBaseColumn::*;
+        use InputExtensionColumn::*;
+        vec![Evaluation.curr() - Value.curr()]
+    }
+
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use Challenge::Gamma;
         use InputBaseColumn::*;
@@ -280,6 +307,12 @@ impl InputExtensionColumn {
 }
 
 impl OutputExtensionColumn {
+    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use OutputBaseColumn::*;
+        use OutputExtensionColumn::*;
+        vec![Evaluation.curr() - Value.curr()]
+    }
+
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use Challenge::Delta;
         use OutputBaseColumn::*;

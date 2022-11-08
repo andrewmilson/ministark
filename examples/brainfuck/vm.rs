@@ -113,16 +113,17 @@ pub fn simulate(
     output: &mut impl std::io::Write,
 ) -> BrainfuckTrace {
     let mut tape = [0u8; 1024];
-    let mut register = Register::default();
-    register.curr_instr = program[0];
-    register.next_instr = if program.len() == 1 { 0 } else { program[1] };
+    let mut register = Register {
+        curr_instr: program[0],
+        next_instr: if program.len() == 1 { 0 } else { program[1] },
+        ..Default::default()
+    };
 
     // execution trace tables in row major
     let mut processor_rows = Vec::new();
     let mut instruction_rows = Vec::new();
     let mut input_rows = Vec::new();
     let mut output_rows = Vec::new();
-    let mut memory_rows = Vec::new();
 
     for i in 0..program.len() {
         instruction_rows.push(vec![
@@ -219,7 +220,7 @@ pub fn simulate(
     // sort instructions by address
     instruction_rows.sort_by_key(|row| row[0]);
 
-    memory_rows = derive_memory_rows(&processor_rows);
+    let mut memory_rows = derive_memory_rows(&processor_rows);
 
     let padding_len = {
         let max_length = [

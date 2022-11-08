@@ -184,7 +184,7 @@ private:
     }
 };
 
-namespace P270497897142230380135924736767050121217 {
+namespace p270497897142230380135924736767050121217 {
 
 // STARK-friendly prime field (FP) with modulus `1 + 407 * 2^119`.
 //

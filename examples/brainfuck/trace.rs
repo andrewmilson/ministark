@@ -287,7 +287,7 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>)
 
     // prepare
     let mut running_evaluation = Fq3::zero();
-    let mut evaluation_terminal = Fq3::zero();
+    // let mut evaluation_terminal = Fq3::zero();
 
     // loop over all rows
     let mut extension_rows = Vec::new();
