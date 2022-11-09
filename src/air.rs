@@ -396,9 +396,6 @@ pub trait Air {
         // check terminal constraints
         for (i, constraint) in self.terminal_constraints().iter().enumerate() {
             let eval = constraint.evaluate(challenges, last_row, &[]);
-            if !eval.is_zero() {
-                print_row(last_row);
-            }
             assert!(eval.is_zero(), "terminal {i} mismatch");
         }
 
@@ -406,6 +403,12 @@ pub trait Air {
         for (i, [curr, next]) in trace_rows.array_windows::<2>().enumerate() {
             for (j, constraint) in self.transition_constraints().iter().enumerate() {
                 let eval = constraint.evaluate(challenges, curr, next);
+                if !eval.is_zero() {
+                    println!("CURR:::");
+                    print_row(curr);
+                    println!("NEXT:::");
+                    print_row(next);
+                }
                 assert!(eval.is_zero(), "transition {j} mismatch at row {i}");
             }
         }

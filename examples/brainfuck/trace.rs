@@ -65,8 +65,7 @@ impl Trace for BrainfuckTrace {
     type Fp = Fp;
     type Fq = Fq3;
 
-    // const NUM_BASE_COLUMNS: usize = 18;
-    const NUM_BASE_COLUMNS: usize = 18;
+    const NUM_BASE_COLUMNS: usize = 17;
     const NUM_EXTENSION_COLUMNS: usize = 9;
 
     fn len(&self) -> usize {
@@ -169,8 +168,6 @@ fn gen_processor_ext_matrix(
     println!("expected terminal {}", instr_permutation_running_product);
 
     // TODO:
-    // self.extended_matrix = Some(extended_matrix);
-    // self.instr_permutation_terminal = Some(instr_permutation_running_product);
     // self.memory_permutation_terminal = Some(mem_permutation_running_product);
     // self.input_evaluation_terminal = Some(input_running_evaluation);
     // self.output_evaluation_terminal = Some(output_running_evaluation);
@@ -312,19 +309,13 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>)
 }
 
 pub fn into_columns<F: Field, const N: usize>(rows: Vec<[F; N]>) -> Vec<GpuVec<F>> {
-    if rows.is_empty() {
-        Vec::new()
-    } else {
-        let num_cols = rows[0].len();
-        let mut cols = Vec::new();
-        for _ in 0..num_cols {
-            cols.push(Vec::new_in(PageAlignedAllocator));
+    let mut cols = (0..N)
+        .map(|_| Vec::new_in(PageAlignedAllocator))
+        .collect::<Vec<_>>();
+    for row in rows {
+        for (col, val) in cols.iter_mut().zip(row) {
+            col.push(val);
         }
-        for row in rows {
-            for (col, val) in cols.iter_mut().zip(row) {
-                col.push(val);
-            }
-        }
-        cols
     }
+    cols
 }

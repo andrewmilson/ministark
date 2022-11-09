@@ -61,9 +61,9 @@ pub enum MemoryExtensionColumn {
 #[derive(Clone, Copy)]
 pub enum InstructionBaseColumn {
     Ip,
-    CurrInstr,
+    CurrInstr, // 13
     NextInstr,
-    Dummy, // indicate if a row is padding
+    // Dummy, // indicate if a row is padding
 }
 
 #[derive(Clone, Copy)]
@@ -104,7 +104,7 @@ impl BrainfuckColumn for MemoryBaseColumn {
 
 impl BrainfuckColumn for InstructionBaseColumn {
     const FIRST_TRACE_COL_INDEX: usize = MemoryBaseColumn::LAST_TRACE_COL_INDEX + 1;
-    const LAST_TRACE_COL_INDEX: usize = Self::FIRST_TRACE_COL_INDEX + Self::Dummy as usize;
+    const LAST_TRACE_COL_INDEX: usize = Self::FIRST_TRACE_COL_INDEX + Self::NextInstr as usize;
 }
 
 impl BrainfuckColumn for InputBaseColumn {

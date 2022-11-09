@@ -42,6 +42,7 @@ impl OpCode {
 
 /// Lexer turns the source code into a sequence of opcodes
 fn lex(source: &str) -> Vec<OpCode> {
+    println!("{:?}", OpCode::VALUES.map(|v| v as u64));
     let mut operations = Vec::new();
 
     for symbol in source.chars() {
@@ -129,10 +130,11 @@ pub fn simulate(
     for i in 0..program.len() {
         use InstructionBaseColumn::*;
         let mut row = [Fp::zero(); InstructionBaseColumn::NUM_TRACE_COLUMNS];
+        // assert_ne!(program[i] as u64, 12);
         row[Ip as usize] = Fp::from(i as u64);
         row[CurrInstr as usize] = Fp::from(program[i] as u64);
         row[NextInstr as usize] = Fp::from(program.get(i + 1).map_or(0, |&x| x as u64));
-        row[Dummy as usize] = Fp::from(program[i] == 0);
+        // row[Dummy as usize] = Fp::zero();
         instruction_rows.push(row);
     }
 
@@ -156,11 +158,12 @@ pub fn simulate(
 
         instruction_rows.push({
             use InstructionBaseColumn::*;
+            // assert_ne!(register.curr_instr as u64, 12);
             let mut row = [Fp::zero(); InstructionBaseColumn::NUM_TRACE_COLUMNS];
             row[Ip as usize] = Fp::from(register.ip as u64);
             row[CurrInstr as usize] = Fp::from(register.curr_instr as u64);
             row[NextInstr as usize] = Fp::from(register.next_instr as u64);
-            row[Dummy as usize] = Fp::from(register.curr_instr == 0);
+            // row[Dummy as usize] = Fp::from(register.curr_instr == 0);
             row
         });
 
@@ -232,12 +235,27 @@ pub fn simulate(
         row[Ip as usize] = Fp::from(register.ip as u64);
         row[CurrInstr as usize] = Fp::from(register.curr_instr as u64);
         row[NextInstr as usize] = Fp::from(register.next_instr as u64);
-        row[Dummy as usize] = Fp::from(register.curr_instr == 0);
+        // row[Dummy as usize] = Fp::from(register.curr_instr == 0);
         row
     });
 
     // sort instructions by address
     instruction_rows.sort_by_key(|row| row[0]);
+
+    println!(
+        "INSTRU ROOOOO {:?}",
+        instruction_rows[364].map(|v| format!("{v}"))
+    );
+
+    println!(
+        "INSTRU IP {}",
+        instruction_rows[364][InstructionBaseColumn::Ip as usize]
+    );
+
+    println!(
+        "INSTRU Curr {}",
+        instruction_rows[364][InstructionBaseColumn::CurrInstr as usize]
+    );
 
     let mut memory_rows = derive_memory_rows(&processor_rows);
 
@@ -327,7 +345,7 @@ fn pad_instruction_rows(rows: &mut Vec<[Fp; InstructionBaseColumn::NUM_TRACE_COL
     let last_ip = rows.last().unwrap()[Ip as usize];
     while rows.len() < n {
         let mut new_row = [Fp::zero(); InstructionBaseColumn::NUM_TRACE_COLUMNS];
-        new_row[Dummy as usize] = Fp::one();
+        // new_row[Dummy as usize] = Fp::zero(); // handled after table generation
         new_row[Ip as usize] = last_ip;
         new_row[CurrInstr as usize] = Fp::zero();
         new_row[NextInstr as usize] = Fp::zero();
