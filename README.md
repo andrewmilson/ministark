@@ -12,9 +12,9 @@
 
 </div>
 
-miniSTARK allows you to prove the integrity of arbitrary computations to anyone using the power of [STARKs](https://starkware.co/stark/). In the bonehead example above miniSTARK is being used to prove the integrity of a program that outputs "Hello World!" in the [Brainf**k](https://esolangs.org/wiki/Brainfuck) programming language. Anyone can verify the proof instantly.
+miniSTARK allows you to prove the integrity of arbitrary computations to anyone using the power of [STARKs](https://starkware.co/stark/). In the silly example above miniSTARK is used to prove the integrity of a program that outputs "Hello World!" in the [Brainf**k](https://esolangs.org/wiki/Brainfuck) programming language. Anyone can verify the proof instantly.
 
-The library is written Rust but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code is built on [arkworks](https://github.com/arkworks-rs) and is influenced by [Winterfell](https://github.com/novifinancial/winterfell). miniSTARK has plenty of opportunities for optimizations. If zero knowledge, optimizations or Eliptic Curve FFTs get you going then check out what's [coming soon](#coming-soon).
+The library is written [Rust](https://www.rust-lang.org/) but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code uses components from the [arkworks](https://github.com/arkworks-rs) library. The design of miniSTARK was influenced by [Winterfell](https://github.com/novifinancial/winterfell).
 
 ## Demo
 
@@ -97,12 +97,13 @@ cargo run --release --features parallel,asm  --example fib
 
 <h2 id="coming-soon">Coming soon (help wanted)</h2>
 
-- Supporting proofs over Bitcoin's prime field (see [wborgeaud/ecfft-bn254](https://github.com/wborgeaud/ecfft-bn254))
+- Supporting proofs over secp256k1 aka Bitcoin's field (see [ecfft-bn254](https://github.com/wborgeaud/ecfft-bn254))
 - Polynomial arithmetic implemented in [CUDA](https://en.wikipedia.org/wiki/CUDA)
 - TODO: Periodic transition constraints
 - Speed and memory optimizations
 - Using more `arkworks` features
-- Reduce proof size with by batching Merkle proofs
+- Reduce proof size using batched Merkle proofs
+- Generate proofs with STARK friendly hash functions
 - Cairo VM prover (similar to [giza](https://github.com/maxgillett/giza))
 - More tests and benchmarks
 - More GPU field implementations

@@ -62,6 +62,8 @@ const HELLO_WORLD_SOURCE: &str = "
 > .                     print '\n'
 ";
 
+const PROVER_SOURCE_CODE: &str = HELLO_WORLD_SOURCE;
+
 struct BrainfuckProver(ProofOptions);
 
 impl Prover for BrainfuckProver {
@@ -81,6 +83,7 @@ impl Prover for BrainfuckProver {
     fn get_pub_inputs(&self, trace: &BrainfuckTrace) -> ExecutionInfo {
         ExecutionInfo {
             execution_len: trace.base_columns().num_rows(),
+            source_code: PROVER_SOURCE_CODE.to_string(),
             // TODO: add inputs
             input: Vec::new(),
             output: Vec::new(),
@@ -92,7 +95,7 @@ fn main() {
     println!("{:?}", Fp::one());
 
     let now = Instant::now();
-    let program = compile(HELLO_WORLD_SOURCE);
+    let program = compile(PROVER_SOURCE_CODE);
     let mut output = Vec::new();
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
     println!("Output: {}", String::from_utf8(output).unwrap());

@@ -53,6 +53,7 @@ pub trait Prover {
         let base_trace_lde_tree = base_trace_lde.commit_to_rows();
         channel.commit_base_trace(base_trace_lde_tree.root());
         let challenges = air.get_challenges(&mut channel.public_coin);
+        let hints = air.get_hints(&challenges);
 
         let extension_trace = trace.build_extension_columns(&challenges);
         let num_extension_columns = extension_trace.as_ref().map_or(0, |t| t.num_cols());
@@ -65,8 +66,7 @@ pub trait Prover {
         }
 
         #[cfg(debug_assertions)]
-        air.validate_constraints(&challenges, base_trace, extension_trace.as_ref());
-        #[cfg(not(debug_assertions))]
+        air.validate_constraints(&challenges, &hints, base_trace, extension_trace.as_ref());
         drop((base_trace, extension_trace));
 
         let composition_coeffs = air.get_constraint_composition_coeffs(&mut channel.public_coin);
@@ -75,6 +75,7 @@ pub trait Prover {
         let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =
             constraint_coposer.build_commitment(
                 &challenges,
+                &hints,
                 &base_trace_lde,
                 extension_trace_lde.as_ref(),
             );

@@ -26,6 +26,19 @@ impl ministark::constraint::Challenge for Challenge {
 }
 
 #[derive(Clone, Copy)]
+pub enum EvaluationTerminalHint {
+    Instruction,
+    Input,
+    Output,
+}
+
+impl ministark::constraint::Hint for EvaluationTerminalHint {
+    fn index(&self) -> usize {
+        *self as usize
+    }
+}
+
+#[derive(Clone, Copy)]
 pub enum ProcessorBaseColumn {
     Cycle,
     Ip, // instruction pointer

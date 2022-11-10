@@ -1,4 +1,5 @@
 use crate::challenges::Challenges;
+use crate::hints::Hints;
 use crate::matrix::GroupItem;
 use crate::matrix::MatrixGroup;
 use crate::merkle::MerkleTree;
@@ -35,6 +36,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     pub fn evaluate(
         &mut self,
         challenges: &Challenges<A::Fq>,
+        hints: &Hints<A::Fq>,
         base_trace_lde: &Matrix<A::Fp>,
         extension_trace_lde: Option<&Matrix<A::Fq>>,
     ) -> Matrix<A::Fq> {
@@ -132,7 +134,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         }
 
         let lde_step = self.air.lde_blowup_factor();
-        lde_columns.evaluate_symbolic(&[composition_constraint], challenges, lde_step)
+        lde_columns.evaluate_symbolic(&[composition_constraint], challenges, hints, lde_step)
     }
 
     fn trace_polys(&self, composed_evaluations: Matrix<A::Fq>) -> Matrix<A::Fq> {
@@ -168,11 +170,13 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     pub fn build_commitment(
         mut self,
         challenges: &Challenges<A::Fq>,
+        hints: &Hints<A::Fq>,
         base_trace_lde: &Matrix<A::Fp>,
         extension_trace_lde: Option<&Matrix<A::Fq>>,
     ) -> (Matrix<A::Fq>, Matrix<A::Fq>, MerkleTree<Sha256>) {
         let _timer = Timer::new("constraint evaluation");
-        let composed_evaluations = self.evaluate(challenges, base_trace_lde, extension_trace_lde);
+        let composed_evaluations =
+            self.evaluate(challenges, hints, base_trace_lde, extension_trace_lde);
         drop(_timer);
         let composition_trace_polys = self.trace_polys(composed_evaluations);
         let composition_trace_lde = composition_trace_polys.evaluate(self.air.lde_domain());

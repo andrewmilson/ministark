@@ -1,6 +1,7 @@
 use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
 use crate::constraint::Element;
+use crate::hints::Hints;
 use crate::matrix::MatrixGroup;
 use crate::random::PublicCoin;
 use crate::utils;
@@ -276,6 +277,10 @@ pub trait Air {
         }
     }
 
+    fn get_hints(&self, _challenges: &Challenges<Self::Fq>) -> Hints<Self::Fq> {
+        Hints::default()
+    }
+
     // TODO: make this generic
     fn get_constraint_composition_coeffs(
         &self,
@@ -352,6 +357,7 @@ pub trait Air {
     fn validate_constraints(
         &self,
         challenges: &Challenges<Self::Fq>,
+        hints: &Hints<Self::Fq>,
         base_trace: &Matrix<Self::Fp>,
         extension_trace: Option<&Matrix<Self::Fq>>,
     ) {
@@ -364,10 +370,12 @@ pub trait Air {
 
         let mut col_indicies = vec![false; execution_trace.num_cols()];
         let mut challenge_indicies = vec![false; challenges.len()];
+        let mut hint_indicies = vec![false; hints.len()];
         for element in self.all_constraint_elements() {
             match element {
                 Element::Curr(i) | Element::Next(i) => col_indicies[i] = true,
                 Element::Challenge(i) => challenge_indicies[i] = true,
+                Element::Hint(i) => hint_indicies[i] = true,
             }
         }
         for (index, exists) in col_indicies.into_iter().enumerate() {
@@ -382,6 +390,12 @@ pub trait Air {
                 println!("WARN: challenge at index {index} never used");
             }
         }
+        for (index, exists) in hint_indicies.into_iter().enumerate() {
+            if !exists {
+                // TODO: make assertion
+                println!("WARN: hint at index {index} never used");
+            }
+        }
 
         let trace_rows = execution_trace.rows();
         let first_row = trace_rows.first().unwrap();
@@ -389,20 +403,20 @@ pub trait Air {
 
         // check boundary constraints
         for (i, constraint) in self.boundary_constraints().iter().enumerate() {
-            let eval = constraint.evaluate(challenges, first_row, &[]);
+            let eval = constraint.evaluate(challenges, hints, first_row, &[]);
             assert!(eval.is_zero(), "boundary {i} mismatch");
         }
 
         // check terminal constraints
         for (i, constraint) in self.terminal_constraints().iter().enumerate() {
-            let eval = constraint.evaluate(challenges, last_row, &[]);
+            let eval = constraint.evaluate(challenges, hints, last_row, &[]);
             assert!(eval.is_zero(), "terminal {i} mismatch");
         }
 
         // check transition constraints
         for (i, [curr, next]) in trace_rows.array_windows::<2>().enumerate() {
             for (j, constraint) in self.transition_constraints().iter().enumerate() {
-                let eval = constraint.evaluate(challenges, curr, next);
+                let eval = constraint.evaluate(challenges, hints, curr, next);
                 if !eval.is_zero() {
                     println!("CURR:::");
                     print_row(curr);

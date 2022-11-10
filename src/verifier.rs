@@ -2,6 +2,7 @@ use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
 use crate::fri;
 use crate::fri::FriVerifier;
+use crate::hints::Hints;
 use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
 use crate::merkle::MerkleTreeError;
@@ -71,6 +72,7 @@ impl<A: Air> Proof<A> {
         let base_trace_comitment = Output::<Sha256>::from_iter(base_trace_commitment);
         public_coin.reseed(&base_trace_comitment.deref());
         let challenges = air.get_challenges(&mut public_coin);
+        let hints = air.get_hints(&challenges);
 
         let extension_trace_commitment =
             extension_trace_commitment.map(|extension_trace_commitment| {
@@ -91,6 +93,7 @@ impl<A: Air> Proof<A> {
         let calculated_ood_constraint_evaluation = ood_constraint_evaluation(
             composition_coeffs,
             &challenges,
+            &hints,
             &ood_trace_states.0,
             &ood_trace_states.1,
             &air,
@@ -200,6 +203,7 @@ impl<A: Air> Proof<A> {
 fn ood_constraint_evaluation<A: Air>(
     mut composition_coefficients: Vec<(A::Fq, A::Fq)>,
     challenges: &Challenges<A::Fq>,
+    hints: &Hints<A::Fq>,
     curr_trace_evals: &[A::Fq],
     next_trace_evals: &[A::Fq],
     air: &A,
@@ -243,7 +247,7 @@ fn ood_constraint_evaluation<A: Air>(
         boundary_iter.chain(transition_iter).chain(terminal_iter)
     {
         // TODO: proper errors
-        let evaluation = constraint.evaluate(challenges, curr_trace_evals, next_trace_evals);
+        let evaluation = constraint.evaluate(challenges, hints, curr_trace_evals, next_trace_evals);
         // TODO: consider better name here. Multiplying by divisor seems kinda retarded
         let quotient = evaluation * divisor;
 

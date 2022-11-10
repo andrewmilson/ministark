@@ -574,12 +574,13 @@ where
         &self,
         constraints: &[Constraint<Fq>],
         challenges: &[Fq],
+        hints: &[Fq],
         step: usize,
     ) -> Matrix<Fq> {
         let n = self.num_rows();
         let constraints_without_challenges: Vec<Constraint<Fq>> = constraints
             .iter()
-            .map(|c| c.evaluate_challenges(challenges))
+            .map(|c| c.evaluate_constants(challenges, hints))
             .collect();
         if constraints_without_challenges.is_empty() {
             return Matrix::new(vec![]);

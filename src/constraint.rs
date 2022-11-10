@@ -23,6 +23,7 @@ pub enum Element {
     Curr(usize),
     Next(usize),
     Challenge(usize),
+    Hint(usize),
 }
 
 impl Element {
@@ -40,6 +41,14 @@ impl<F: GpuField> From<Element> for Constraint<F> {
             F::one(),
             Variables::new(vec![(element, 1)]),
         )])
+    }
+}
+
+pub trait Hint {
+    fn index(&self) -> usize;
+
+    fn get_hint<F: GpuField>(&self) -> Constraint<F> {
+        Constraint::from(Element::Hint(self.index()))
     }
 }
 
@@ -102,13 +111,13 @@ impl Variables {
     }
 
     /// Returns the combined degree of all variables
-    fn degree(&self, include_challenges: bool) -> usize {
+    fn degree(&self, include_symbolic_constants: bool) -> usize {
         self.0
             .iter()
             .filter(|element| match element.0 {
-                // challenges are symbolic constants so they don't necessarily
+                // challenges and hints are symbolic constants so they don't necessarily
                 // contribute to the degree.
-                Element::Challenge(_) => include_challenges,
+                Element::Challenge(_) | Element::Hint(_) => include_symbolic_constants,
                 _ => true,
             })
             .fold(0, |sum, element| sum + element.1)
@@ -145,6 +154,7 @@ impl core::fmt::Debug for Variables {
                 Element::Curr(index) => write!(f, "x_{}", index)?,
                 Element::Next(index) => write!(f, "x'_{}", index)?,
                 Element::Challenge(index) => write!(f, "c_{}", index)?,
+                Element::Hint(index) => write!(f, "h_{}", index)?,
             };
             if !power.is_one() {
                 write!(f, "^{power}")?;
@@ -194,7 +204,7 @@ impl<F: GpuField> Term<F> {
         Term(coefficient, variables)
     }
 
-    fn evaluate_challenges(&self, challenges: &[F]) -> Self {
+    fn evaluate_constants(&self, challenges: &[F], hints: &[F]) -> Self {
         let mut new_coefficient = self.0;
         let mut new_variables = Vec::new();
         // TODO: could turn variables into an itterator
@@ -202,6 +212,9 @@ impl<F: GpuField> Term<F> {
             match variable {
                 (Element::Challenge(index), power) => {
                     new_coefficient *= challenges[*index].pow([*power as u64])
+                }
+                (Element::Hint(index), power) => {
+                    new_coefficient *= hints[*index].pow([*power as u64])
                 }
                 other => new_variables.push(*other),
             }
@@ -317,16 +330,16 @@ impl<F: GpuField> Constraint<F> {
         combined_terms
     }
 
-    pub fn evaluate_challenges(&self, challenges: &[F]) -> Self {
+    pub fn evaluate_constants(&self, challenges: &[F], hints: &[F]) -> Self {
         Constraint::new(
             self.0
                 .iter()
-                .map(|term| term.evaluate_challenges(challenges))
+                .map(|term| term.evaluate_constants(challenges, hints))
                 .collect(),
         )
     }
 
-    pub fn evaluate(&self, challenges: &[F], current_row: &[F], next_row: &[F]) -> F {
+    pub fn evaluate(&self, challenges: &[F], hints: &[F], current_row: &[F], next_row: &[F]) -> F {
         let mut result = F::zero();
         for Term(coeff, vars) in self.0.iter() {
             let mut scratch = *coeff;
@@ -335,6 +348,7 @@ impl<F: GpuField> Constraint<F> {
                     Element::Curr(index) => current_row[index],
                     Element::Next(index) => next_row[index],
                     Element::Challenge(index) => challenges[index],
+                    Element::Hint(index) => hints[index],
                 };
                 scratch *= val.pow([power as u64]);
             }

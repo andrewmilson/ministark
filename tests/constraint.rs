@@ -24,11 +24,14 @@ use ministark::Matrix;
 
 #[test]
 fn constraint_with_challenges() {
+    // TODO: hints
     let constraint = (0.get_challenge() - 0.curr()) * 1.curr();
     let challenges = [Fp::one()];
     let col_values = [Fp::one(), Fp::from(100)];
 
-    assert!(constraint.evaluate(&challenges, &col_values, &[]).is_zero());
+    assert!(constraint
+        .evaluate(&challenges, &[], &col_values, &[])
+        .is_zero());
 }
 
 #[test]
@@ -45,7 +48,8 @@ fn symbolic_evaluation_with_challenges() {
     let lde_matrix = poly_matrix.evaluate(lde_domain);
     let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
 
-    let constraint_eval = matrix_group.evaluate_symbolic(&[constraint], &[alpha, beta], blowup);
+    let constraint_eval =
+        matrix_group.evaluate_symbolic(&[constraint], &[alpha, beta], &[], blowup);
 
     let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
@@ -68,7 +72,7 @@ fn constraint_multiplication() {
     let twelve = eleven + one;
 
     // checks the column values are between 0 and 10
-    let is_between_0_and_10: Constraint<Fp> = (0.curr() - one)
+    let between_0_and_10: Constraint<Fp> = (0.curr() - one)
         * (0.curr() - two)
         * (0.curr() - three)
         * (0.curr() - four)
@@ -78,21 +82,25 @@ fn constraint_multiplication() {
         * (0.curr() - eight)
         * (0.curr() - nine);
 
-    assert!(!is_between_0_and_10.evaluate(&[], &[-two], &[]).is_zero());
-    assert!(!is_between_0_and_10.evaluate(&[], &[-one], &[]).is_zero());
-    assert!(!is_between_0_and_10.evaluate(&[], &[zero], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[one], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[two], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[three], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[four], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[five], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[six], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[seven], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[eight], &[]).is_zero());
-    assert!(is_between_0_and_10.evaluate(&[], &[nine], &[]).is_zero());
-    assert!(!is_between_0_and_10.evaluate(&[], &[ten], &[]).is_zero());
-    assert!(!is_between_0_and_10.evaluate(&[], &[eleven], &[]).is_zero());
-    assert!(!is_between_0_and_10.evaluate(&[], &[twelve], &[]).is_zero());
+    assert!(!between_0_and_10.evaluate(&[], &[], &[-two], &[]).is_zero());
+    assert!(!between_0_and_10.evaluate(&[], &[], &[-one], &[]).is_zero());
+    assert!(!between_0_and_10.evaluate(&[], &[], &[zero], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[one], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[two], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[three], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[four], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[five], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[six], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[seven], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[eight], &[]).is_zero());
+    assert!(between_0_and_10.evaluate(&[], &[], &[nine], &[]).is_zero());
+    assert!(!between_0_and_10.evaluate(&[], &[], &[ten], &[]).is_zero());
+    assert!(!between_0_and_10
+        .evaluate(&[], &[], &[eleven], &[])
+        .is_zero());
+    assert!(!between_0_and_10
+        .evaluate(&[], &[], &[twelve], &[])
+        .is_zero());
 }
 
 #[test]
@@ -109,7 +117,7 @@ fn evaluate_fibonacci_constraint() {
         are_eq(1.next(), 0.next() + 1.curr()),
     ];
 
-    let constraint_evals = matrix_group.evaluate_symbolic(&constraints, &[], 1);
+    let constraint_evals = matrix_group.evaluate_symbolic(&constraints, &[], &[], 1);
 
     let constraint_evals_poly = constraint_evals.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_evals_poly);
@@ -127,7 +135,7 @@ fn evaluate_binary_constraint() {
     let lde_matrix = poly_matrix.evaluate(lde_domain);
     let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
 
-    let constraint_eval = matrix_group.evaluate_symbolic(&[constraint], &[], blowup);
+    let constraint_eval = matrix_group.evaluate_symbolic(&[constraint], &[], &[], blowup);
 
     let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
@@ -181,7 +189,7 @@ fn evaluate_permutation_constraint() {
     let lde_matrix = poly_matrix.evaluate(lde_domain);
     let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
 
-    let constraint_evals = matrix_group.evaluate_symbolic(&constraints, &[challenge], blowup);
+    let constraint_evals = matrix_group.evaluate_symbolic(&constraints, &[challenge], &[], blowup);
 
     let last_original_val = matrix.0[original_col].last().unwrap();
     let last_shuffled_val = matrix.0[shuffled_col].last().unwrap();
@@ -225,7 +233,7 @@ fn evaluate_zerofier_constraint() {
     let lde_matrix = poly_matrix.evaluate(lde_domain);
     let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
 
-    let constraint_eval = matrix_group.evaluate_symbolic(&[constraint], challenges, blowup);
+    let constraint_eval = matrix_group.evaluate_symbolic(&[constraint], challenges, &[], blowup);
 
     let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);

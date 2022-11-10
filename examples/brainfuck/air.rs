@@ -10,6 +10,7 @@ use ministark::TraceInfo;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct ExecutionInfo {
+    pub source_code: String,
     pub execution_len: usize,
     pub input: Vec<usize>,
     pub output: Vec<usize>,
@@ -84,3 +85,7 @@ impl Air for BrainfuckAir {
         &self.trace_info
     }
 }
+
+// fn compute_instr_eval_terminal(source_code: &str) {
+//     lex(source_code)
+// }
