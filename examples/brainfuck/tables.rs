@@ -26,13 +26,15 @@ impl ministark::constraint::Challenge for Challenge {
 }
 
 #[derive(Clone, Copy)]
-pub enum EvaluationTerminalHint {
+pub enum EvaluationArgumentHint {
     Instruction,
     Input,
+    InputOffset,
     Output,
+    OutputOffset,
 }
 
-impl ministark::constraint::Hint for EvaluationTerminalHint {
+impl ministark::constraint::Hint for EvaluationArgumentHint {
     fn index(&self) -> usize {
         *self as usize
     }

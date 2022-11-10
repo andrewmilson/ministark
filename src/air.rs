@@ -362,7 +362,6 @@ pub trait Air {
         extension_trace: Option<&Matrix<Self::Fq>>,
     ) {
         use crate::matrix::GroupItem;
-        use crate::utils::print_row;
         let mut execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
         if let Some(extension_trace) = extension_trace.as_ref() {
             execution_trace.append(GroupItem::Fq(extension_trace))
@@ -371,6 +370,7 @@ pub trait Air {
         let mut col_indicies = vec![false; execution_trace.num_cols()];
         let mut challenge_indicies = vec![false; challenges.len()];
         let mut hint_indicies = vec![false; hints.len()];
+
         for element in self.all_constraint_elements() {
             match element {
                 Element::Curr(i) | Element::Next(i) => col_indicies[i] = true,
@@ -378,18 +378,21 @@ pub trait Air {
                 Element::Hint(i) => hint_indicies[i] = true,
             }
         }
+
         for (index, exists) in col_indicies.into_iter().enumerate() {
             if !exists {
                 // TODO: make assertion
                 println!("WARN: no constraints for column {index}");
             }
         }
+
         for (index, exists) in challenge_indicies.into_iter().enumerate() {
             if !exists {
                 // TODO: make assertion
                 println!("WARN: challenge at index {index} never used");
             }
         }
+
         for (index, exists) in hint_indicies.into_iter().enumerate() {
             if !exists {
                 // TODO: make assertion
@@ -417,12 +420,6 @@ pub trait Air {
         for (i, [curr, next]) in trace_rows.array_windows::<2>().enumerate() {
             for (j, constraint) in self.transition_constraints().iter().enumerate() {
                 let eval = constraint.evaluate(challenges, hints, curr, next);
-                if !eval.is_zero() {
-                    println!("CURR:::");
-                    print_row(curr);
-                    println!("NEXT:::");
-                    print_row(next);
-                }
                 assert!(eval.is_zero(), "transition {j} mismatch at row {i}");
             }
         }

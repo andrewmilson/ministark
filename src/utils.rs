@@ -41,12 +41,12 @@ pub fn interleave<T: Copy + Send + Sync + Default, const RADIX: usize>(
     res
 }
 
-pub(crate) fn print_row<F: Field>(row: &[F]) {
-    for val in row {
-        print!("{val}, ");
-    }
-    println!()
-}
+// pub(crate) fn print_row<F: Field>(row: &[F]) {
+//     for val in row {
+//         print!("{val}, ");
+//     }
+//     println!()
+// }
 
 /// Rounds the input value up the the nearest power of two
 pub fn ceil_power_of_two(value: usize) -> usize {

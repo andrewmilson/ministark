@@ -7,7 +7,6 @@ use gpu_poly::fields::p18446744069414584321::Fp;
 use gpu_poly::fields::p18446744069414584321::Fq3;
 use ministark::ProofOptions;
 use ministark::Prover;
-use ministark::Trace;
 use std::time::Instant;
 use trace::BrainfuckTrace;
 use vm::compile;
@@ -82,11 +81,9 @@ impl Prover for BrainfuckProver {
 
     fn get_pub_inputs(&self, trace: &BrainfuckTrace) -> ExecutionInfo {
         ExecutionInfo {
-            execution_len: trace.base_columns().num_rows(),
             source_code: PROVER_SOURCE_CODE.to_string(),
-            // TODO: add inputs
-            input: Vec::new(),
-            output: Vec::new(),
+            input: trace.input_symbols().to_vec(),
+            output: trace.output_symbols().to_vec(),
         }
     }
 }

@@ -10,7 +10,7 @@ impl<F: GpuField> Hints<F> {
     pub fn new(mut hints: Vec<(usize, F)>) -> Self {
         hints.sort();
         for [(a, _), (b, _)] in hints.array_windows() {
-            assert_ne!(a, b, "multiple hints exist at index {a}");
+            assert!(a != b, "multiple hints exist at index {a}");
         }
         for (expected, (actual, _)) in (0..hints.len()).zip(&hints) {
             assert!(expected == *actual, "missing hint at index {expected}")

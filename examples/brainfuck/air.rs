@@ -1,8 +1,16 @@
 use crate::tables;
+use crate::tables::Challenge;
+use crate::tables::EvaluationArgumentHint;
+use crate::vm::compile;
+use ark_ff::Field;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use gpu_poly::fields::p18446744069414584321::Fp;
 use gpu_poly::fields::p18446744069414584321::Fq3;
+use gpu_poly::GpuField;
+use ministark::challenges::Challenges;
+use ministark::constraint::Hint;
+use ministark::hints::Hints;
 use ministark::Air;
 use ministark::Constraint;
 use ministark::ProofOptions;
@@ -11,7 +19,6 @@ use ministark::TraceInfo;
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct ExecutionInfo {
     pub source_code: String,
-    pub execution_len: usize,
     pub input: Vec<usize>,
     pub output: Vec<usize>,
 }
@@ -56,9 +63,40 @@ impl Air for BrainfuckAir {
                 tables::OutputExtensionColumn::boundary_constraints(),
             ]
             .concat(),
-            terminal_constraints: vec![tables::ProcessorExtensionColumn::terminal_constraints()]
-                .concat(),
+            terminal_constraints: vec![
+                tables::ProcessorExtensionColumn::terminal_constraints(),
+                tables::InstructionExtensionColumn::terminal_constraints(),
+                tables::InputExtensionColumn::terminal_constraints(),
+                tables::OutputExtensionColumn::terminal_constraints(),
+            ]
+            .concat(),
         }
+    }
+
+    fn get_hints(&self, challenges: &Challenges<Self::Fq>) -> Hints<Self::Fq> {
+        use Challenge::*;
+        use EvaluationArgumentHint::*;
+
+        let ExecutionInfo {
+            source_code,
+            input,
+            output,
+        } = &self.execution_info;
+        let trace_len = self.trace_info().trace_len;
+
+        let (input_eval_arg, input_eval_offset) =
+            io_terminal_helper(input, challenges[Gamma], trace_len);
+        let (output_eval_arg, output_eval_offset) =
+            io_terminal_helper(output, challenges[Delta], trace_len);
+        let instruction_eval_arg = compute_instruction_evaluation_argument(source_code, challenges);
+
+        Hints::new(vec![
+            (Instruction.index(), instruction_eval_arg),
+            (Input.index(), input_eval_arg),
+            (InputOffset.index(), input_eval_offset),
+            (Output.index(), output_eval_arg),
+            (OutputOffset.index(), output_eval_offset),
+        ])
     }
 
     fn options(&self) -> &ProofOptions {
@@ -86,6 +124,43 @@ impl Air for BrainfuckAir {
     }
 }
 
-// fn compute_instr_eval_terminal(source_code: &str) {
-//     lex(source_code)
-// }
+// Computes the evaluation terminal for the instruction table
+fn compute_instruction_evaluation_argument<F: GpuField>(
+    source_code: &str,
+    challenges: &Challenges<F>,
+) -> F {
+    use Challenge::Eta;
+    use Challenge::A;
+    use Challenge::B;
+    use Challenge::C;
+    let mut program = compile(source_code);
+    // add padding
+    program.push(0);
+    // let prev_ip = None;
+    let mut acc = F::zero();
+    for (ip, curr_instr) in program.iter().copied().enumerate() {
+        let next_instr = program.get(ip + 1).copied().unwrap_or(0);
+        acc = acc * challenges[Eta]
+            + challenges[A] * F::from(ip as u64)
+            + challenges[B] * F::from(curr_instr as u64)
+            + challenges[C] * F::from(next_instr as u64);
+    }
+    acc
+}
+
+// Computes the evaluation terminal for the input and output table
+// output is of the form `(evaluatoin_argument, evaluation_offset)`
+fn io_terminal_helper<F: Field>(symbols: &[usize], challenge: F, trace_len: usize) -> (F, F) {
+    let mut acc = F::zero();
+    for symbol in symbols {
+        acc = challenge * acc + F::from(*symbol as u64);
+    }
+    let evaluation_argument = acc;
+    // from BrainSTARK
+    // In every additional row, the running evaluation variable is
+    // multiplied by another `challenge` factor. So we multiply by
+    // `challenge^(trace_len - num_symbols)` to get the value of
+    // the evaluation terminal after all 2^k trace rows.
+    let offset = challenge.pow([(trace_len - symbols.len()) as u64]);
+    (evaluation_argument, offset)
+}

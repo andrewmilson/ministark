@@ -27,6 +27,8 @@ use ministark::Matrix;
 use ministark::Trace;
 
 pub struct BrainfuckTrace {
+    input: Vec<usize>,
+    output: Vec<usize>,
     processor_base_trace: Matrix<Fp>,
     memory_base_trace: Matrix<Fp>,
     instruction_base_trace: Matrix<Fp>,
@@ -37,6 +39,8 @@ pub struct BrainfuckTrace {
 
 impl BrainfuckTrace {
     pub fn new(
+        input: Vec<usize>,
+        output: Vec<usize>,
         processor_base_trace: Matrix<Fp>,
         memory_base_trace: Matrix<Fp>,
         instruction_base_trace: Matrix<Fp>,
@@ -51,6 +55,8 @@ impl BrainfuckTrace {
             output_base_trace.clone(),
         ]);
         BrainfuckTrace {
+            input,
+            output,
             processor_base_trace,
             memory_base_trace,
             instruction_base_trace,
@@ -58,6 +64,14 @@ impl BrainfuckTrace {
             output_base_trace,
             base_trace,
         }
+    }
+
+    pub fn input_symbols(&self) -> &[usize] {
+        &self.input
+    }
+
+    pub fn output_symbols(&self) -> &[usize] {
+        &self.output
     }
 }
 
@@ -165,12 +179,6 @@ fn gen_processor_ext_matrix(
         extension_rows.push(extension_row);
     }
 
-    println!("expected terminal {}", instr_permutation_running_product);
-
-    // TODO:
-    // self.memory_permutation_terminal = Some(mem_permutation_running_product);
-    // self.input_evaluation_terminal = Some(input_running_evaluation);
-    // self.output_evaluation_terminal = Some(output_running_evaluation);
     Matrix::new(into_columns(extension_rows))
 }
 
@@ -252,8 +260,6 @@ fn gen_instruction_ext_matrix(
         extension_rows.push(extension_row);
     }
 
-    println!("expected  instr terminal {}", permutation_running_product);
-
     Matrix::new(into_columns(extension_rows))
 }
 
@@ -272,10 +278,6 @@ fn gen_input_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>) 
         let mut extension_row = [Fq3::zero(); InputExtensionColumn::NUM_TRACE_COLUMNS];
         running_evaluation = running_evaluation * challenges[Gamma] + &base_row[Value as usize];
         extension_row[Evaluation as usize] = running_evaluation;
-        // TODO:
-        // if !self.len().is_zero() && i == self.len() - 1 {
-        //     evaluation_terminal = running_evaluation;
-        // }
         extension_rows.push(extension_row);
     }
 
@@ -289,7 +291,6 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>)
 
     // prepare
     let mut running_evaluation = Fq3::zero();
-    // let mut evaluation_terminal = Fq3::zero();
 
     // loop over all rows
     let mut extension_rows = Vec::new();
@@ -298,10 +299,6 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>)
         let mut extension_row = [Fq3::zero(); OutputExtensionColumn::NUM_TRACE_COLUMNS];
         running_evaluation = running_evaluation * challenges[Delta] + &base_row[Value as usize];
         extension_row[Evaluation as usize] = running_evaluation;
-        // TODO:
-        // if !self.len().is_zero() && i == self.len() - 1 {
-        //     evaluation_terminal = running_evaluation;
-        // }
         extension_rows.push(extension_row);
     }
 

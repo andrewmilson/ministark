@@ -120,6 +120,9 @@ pub fn simulate(
         ..Default::default()
     };
 
+    let mut input_symbols = Vec::new();
+    let mut output_symbols = Vec::new();
+
     // execution trace tables in row major
     let mut processor_rows = Vec::new();
     let mut instruction_rows = Vec::new();
@@ -197,12 +200,14 @@ pub fn simulate(
             let x = &tape[register.mp..register.mp + 1];
             output.write_all(x).expect("failed to write output");
             output_rows.push([x[0].into()]);
+            output_symbols.push(x[0].into());
         } else if register.curr_instr == OpCode::Read as usize {
             register.ip += 1;
             let mut x = [0u8; 1];
             input.read_exact(&mut x).expect("failed to read input");
             tape[register.mp] = x[0];
-            input_rows.push([x[0].into()])
+            input_rows.push([x[0].into()]);
+            input_symbols.push(x[0].into());
         } else {
             panic!("unrecognized instruction at ip:{}", register.ip);
         }
@@ -301,6 +306,8 @@ pub fn simulate(
     println!("Cycles:{}, Trace len:{padding_len}", register.cycle);
 
     BrainfuckTrace::new(
+        input_symbols,
+        output_symbols,
         processor_base_trace,
         memory_base_trace,
         instruction_base_trace,

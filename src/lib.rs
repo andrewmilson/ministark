@@ -16,7 +16,7 @@ mod channel;
 mod composer;
 pub mod constraint;
 pub mod fri;
-mod hints;
+pub mod hints;
 pub mod matrix;
 pub mod merkle;
 mod prover;

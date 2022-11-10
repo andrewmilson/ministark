@@ -1,4 +1,5 @@
 use crate::tables::Challenge;
+use crate::tables::EvaluationArgumentHint;
 use crate::tables::InputBaseColumn;
 use crate::tables::InputExtensionColumn;
 use crate::tables::InstructionBaseColumn;
@@ -13,6 +14,7 @@ use crate::vm::OpCode;
 use ark_ff::Zero;
 use gpu_poly::GpuField;
 use ministark::constraint::Challenge as _;
+use ministark::constraint::Hint;
 use ministark::Column;
 use ministark::Constraint;
 use std::borrow::Borrow;
@@ -120,8 +122,6 @@ impl ProcessorExtensionColumn {
     pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use Challenge::Alpha;
         use Challenge::Beta;
-        use Challenge::Delta;
-        use Challenge::Gamma;
         use Challenge::A;
         use Challenge::B;
         use Challenge::C;
@@ -181,8 +181,8 @@ impl ProcessorExtensionColumn {
                             - Challenge::D.get_challenge() * Cycle.curr()
                             - Challenge::E.get_challenge() * Mp.curr()
                             - Challenge::F.get_challenge() * MemVal.curr()))
-                            // 2. memory table is padding but processor table is not
-                                            + MemoryBaseColumn::Dummy.curr()
+                // 2. memory table is padding but processor table is not
+                + MemoryBaseColumn::Dummy.curr()
                     * (Dummy.curr() - one)
                     * (MemoryExtensionColumn::Permutation.curr()
                         - MemoryPermutation.curr()
@@ -191,7 +191,7 @@ impl ProcessorExtensionColumn {
                                 - Challenge::E.get_challenge() * Mp.curr()
                                 - Challenge::F.get_challenge() * MemVal.curr()))
                 // 3. processor is padding but memory table is not
-                                + (MemoryBaseColumn::Dummy.curr() - one)
+                + (MemoryBaseColumn::Dummy.curr() - one)
                     * Dummy.curr()
                     * (MemoryExtensionColumn::Permutation.curr()
                         * (Beta.get_challenge()
@@ -199,10 +199,14 @@ impl ProcessorExtensionColumn {
                             - Challenge::E.get_challenge() * MemoryBaseColumn::Mp.curr()
                             - Challenge::F.get_challenge() * MemoryBaseColumn::MemVal.curr())
                         - MemoryPermutation.curr())
-                    // 4. processor and instruction are padding
-                                    + MemoryBaseColumn::Dummy.curr()
+                // 4. processor and instruction are padding
+                + MemoryBaseColumn::Dummy.curr()
                     * Dummy.curr()
                     * (MemoryExtensionColumn::Permutation.curr() - MemoryPermutation.curr()),
+            // // input evaluation:
+            InputEvaluation.curr() - EvaluationArgumentHint::Input.get_hint(),
+            // // output evaluation:
+            OutputEvaluation.curr() - EvaluationArgumentHint::Output.get_hint(),
         ]
     }
 
@@ -352,6 +356,11 @@ impl InstructionExtensionColumn {
         ]
     }
 
+    pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use InstructionExtensionColumn::*;
+        vec![ProgramEvaluation.curr() - EvaluationArgumentHint::Instruction.get_hint()]
+    }
+
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use Challenge::Alpha;
         use Challenge::Eta;
@@ -397,6 +406,15 @@ impl InputExtensionColumn {
         vec![Evaluation.curr() - Value.curr()]
     }
 
+    pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use InputExtensionColumn::*;
+        vec![
+            Evaluation.curr()
+                - EvaluationArgumentHint::Input.get_hint()
+                    * EvaluationArgumentHint::InputOffset.get_hint(),
+        ]
+    }
+
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
         use Challenge::Gamma;
         use InputBaseColumn::*;
@@ -410,6 +428,15 @@ impl OutputExtensionColumn {
         use OutputBaseColumn::*;
         use OutputExtensionColumn::*;
         vec![Evaluation.curr() - Value.curr()]
+    }
+
+    pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+        use OutputExtensionColumn::*;
+        vec![
+            Evaluation.curr()
+                - EvaluationArgumentHint::Output.get_hint()
+                    * EvaluationArgumentHint::OutputOffset.get_hint(),
+        ]
     }
 
     pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
