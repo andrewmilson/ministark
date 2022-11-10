@@ -2,6 +2,7 @@
 
 use ark_ff::One;
 use ark_ff_optimized::fp64::Fp;
+use ark_serialize::CanonicalSerialize;
 use gpu_poly::allocator::PageAlignedAllocator;
 use ministark::constraint::are_eq;
 use ministark::Air;
@@ -54,12 +55,12 @@ impl FibAir {
         vec![
             are_eq(0.curr(), v0),
             are_eq(1.curr(), v1),
-            are_eq(2.curr(), v2),
-            are_eq(3.curr(), v3),
-            are_eq(4.curr(), v4),
-            are_eq(5.curr(), v5),
-            are_eq(6.curr(), v6),
-            are_eq(7.curr(), v7),
+            // are_eq(2.curr(), v2),
+            // are_eq(3.curr(), v3),
+            // are_eq(4.curr(), v4),
+            // are_eq(5.curr(), v5),
+            // are_eq(6.curr(), v6),
+            // are_eq(7.curr(), v7),
         ]
     }
 
@@ -198,10 +199,13 @@ fn main() {
     let now = Instant::now();
     let options = ProofOptions::new(32, 4, 8, 8, 64);
     let prover = FibProver::new(options);
-    let trace = gen_trace(1048576);
+    let trace = gen_trace(1048576 * 16);
 
     let proof = prover.generate_proof(trace).unwrap();
     println!("Runtime: {:?}", now.elapsed());
+    let mut proof_bytes = Vec::new();
+    proof.serialize_compressed(&mut proof_bytes).unwrap();
+    println!("Result: {:?}", proof_bytes.len());
 
     proof.verify().unwrap();
 }

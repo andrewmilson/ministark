@@ -18,7 +18,7 @@ The library is written [Rust](https://www.rust-lang.org/) but [Metal](https://de
 
 ## Demo
 
-### Proving Hello World in brainf**k
+### Proving "Hello World!" in brainf**k
 
 TODO
 

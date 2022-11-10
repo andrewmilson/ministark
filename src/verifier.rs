@@ -100,7 +100,6 @@ impl<A: Air> Proof<A> {
             z,
         );
 
-        // TODO: why not proof only include single value for constraint eval?
         public_coin.reseed(&ood_constraint_evaluations);
         let mut acc = A::Fq::one();
         let provided_ood_constraint_evaluation =

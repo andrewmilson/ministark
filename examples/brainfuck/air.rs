@@ -3,11 +3,11 @@ use crate::tables::Challenge;
 use crate::tables::EvaluationArgumentHint;
 use crate::vm::compile;
 use ark_ff::Field;
+use ark_ff::Zero;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use gpu_poly::fields::p18446744069414584321::Fp;
 use gpu_poly::fields::p18446744069414584321::Fq3;
-use gpu_poly::GpuField;
 use ministark::challenges::Challenges;
 use ministark::constraint::Hint;
 use ministark::hints::Hints;
@@ -125,10 +125,7 @@ impl Air for BrainfuckAir {
 }
 
 // Computes the evaluation terminal for the instruction table
-fn compute_instruction_evaluation_argument<F: GpuField>(
-    source_code: &str,
-    challenges: &Challenges<F>,
-) -> F {
+fn compute_instruction_evaluation_argument(source_code: &str, challenges: &Challenges<Fq3>) -> Fq3 {
     use Challenge::Eta;
     use Challenge::A;
     use Challenge::B;
@@ -137,13 +134,13 @@ fn compute_instruction_evaluation_argument<F: GpuField>(
     // add padding
     program.push(0);
     // let prev_ip = None;
-    let mut acc = F::zero();
+    let mut acc = Fq3::zero();
     for (ip, curr_instr) in program.iter().copied().enumerate() {
         let next_instr = program.get(ip + 1).copied().unwrap_or(0);
         acc = acc * challenges[Eta]
-            + challenges[A] * F::from(ip as u64)
-            + challenges[B] * F::from(curr_instr as u64)
-            + challenges[C] * F::from(next_instr as u64);
+            + challenges[A] * Fp::from(ip as u64)
+            + challenges[B] * Fp::from(curr_instr as u64)
+            + challenges[C] * Fp::from(next_instr as u64);
     }
     acc
 }

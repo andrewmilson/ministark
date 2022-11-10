@@ -3,6 +3,7 @@
 use air::BrainfuckAir;
 use air::ExecutionInfo;
 use ark_ff::One;
+use ark_serialize::CanonicalSerialize;
 use gpu_poly::fields::p18446744069414584321::Fp;
 use gpu_poly::fields::p18446744069414584321::Fq3;
 use ministark::ProofOptions;
@@ -97,14 +98,13 @@ fn main() {
     let trace = simulate(&program, &mut std::io::empty(), &mut output);
     println!("Output: {}", String::from_utf8(output).unwrap());
 
-    let options = ProofOptions::new(32, 16, 8, 8, 64);
+    let options = ProofOptions::new(32, 16, 16, 8, 64);
     let prover = BrainfuckProver::new(options);
     let proof = prover.generate_proof(trace);
     println!("Runtime: {:?}", now.elapsed());
     let proof = proof.unwrap();
-    // let mut proof_bytes = Vec::new();
-    //     .serialize_compressed(&mut proof_bytes)
-    //     .unwrap();
-    // println!("Result: {:?}kb", proof_bytes.len() / 1024);
+    let mut proof_bytes = Vec::new();
+    proof.serialize_compressed(&mut proof_bytes).unwrap();
+    println!("Result: {:?}", proof_bytes.len());
     proof.verify().unwrap();
 }

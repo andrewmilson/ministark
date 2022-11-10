@@ -5,6 +5,7 @@ use digest::Output;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
+// TODO: refactor public coin/channel stuff
 pub struct PublicCoin<D: Digest> {
     pub seed: Output<D>,
     counter: usize,
