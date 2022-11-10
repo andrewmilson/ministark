@@ -3,8 +3,6 @@
 use ark_ff::One;
 use ark_ff::Zero;
 use gpu_poly::prelude::*;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::Add;

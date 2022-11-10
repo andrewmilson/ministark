@@ -2,13 +2,11 @@ use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
 use crate::constraint::Element;
 use crate::hints::Hints;
-use crate::matrix::MatrixGroup;
 use crate::random::PublicCoin;
 use crate::utils;
 use crate::utils::fill_vanishing_polynomial;
 use crate::utils::Timer;
 use crate::Constraint;
-use crate::Matrix;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::TraceInfo;
@@ -358,10 +356,12 @@ pub trait Air {
         &self,
         challenges: &Challenges<Self::Fq>,
         hints: &Hints<Self::Fq>,
-        base_trace: &Matrix<Self::Fp>,
-        extension_trace: Option<&Matrix<Self::Fq>>,
+        base_trace: &crate::Matrix<Self::Fp>,
+        extension_trace: Option<&crate::Matrix<Self::Fq>>,
     ) {
         use crate::matrix::GroupItem;
+        use crate::matrix::MatrixGroup;
+
         let mut execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
         if let Some(extension_trace) = extension_trace.as_ref() {
             execution_trace.append(GroupItem::Fq(extension_trace))
