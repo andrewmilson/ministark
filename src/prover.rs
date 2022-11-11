@@ -5,7 +5,6 @@ use crate::fri::FriProver;
 use crate::matrix::GroupItem;
 use crate::matrix::MatrixGroup;
 use crate::trace::Queries;
-use crate::utils::Timer;
 use crate::Air;
 use crate::Proof;
 use crate::ProofOptions;
@@ -35,8 +34,6 @@ pub trait Prover {
     fn options(&self) -> ProofOptions;
 
     fn generate_proof(&self, trace: Self::Trace) -> Result<Proof<Self::Air>, ProvingError> {
-        let _timer = Timer::new("proof generation");
-
         let options = self.options();
         let trace_info = trace.info();
         let pub_inputs = self.get_pub_inputs(&trace);

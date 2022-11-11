@@ -5,7 +5,8 @@
     array_chunks,
     iter_partition_in_place,
     slice_flatten,
-    slice_as_chunks
+    slice_as_chunks,
+    int_log
 )]
 
 #[macro_use]
@@ -26,6 +27,9 @@ pub mod utils;
 mod verifier;
 
 pub use air::Air;
+use ark_ff::BigInteger;
+use ark_ff::Field;
+use ark_ff::PrimeField;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 pub use constraint::Column;
@@ -47,7 +51,7 @@ pub use trace::TraceInfo;
 // - base field
 // - extension field
 // - hashing function
-#[derive(Debug, Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, Copy, CanonicalSerialize, CanonicalDeserialize, PartialEq, Eq)]
 pub struct ProofOptions {
     pub num_queries: u8,
     pub lde_blowup_factor: u8,
@@ -109,6 +113,22 @@ pub struct Proof<A: Air> {
     pub public_inputs: A::PublicInputs,
     pub ood_trace_states: (Vec<A::Fq>, Vec<A::Fq>),
     pub ood_constraint_evaluations: Vec<A::Fq>,
+}
+
+impl<A: Air> Proof<A> {
+    pub fn conjectured_security_level(&self) -> usize {
+        let prime_field_bits = <<A::Fq as Field>::BasePrimeField as PrimeField>::MODULUS.num_bits();
+        let fq_bits = prime_field_bits as usize * A::Fq::extension_degree() as usize;
+        let sha256_collision_resistance_security = 128;
+        utils::conjectured_security_level(
+            fq_bits,
+            sha256_collision_resistance_security,
+            self.options.lde_blowup_factor.into(),
+            self.trace_info.trace_len,
+            self.options.num_queries.into(),
+            self.options.grinding_factor.into(),
+        )
+    }
 }
 
 pub trait StarkExtensionOf<Fp: GpuFftField>:

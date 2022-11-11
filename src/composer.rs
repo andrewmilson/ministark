@@ -4,7 +4,6 @@ use crate::matrix::GroupItem;
 use crate::matrix::MatrixGroup;
 use crate::merkle::MerkleTree;
 use crate::utils::synthetic_divide;
-use crate::utils::Timer;
 use crate::Air;
 use crate::Column;
 use crate::Constraint;
@@ -174,10 +173,8 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         base_trace_lde: &Matrix<A::Fp>,
         extension_trace_lde: Option<&Matrix<A::Fq>>,
     ) -> (Matrix<A::Fq>, Matrix<A::Fq>, MerkleTree<Sha256>) {
-        let _timer = Timer::new("constraint evaluation");
         let composed_evaluations =
             self.evaluate(challenges, hints, base_trace_lde, extension_trace_lde);
-        drop(_timer);
         let composition_trace_polys = self.trace_polys(composed_evaluations);
         let composition_trace_lde = composition_trace_polys.evaluate(self.air.lde_domain());
         let merkle_tree = composition_trace_lde.commit_to_rows();

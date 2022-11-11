@@ -45,6 +45,7 @@ rayon = { version = "1.5.3", optional = true }
 
 [dev-dependencies]
 criterion = "0.4.0"
+structopt = "0.3.26"
 
 # taken from https://github.com/recmo/uint
 # Compilation profile for any non-workspace member.

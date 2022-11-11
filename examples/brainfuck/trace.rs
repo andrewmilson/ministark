@@ -26,9 +26,14 @@ use ministark::challenges::Challenges;
 use ministark::Matrix;
 use ministark::Trace;
 
+pub struct TraceMeta {
+    pub input: Vec<usize>,
+    pub output: Vec<usize>,
+    pub source_code: String,
+}
+
 pub struct BrainfuckTrace {
-    input: Vec<usize>,
-    output: Vec<usize>,
+    meta: TraceMeta,
     processor_base_trace: Matrix<Fp>,
     memory_base_trace: Matrix<Fp>,
     instruction_base_trace: Matrix<Fp>,
@@ -39,8 +44,7 @@ pub struct BrainfuckTrace {
 
 impl BrainfuckTrace {
     pub fn new(
-        input: Vec<usize>,
-        output: Vec<usize>,
+        meta: TraceMeta,
         processor_base_trace: Matrix<Fp>,
         memory_base_trace: Matrix<Fp>,
         instruction_base_trace: Matrix<Fp>,
@@ -55,8 +59,7 @@ impl BrainfuckTrace {
             output_base_trace.clone(),
         ]);
         BrainfuckTrace {
-            input,
-            output,
+            meta,
             processor_base_trace,
             memory_base_trace,
             instruction_base_trace,
@@ -66,12 +69,8 @@ impl BrainfuckTrace {
         }
     }
 
-    pub fn input_symbols(&self) -> &[usize] {
-        &self.input
-    }
-
-    pub fn output_symbols(&self) -> &[usize] {
-        &self.output
+    pub fn meta(&self) -> &TraceMeta {
+        &self.meta
     }
 }
 

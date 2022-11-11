@@ -20,7 +20,25 @@ The library is written [Rust](https://www.rust-lang.org/) but [Metal](https://de
 
 ### Proving "Hello World!" in brainf**k
 
-TODO
+In this example the prover generates a proof that proves integrity of a brainf**k program that outputs "Hello World!". The verifier uses the proof and program source code to verify the output without having to run the program. It's a fun but silly example since it's quicker to execute the program than verify the proof. To run the example:
+
+```bash
+# generate the proof
+# use `-F parallel,asm` if not using an M1 MacBook
+cargo run -r -F parallel,asm,gpu --example brainfuck -- \
+    prove --src ./examples/brainfuck/hello_world.bf \
+          --output ./hello_world.proof
+
+
+# verify the proof
+cargo run -r -F asm --example brainfuck -- \
+  verify --src ./examples/brainfuck/hello_world.bf \
+         --proof ./hello_world.proof 
+```
+
+This is actually a miniSTARK implementation of the [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) tutorial. The tutorial provides a [Rust implementation](https://github.com/Neptune-Crypto/twenty-first/tree/master/stark-brainfuck) built using the [twenty-first](https://github.com/Neptune-Crypto/twenty-first) library. Below is a comparison between the twenty-first and miniSTARK prover. It isn't entirely fair for a couple of reasons (1) miniSTARK doesn't generate zero knowledge proofs and (2) each prover commits to constraints in a different way. 
+
+
 
 ### Proving Fibonacci sequence
 
@@ -29,7 +47,7 @@ TODO
 
 ## Defining AIR Constraints
 
-Constraints in miniSTARK are represented as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. Bellow is a contrived example to illustrate how constraints are represented. Look at the constraint implementation of [brainf**k](examples/brainfuck/) for a full example.
+Constraints in miniSTARK are represented as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. There is a lot of cool things prover and verifier can do when constraints are represented in this way. Bellow is a contrived example to illustrate how constraints are represented. Look at the constraint implementation of [brainf**k](examples/brainfuck/) for a full example.
 
 ```rust
 #[derive(Hint)]
@@ -99,7 +117,6 @@ cargo run --release --features parallel,asm  --example fib
 
 - Supporting proofs over secp256k1 aka Bitcoin's field (see [ecfft-bn254](https://github.com/wborgeaud/ecfft-bn254))
 - Polynomial arithmetic implemented in [CUDA](https://en.wikipedia.org/wiki/CUDA)
-- TODO: Periodic transition constraints
 - Speed and memory optimizations
 - Using more `arkworks` features
 - Reduce proof size using batched Merkle proofs
@@ -109,6 +126,7 @@ cargo run --release --features parallel,asm  --example fib
 - More GPU field implementations
 - Making gpu-poly less unsafe
 - Generating zero knowledge proofs
+- Periodic constraints
 
 ## Acknowledgements
 

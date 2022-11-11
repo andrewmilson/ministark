@@ -126,3 +126,36 @@ pub fn synthetic_divide<F: Field>(coeffs: &mut [F], a: usize, b: F) {
         todo!()
     }
 }
+
+const GRINDING_CONTRIBUTION_FLOOR: usize = 80;
+
+// taken from Winterfell
+// also https://github.com/starkware-libs/ethSTARK/blob/master/README.md#7-Measuring-Security
+// https://eprint.iacr.org/2020/654.pdf section 7.2 for proven security
+// TODO: must investigate and confirm all this.
+// TODO: determine if
+pub fn conjectured_security_level(
+    field_bits: usize,
+    hash_fn_security: usize,
+    lde_blowup_factor: usize,
+    trace_len: usize,
+    num_fri_quiries: usize,
+    grinding_factor: usize,
+) -> usize {
+    // compute max security we can get for a given field size
+    let field_security = field_bits - (lde_blowup_factor * trace_len).trailing_zeros() as usize;
+
+    // compute security we get by executing multiple query rounds
+    let security_per_query = lde_blowup_factor.ilog2() as usize;
+    let mut query_security = security_per_query * num_fri_quiries;
+
+    // include grinding factor contributions only for proofs adequate security
+    if query_security >= GRINDING_CONTRIBUTION_FLOOR {
+        query_security += grinding_factor;
+    }
+
+    std::cmp::min(
+        std::cmp::min(field_security, query_security) - 1,
+        hash_fn_security,
+    )
+}

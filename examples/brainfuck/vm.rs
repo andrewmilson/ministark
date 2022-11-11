@@ -5,6 +5,7 @@ use crate::tables::MemoryBaseColumn;
 use crate::tables::OutputBaseColumn;
 use crate::tables::ProcessorBaseColumn;
 use crate::trace::into_columns;
+use crate::trace::TraceMeta;
 use crate::BrainfuckTrace;
 use ark_ff::Field;
 use ark_ff::One;
@@ -42,7 +43,6 @@ impl OpCode {
 
 /// Lexer turns the source code into a sequence of opcodes
 fn lex(source: &str) -> Vec<OpCode> {
-    println!("{:?}", OpCode::VALUES.map(|v| v as u64));
     let mut operations = Vec::new();
 
     for symbol in source.chars() {
@@ -109,10 +109,12 @@ struct Register {
 
 // Outputs base execution trace
 pub fn simulate(
-    program: &[usize],
+    source_code: String,
     input: &mut impl std::io::Read,
     output: &mut impl std::io::Write,
 ) -> BrainfuckTrace {
+    let program = compile(&source_code);
+
     let mut tape = [0u8; 1024];
     let mut register = Register {
         curr_instr: program[0],
@@ -247,21 +249,6 @@ pub fn simulate(
     // sort instructions by address
     instruction_rows.sort_by_key(|row| row[0]);
 
-    println!(
-        "INSTRU ROOOOO {:?}",
-        instruction_rows[364].map(|v| format!("{v}"))
-    );
-
-    println!(
-        "INSTRU IP {}",
-        instruction_rows[364][InstructionBaseColumn::Ip as usize]
-    );
-
-    println!(
-        "INSTRU Curr {}",
-        instruction_rows[364][InstructionBaseColumn::CurrInstr as usize]
-    );
-
     let mut memory_rows = derive_memory_rows(&processor_rows);
 
     let padding_len = {
@@ -285,29 +272,20 @@ pub fn simulate(
     pad_input_rows(&mut input_rows, padding_len);
     pad_output_rows(&mut output_rows, padding_len);
 
-    println!("processor_rows: {}", processor_rows.len());
-    println!("memory_rows: {}", memory_rows.len());
-    println!("instruction_rows: {}", instruction_rows.len());
-    println!("input_rows: {}", input_rows.len());
-    println!("output_rows: {}", output_rows.len());
-
     let processor_base_trace = Matrix::new(into_columns(processor_rows));
     let memory_base_trace = Matrix::new(into_columns(memory_rows));
     let instruction_base_trace = Matrix::new(into_columns(instruction_rows));
     let input_base_trace = Matrix::new(into_columns(input_rows));
     let output_base_trace = Matrix::new(into_columns(output_rows));
 
-    println!("processor_rows: {}", processor_base_trace.num_rows());
-    println!("memory_rows: {}", memory_base_trace.num_rows());
-    println!("instruction_rows: {}", instruction_base_trace.num_rows());
-    println!("input_rows: {}", input_base_trace.num_rows());
-    println!("output_rows: {}", output_base_trace.num_rows());
-
-    println!("Cycles:{}, Trace len:{padding_len}", register.cycle);
+    let meta = TraceMeta {
+        input: input_symbols,
+        output: output_symbols,
+        source_code,
+    };
 
     BrainfuckTrace::new(
-        input_symbols,
-        output_symbols,
+        meta,
         processor_base_trace,
         memory_base_trace,
         instruction_base_trace,

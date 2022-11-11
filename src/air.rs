@@ -5,7 +5,6 @@ use crate::hints::Hints;
 use crate::random::PublicCoin;
 use crate::utils;
 use crate::utils::fill_vanishing_polynomial;
-use crate::utils::Timer;
 use crate::Constraint;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
@@ -151,7 +150,6 @@ pub trait Air {
     }
 
     fn transition_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let _timer = Timer::new("===TRANSITION DIVISOR===");
         let trace_domain = self.trace_domain();
         let last_trace_x = trace_domain.group_gen_inv;
         let degree = trace_domain.size() - 1;
@@ -190,8 +188,6 @@ pub trait Air {
     }
 
     fn boundary_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let _timer = Timer::new("===BOUNDARY DIVISOR===");
-
         let first_trace_x = Self::Fp::one();
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();
@@ -222,8 +218,6 @@ pub trait Air {
     }
 
     fn terminal_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let _timer = Timer::new("===TERMINAL DIVISOR===");
-
         let last_trace_x = self.trace_domain().group_gen_inv();
         let lde_domain = self.lde_domain();
         let n = lde_domain.size();

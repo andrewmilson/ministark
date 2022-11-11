@@ -1,110 +1,106 @@
 #![feature(allocator_api)]
 
 use air::BrainfuckAir;
-use air::ExecutionInfo;
-use ark_ff::One;
+use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use gpu_poly::fields::p18446744069414584321::Fp;
-use gpu_poly::fields::p18446744069414584321::Fq3;
+use ministark::Proof;
 use ministark::ProofOptions;
 use ministark::Prover;
+use ministark::Trace;
+use std::fs;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 use std::time::Instant;
+use structopt::StructOpt;
 use trace::BrainfuckTrace;
-use vm::compile;
 use vm::simulate;
 
 mod air;
 mod constraints;
+mod prover;
 mod tables;
 mod trace;
 mod vm;
 
-/// Source: http://esoteric.sange.fi/brainfuck/bf-source/prog/fibonacci.txt
-const _FIB_TO_55_SOURCE: &str = "
-This determines how many numbers to generate:
-    +++++++++++
+fn prove(options: ProofOptions, source_code_path: PathBuf, output_path: PathBuf) {
+    let source_code = fs::read_to_string(source_code_path).unwrap();
+    let mut output = Vec::new();
 
-Program:
-    >+>>>>++++++++++++++++++++++++++++++++++++++++++++
-    >++++++++++++++++++++++++++++++++<<<<<<[>[>>>>>>+>
-    +<<<<<<<-]>>>>>>>[<<<<<<<+>>>>>>>-]<[>++++++++++[-
-    <-[>>+>+<<<-]>>>[<<<+>>>-]+<[>[-]<[-]]>[<<[>>>+<<<
-    -]>>[-]]<<]>>>[>>+>+<<<-]>>>[<<<+>>>-]+<[>[-]<[-]]
-    >[<<+>>[-]]<<<<<<<]>>>>>[+++++++++++++++++++++++++
-    +++++++++++++++++++++++.[-]]++++++++++<[->-<]>++++
-    ++++++++++++++++++++++++++++++++++++++++++++.[-]<<
-    <<<<<<<<<<[>>>+>+<<<<-]>>>>[<<<<+>>>>-]<-[>>.>.<<<
-    [-]]<<[>>+>+<<<-]>>>[<<<+>>>-]<<[<+>-]>[<+>-]<<<-]
-";
+    let now = Instant::now();
+    let trace = simulate(source_code, &mut std::io::empty(), &mut output);
+    println!(
+        "Generated execution trace (cols={}, rows={}) in {:?}",
+        trace.base_columns().num_cols(),
+        trace.base_columns().num_rows(),
+        now.elapsed(),
+    );
+    println!(
+        "Program output: \"{}\"",
+        String::from_utf8(output.clone()).unwrap()
+    );
 
-/// Source: https://esolangs.org/wiki/Brainfuck
-const HELLO_WORLD_SOURCE: &str = "
-+++++ +++++             initialize counter (cell #0) to 10
-[                       use loop to set 70/100/30/10
-    > +++++ ++              add  7 to cell #1
-    > +++++ +++++           add 10 to cell #2
-    > +++                   add  3 to cell #3
-    > +                     add  1 to cell #4
-<<<< -                  decrement counter (cell #0)
-]
-> ++ .                  print 'H'
-> + .                   print 'e'
-+++++ ++ .              print 'l'
-.                       print 'l'
-+++ .                   print 'o'
-> ++ .                  print ' '
-<< +++++ +++++ +++++ .  print 'W'
-> .                     print 'o'
-+++ .                   print 'r'
------ - .               print 'l'
------ --- .             print 'd'
-> + .                   print '!'
-> .                     print '\n'
-";
+    let prover = prover::BrainfuckProver::new(options);
+    let proof = prover.generate_proof(trace).unwrap();
+    println!("Proof generated in: {:?}", now.elapsed());
+    println!("Proof security: {}bit", proof.conjectured_security_level());
 
-const PROVER_SOURCE_CODE: &str = HELLO_WORLD_SOURCE;
+    let mut proof_bytes = Vec::new();
+    proof.serialize_compressed(&mut proof_bytes).unwrap();
+    println!("Proof size: {:?}KB", proof_bytes.len() / 1024);
+    let mut f = File::create(&output_path).unwrap();
+    f.write_all(proof_bytes.as_slice()).unwrap();
+    f.flush().unwrap();
+    println!("Proof written to {}", output_path.as_path().display());
+}
 
-struct BrainfuckProver(ProofOptions);
+fn verify(options: ProofOptions, source_code_path: PathBuf, proof_path: PathBuf) {
+    let source_code = fs::read_to_string(source_code_path).unwrap();
+    let proof_bytes = fs::read(proof_path).unwrap();
+    let proof: Proof<BrainfuckAir> = Proof::deserialize_compressed(proof_bytes.as_slice()).unwrap();
+    assert_eq!(source_code, proof.public_inputs.source_code);
+    assert_eq!(options, proof.options);
 
-impl Prover for BrainfuckProver {
-    type Fp = Fp;
-    type Fq = Fq3;
-    type Air = BrainfuckAir;
-    type Trace = BrainfuckTrace;
+    let now = Instant::now();
+    proof.verify().unwrap();
+    println!("Proof verified in: {:?}", now.elapsed());
+}
 
-    fn new(options: ProofOptions) -> Self {
-        BrainfuckProver(options)
-    }
-
-    fn options(&self) -> ProofOptions {
-        self.0
-    }
-
-    fn get_pub_inputs(&self, trace: &BrainfuckTrace) -> ExecutionInfo {
-        ExecutionInfo {
-            source_code: PROVER_SOURCE_CODE.to_string(),
-            input: trace.input_symbols().to_vec(),
-            output: trace.output_symbols().to_vec(),
-        }
-    }
+#[derive(StructOpt, Debug)]
+#[structopt(name = "BrainSTARK", about = "miniSTARK brainfuck prover and verifier")]
+pub enum BrainfuckOptions {
+    Prove {
+        #[structopt(long, parse(from_os_str))]
+        src: PathBuf,
+        #[structopt(long, parse(from_os_str))]
+        output: PathBuf,
+    },
+    Verify {
+        #[structopt(long, parse(from_os_str))]
+        src: PathBuf,
+        #[structopt(long, parse(from_os_str))]
+        proof: PathBuf,
+    },
 }
 
 fn main() {
-    println!("{:?}", Fp::one());
+    // proof options
+    let num_queries = 29;
+    let lde_blowup_factor = 16;
+    let grinding_factor = 16;
+    let fri_folding_factor = 8;
+    let fri_max_remainder_size = 64;
+    let options = ProofOptions::new(
+        num_queries,
+        lde_blowup_factor,
+        grinding_factor,
+        fri_folding_factor,
+        fri_max_remainder_size,
+    );
 
-    let now = Instant::now();
-    let program = compile(PROVER_SOURCE_CODE);
-    let mut output = Vec::new();
-    let trace = simulate(&program, &mut std::io::empty(), &mut output);
-    println!("Output: {}", String::from_utf8(output).unwrap());
-
-    let options = ProofOptions::new(32, 16, 16, 8, 64);
-    let prover = BrainfuckProver::new(options);
-    let proof = prover.generate_proof(trace);
-    println!("Runtime: {:?}", now.elapsed());
-    let proof = proof.unwrap();
-    let mut proof_bytes = Vec::new();
-    proof.serialize_compressed(&mut proof_bytes).unwrap();
-    println!("Result: {:?}", proof_bytes.len());
-    proof.verify().unwrap();
+    // read command-line args
+    match BrainfuckOptions::from_args() {
+        BrainfuckOptions::Prove { src, output } => prove(options, src, output),
+        BrainfuckOptions::Verify { src, proof } => verify(options, src, proof),
+    }
 }
