@@ -1,5 +1,5 @@
 > **Warning**
-> this code is new and will change in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or register your interest https://forms.gle/SYrA9hbGQuivbHX5A
+> this code is new and will change in future versions. Please try it out and provide feedback. If it addresses a use-case that is important to you please open an issue to discuss it or get in touch [andrew.j.milson@gmail.com](mailto:andrew.j.milson@gmail.com)
 
 <div align="center">
 
@@ -12,47 +12,44 @@
 
 </div>
 
-miniSTARK allows you to prove the integrity of arbitrary computations to anyone using the power of [STARKs](https://starkware.co/stark/). In the silly example above miniSTARK is used to prove the integrity of a program that outputs "Hello World!" in the [Brainf**k](https://esolangs.org/wiki/Brainfuck) programming language. Anyone can verify the proof instantly.
+miniSTARK allows you to prove the integrity of arbitrary computations to anyone using the power of [STARKs](https://starkware.co/stark/). The library is written in [Rust](https://www.rust-lang.org/) but [Metal](https://developer.apple.com/metal/) is used to accelerate some polynomial arithmetic on the GPU. The Rust code uses several components from the fantastic [arkworks](https://github.com/arkworks-rs) library. The design of miniSTARK was influenced by [Winterfell](https://github.com/novifinancial/winterfell).
 
-The library is written [Rust](https://www.rust-lang.org/) but [Metal](https://developer.apple.com/metal/) is used to GPU accelerate polynomial arithmetic. The Rust code uses components from the [arkworks](https://github.com/arkworks-rs) library. The design of miniSTARK was influenced by [Winterfell](https://github.com/novifinancial/winterfell).
+## Demo - proving brainf**k programs
 
-## Demo
-
-### Proving "Hello World!" in brainf**k
-
-In this example the prover generates a proof that proves integrity of a brainf**k program that outputs "Hello World!". The verifier uses the proof and program source code to verify the output without having to run the program. It's a fun but silly example since it's quicker to execute the program than verify the proof. To run the example:
+In this example the prover generates a proof that proves integrity of a brainf**k program that outputs "Hello World!". The verifier uses the proof, brainf\*\*k source code and output to verify execution integrity without executing the program at all. To run this demo locally:
 
 ```bash
 # generate the proof
-# use `-F parallel,asm` if not using an M1 MacBook
-cargo run -r -F parallel,asm,gpu --example brainfuck -- \
+# use `-F parallel,asm` if not using an M1 Mac
+cargo +nightly run -r -F parallel,asm,gpu --example brainfuck -- \
     prove --src ./examples/brainfuck/hello_world.bf \
+          --input "" \
           --output ./hello_world.proof
 
 
 # verify the proof
-cargo run -r -F asm --example brainfuck -- \
+cargo +nightly run -r -F asm --example brainfuck -- \
   verify --src ./examples/brainfuck/hello_world.bf \
+         --input ""
+         --output "Hello World!"
          --proof ./hello_world.proof 
 ```
 
-This is actually a miniSTARK implementation of the [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) tutorial. The tutorial provides a [Rust implementation](https://github.com/Neptune-Crypto/twenty-first/tree/master/stark-brainfuck) built using the [twenty-first](https://github.com/Neptune-Crypto/twenty-first) library. Below is a comparison between the twenty-first and miniSTARK prover. It isn't entirely fair for a couple of reasons (1) miniSTARK doesn't generate zero knowledge proofs and (2) each prover commits to constraints in a different way. 
-
-
-
-### Proving Fibonacci sequence
+This is actually a miniSTARK implementation of the [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) tutorial. This is an unrealistic example since verifying by running the program is actually much quicker than verifying by checking the proof. Generating a proof of "Hello World!" or proving you can count from 1 to 10 is all fun an games but miniSTARK has much more serious ambitions. A realistic example is [coming soon](#coming-soon).
 
 ## Performance
 
+Initial performance carried out on an M1 Max is promising. Compared to a couple of other Rust STARK provers miniSTARK generates proofs around **~2-50x** faster and consumes around **~2-40x** less RAM during proof generation. Since these comparisons were made with unrealistic toy examples they aren't entirely fair and won't be published. Performance results will be published once a realistic examples exists. Also, there are still a few low-hanging performance optimizations to be made ;).
 
 ## Defining AIR Constraints
 
-Constraints in miniSTARK are represented as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. There is a lot of cool things prover and verifier can do when constraints are represented in this way. Bellow is a contrived example to illustrate how constraints are represented. Look at the constraint implementation of [brainf**k](examples/brainfuck/) for a full example.
+Constraints in miniSTARK are represented as multivariate polynomials where each variable abstractly represents a column of the execution trace or one of the verifier's challenges. There is a lot of cool things prover and verifier can do when constraints are represented in this way. Bellow is a contrived example to illustrate how constraints are represented.
 
 ```rust
 #[derive(Hint)]
 enum Hints {
-    ExpectedCycles,
+    InputEvalTerminal,
+    // ...
 }
 
 #[derive(Column)]
@@ -60,6 +57,7 @@ enum ProcessorTable {
     Cycle,
     InstructionPointer,
     CurrentInstruction,
+    InputEval,
     // ...
 }
 
@@ -69,8 +67,8 @@ let constraints = vec![
     Cycle.first(),
     // each row, the cycle increases by `1`
     Cycle.curr() - Cycle.next() - 1,
-    // cycle doesn't exceed expected
-    Cycle.last() - ExpectedCycles,
+    // input matches expected
+    InputEval.last() - InputEvalTerminal,
     // ...
 ];
 ```
@@ -127,6 +125,7 @@ cargo run --release --features parallel,asm  --example fib
 - Making gpu-poly less unsafe
 - Generating zero knowledge proofs
 - Periodic constraints
+- Realistic examples
 
 ## Acknowledgements
 

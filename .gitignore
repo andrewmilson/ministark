@@ -3,7 +3,8 @@
 
 .DS_Store
 
-proof.json
+# example artifacts
+*.proof
 
 # Metal GPU artifacts
 *.air
