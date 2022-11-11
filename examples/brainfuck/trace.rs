@@ -27,8 +27,8 @@ use ministark::Matrix;
 use ministark::Trace;
 
 pub struct TraceMeta {
-    pub input: Vec<usize>,
-    pub output: Vec<usize>,
+    pub input: Vec<u8>,
+    pub output: Vec<u8>,
     pub source_code: String,
 }
 

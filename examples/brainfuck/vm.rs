@@ -202,14 +202,14 @@ pub fn simulate(
             let x = &tape[register.mp..register.mp + 1];
             output.write_all(x).expect("failed to write output");
             output_rows.push([x[0].into()]);
-            output_symbols.push(x[0].into());
+            output_symbols.push(x[0]);
         } else if register.curr_instr == OpCode::Read as usize {
             register.ip += 1;
             let mut x = [0u8; 1];
             input.read_exact(&mut x).expect("failed to read input");
             tape[register.mp] = x[0];
             input_rows.push([x[0].into()]);
-            input_symbols.push(x[0].into());
+            input_symbols.push(x[0]);
         } else {
             panic!("unrecognized instruction at ip:{}", register.ip);
         }

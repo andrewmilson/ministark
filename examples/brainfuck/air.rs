@@ -19,8 +19,8 @@ use ministark::TraceInfo;
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct ExecutionInfo {
     pub source_code: String,
-    pub input: Vec<usize>,
-    pub output: Vec<usize>,
+    pub input: Vec<u8>,
+    pub output: Vec<u8>,
 }
 
 pub struct BrainfuckAir {
@@ -147,7 +147,7 @@ fn compute_instruction_evaluation_argument(source_code: &str, challenges: &Chall
 
 // Computes the evaluation terminal for the input and output table
 // output is of the form `(evaluatoin_argument, evaluation_offset)`
-fn io_terminal_helper<F: Field>(symbols: &[usize], challenge: F, trace_len: usize) -> (F, F) {
+fn io_terminal_helper<F: Field>(symbols: &[u8], challenge: F, trace_len: usize) -> (F, F) {
     let mut acc = F::zero();
     for symbol in symbols {
         acc = challenge * acc + F::from(*symbol as u64);

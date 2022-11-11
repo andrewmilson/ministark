@@ -23,12 +23,62 @@ mod tables;
 mod trace;
 mod vm;
 
-fn prove(options: ProofOptions, source_code_path: PathBuf, output_path: PathBuf) {
+#[derive(StructOpt, Debug)]
+#[structopt(name = "BrainSTARK", about = "miniSTARK brainfuck prover and verifier")]
+pub enum BrainfuckOptions {
+    Prove {
+        #[structopt(long, parse(from_os_str))]
+        src: PathBuf,
+        #[structopt(long, parse(from_os_str))]
+        output: PathBuf,
+        #[structopt(long)]
+        input: String,
+    },
+    Verify {
+        #[structopt(long, parse(from_os_str))]
+        src: PathBuf,
+        #[structopt(long, parse(from_os_str))]
+        proof: PathBuf,
+        #[structopt(long)]
+        input: String,
+        #[structopt(long)]
+        output: String,
+    },
+}
+
+fn main() {
+    // proof options for 128 bit security level
+    let num_queries = 29;
+    let lde_blowup_factor = 16;
+    let grinding_factor = 16;
+    let fri_folding_factor = 8;
+    let fri_max_remainder_size = 64;
+    let options = ProofOptions::new(
+        num_queries,
+        lde_blowup_factor,
+        grinding_factor,
+        fri_folding_factor,
+        fri_max_remainder_size,
+    );
+
+    // read command-line args
+    match BrainfuckOptions::from_args() {
+        BrainfuckOptions::Prove { src, output, input } => prove(options, src, input, output),
+        BrainfuckOptions::Verify {
+            src,
+            proof,
+            input,
+            output,
+        } => verify(options, src, input, output, proof),
+    }
+}
+
+fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output_path: PathBuf) {
     let source_code = fs::read_to_string(source_code_path).unwrap();
     let mut output = Vec::new();
 
     let now = Instant::now();
-    let trace = simulate(source_code, &mut std::io::empty(), &mut output);
+    let trace = simulate(source_code, &mut input.as_bytes(), &mut output);
     println!(
         "Generated execution trace (cols={}, rows={}) in {:?}",
         trace.base_columns().num_cols(),
@@ -54,53 +104,22 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, output_path: PathBuf)
     println!("Proof written to {}", output_path.as_path().display());
 }
 
-fn verify(options: ProofOptions, source_code_path: PathBuf, proof_path: PathBuf) {
+fn verify(
+    options: ProofOptions,
+    source_code_path: PathBuf,
+    input: String,
+    output: String,
+    proof_path: PathBuf,
+) {
     let source_code = fs::read_to_string(source_code_path).unwrap();
     let proof_bytes = fs::read(proof_path).unwrap();
     let proof: Proof<BrainfuckAir> = Proof::deserialize_compressed(proof_bytes.as_slice()).unwrap();
+    assert_eq!(input.as_bytes(), proof.public_inputs.input);
+    assert_eq!(output.as_bytes(), proof.public_inputs.output);
     assert_eq!(source_code, proof.public_inputs.source_code);
     assert_eq!(options, proof.options);
 
     let now = Instant::now();
     proof.verify().unwrap();
     println!("Proof verified in: {:?}", now.elapsed());
-}
-
-#[derive(StructOpt, Debug)]
-#[structopt(name = "BrainSTARK", about = "miniSTARK brainfuck prover and verifier")]
-pub enum BrainfuckOptions {
-    Prove {
-        #[structopt(long, parse(from_os_str))]
-        src: PathBuf,
-        #[structopt(long, parse(from_os_str))]
-        output: PathBuf,
-    },
-    Verify {
-        #[structopt(long, parse(from_os_str))]
-        src: PathBuf,
-        #[structopt(long, parse(from_os_str))]
-        proof: PathBuf,
-    },
-}
-
-fn main() {
-    // proof options
-    let num_queries = 29;
-    let lde_blowup_factor = 16;
-    let grinding_factor = 16;
-    let fri_folding_factor = 8;
-    let fri_max_remainder_size = 64;
-    let options = ProofOptions::new(
-        num_queries,
-        lde_blowup_factor,
-        grinding_factor,
-        fri_folding_factor,
-        fri_max_remainder_size,
-    );
-
-    // read command-line args
-    match BrainfuckOptions::from_args() {
-        BrainfuckOptions::Prove { src, output } => prove(options, src, output),
-        BrainfuckOptions::Verify { src, proof } => verify(options, src, proof),
-    }
 }

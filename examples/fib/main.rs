@@ -55,12 +55,12 @@ impl FibAir {
         vec![
             are_eq(0.curr(), v0),
             are_eq(1.curr(), v1),
-            // are_eq(2.curr(), v2),
-            // are_eq(3.curr(), v3),
-            // are_eq(4.curr(), v4),
-            // are_eq(5.curr(), v5),
-            // are_eq(6.curr(), v6),
-            // are_eq(7.curr(), v7),
+            are_eq(2.curr(), v2),
+            are_eq(3.curr(), v3),
+            are_eq(4.curr(), v4),
+            are_eq(5.curr(), v5),
+            are_eq(6.curr(), v6),
+            are_eq(7.curr(), v7),
         ]
     }
 

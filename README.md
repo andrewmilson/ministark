@@ -30,8 +30,8 @@ cargo +nightly run -r -F parallel,asm,gpu --example brainfuck -- \
 # verify the proof
 cargo +nightly run -r -F asm --example brainfuck -- \
   verify --src ./examples/brainfuck/hello_world.bf \
-         --input ""
-         --output "Hello World!"
+         --input "" \
+         --output "Hello World\!" \
          --proof ./hello_world.proof 
 ```
 
@@ -72,44 +72,6 @@ let constraints = vec![
     // ...
 ];
 ```
-
-<!-- ## Examples
-
-### Brainf*** virtual machine
-
-Implementation of the [Brainf***](https://esolangs.org/wiki/Brainfuck) virtual machine from [Alan Szepieniec BrainSTARK tutorial](https://aszepieniec.github.io/stark-brainfuck/brainfuck).
-
-```bash
-# source: https://esolangs.org
-export HELLO_WORLD_BF="++++++++[>++++[>++>+++>+++>+<<<<-]>+>+\
->->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
-
-if [[ $(arch) == 'arm64' ]]; then
-  # run on the GPU if Apple silicon
-  cargo run --release --features parallel,asm,gpu --example bf --src $HELLO_WORLD_BF
-else
-  # fall back to cpu if not Apple silicon
-  cargo run --release --features parallel,asm --example bf --src $HELLO_WORLD_BF
-fi
-
-```
-
-### Multiplicative Fibonacci Sequence 
-
-An analogue to the regular fibonacci sequence that uses multiplication rather than addition. Multiplicative fibonacci requires more grunt (more AIR constraints) to prove. Sequence is `1, 2, 2, 4, 8, ...`. The program proves the 
-
-```bash
-cargo run --release --features parallel,asm  --example fib
-```
-
-## Things I don't like
-
-- remembering what the longest table is
-- all terminal and challence and column you have to remember the numerical index. Could implement trait and enums to mitigate this.
-
-## TODO
-
-- debugging memory table. Remove constraint for memory stay the same clock cycle increase -->
 
 <h2 id="coming-soon">Coming soon (help wanted)</h2>
 
