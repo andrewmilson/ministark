@@ -1,5 +1,3 @@
-use crate::GpuField;
-use crate::GpuVec;
 use ark_ff::FftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
