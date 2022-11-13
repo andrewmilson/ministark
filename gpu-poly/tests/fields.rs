@@ -1,3 +1,4 @@
+#![cfg(target_arch = "aarch64")]
 #![feature(allocator_api)]
 
 use ark_ff::UniformRand;

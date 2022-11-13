@@ -1,4 +1,3 @@
-use crate::allocator::PAGE_SIZE;
 use crate::GpuField;
 use crate::GpuVec;
 use ark_ff::FftField;
@@ -76,7 +75,7 @@ pub fn bit_reverse<T: Send>(v: &mut [T]) {
 #[cfg(target_arch = "aarch64")]
 pub fn copy_to_private_buffer<T: Sized>(
     command_queue: &metal::CommandQueue,
-    v: &GpuVec<T>,
+    v: &crate::GpuVec<T>,
 ) -> metal::Buffer {
     let device = command_queue.device();
     let shared_buffer = buffer_no_copy(device, v);
@@ -93,8 +92,8 @@ pub fn copy_to_private_buffer<T: Sized>(
 
 /// WARNING: keep the original data around or it will be freed.
 #[cfg(target_arch = "aarch64")]
-pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &GpuVec<T>) -> metal::Buffer {
-    let byte_len = round_up_to_multiple(v.len() * std::mem::size_of::<T>(), *PAGE_SIZE);
+pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &crate::GpuVec<T>) -> metal::Buffer {
+    let byte_len = v.capacity() * std::mem::size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
         v.as_ptr() as *mut std::ffi::c_void,
         byte_len.try_into().unwrap(),
@@ -106,7 +105,7 @@ pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &GpuVec<T>) -> met
 /// WARNING: keep the original data around or it will be freed.
 #[cfg(target_arch = "aarch64")]
 pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut GpuVec<T>) -> metal::Buffer {
-    let byte_len = round_up_to_multiple(v.len() * std::mem::size_of::<T>(), *PAGE_SIZE);
+    let byte_len = v.capacity() * std::mem::size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
         v.as_mut_ptr() as *mut std::ffi::c_void,
         byte_len.try_into().unwrap(),
@@ -115,17 +114,9 @@ pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut GpuVec<T>
     )
 }
 
-#[cfg(target_arch = "aarch64")]
-fn round_up_to_multiple(n: usize, multiple: usize) -> usize {
-    if n % multiple == 0 {
-        n
-    } else {
-        n.next_multiple_of(multiple)
-    }
-}
-
 // adapted form arkworks
 /// Multiply the `i`-th element of `coeffs` with `g^i`.
+#[cfg(target_arch = "aarch64")]
 pub(crate) fn distribute_powers<F: GpuField>(coeffs: &mut [F], g: F) {
     let n = coeffs.len();
     #[cfg(not(feature = "parallel"))]
