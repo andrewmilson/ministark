@@ -1,3 +1,4 @@
+// Source: https://esolangs dot org/wiki/Brainfuck
 +++++ +++++             // initialize counter to 10
 [                       // use loop to set 70/100/30/10
     > +++++ ++          //     add  7 to cell #1
