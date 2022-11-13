@@ -25,21 +25,19 @@ mod vm;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "BrainSTARK", about = "miniSTARK brainfuck prover and verifier")]
-pub enum BrainfuckOptions {
+enum BrainfuckOptions {
     Prove {
-        #[structopt(long, parse(from_os_str))]
         src: PathBuf,
         #[structopt(long, parse(from_os_str))]
-        output: PathBuf,
-        #[structopt(long)]
+        dst: PathBuf,
+        #[structopt(long, default_value = "")]
         input: String,
     },
     Verify {
-        #[structopt(long, parse(from_os_str))]
         src: PathBuf,
         #[structopt(long, parse(from_os_str))]
         proof: PathBuf,
-        #[structopt(long)]
+        #[structopt(long, default_value = "")]
         input: String,
         #[structopt(long)]
         output: String,
@@ -63,7 +61,7 @@ fn main() {
 
     // read command-line args
     match BrainfuckOptions::from_args() {
-        BrainfuckOptions::Prove { src, output, input } => prove(options, src, input, output),
+        BrainfuckOptions::Prove { src, dst, input } => prove(options, src, input, dst),
         BrainfuckOptions::Verify {
             src,
             proof,
@@ -93,7 +91,10 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output
     let prover = prover::BrainfuckProver::new(options);
     let proof = prover.generate_proof(trace).unwrap();
     println!("Proof generated in: {:?}", now.elapsed());
-    println!("Proof security: {}bit", proof.conjectured_security_level());
+    println!(
+        "Proof security (conjectured): {}bit",
+        proof.conjectured_security_level()
+    );
 
     let mut proof_bytes = Vec::new();
     proof.serialize_compressed(&mut proof_bytes).unwrap();

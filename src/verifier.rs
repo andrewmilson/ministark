@@ -8,7 +8,6 @@ use crate::merkle::MerkleTree;
 use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
 use crate::utils::evaluate_vanishing_polynomial;
-use crate::utils::Timer;
 use crate::Air;
 // use crate::channel::VerifierChannel;
 use crate::Proof;
@@ -44,7 +43,6 @@ pub enum VerificationError {
 impl<A: Air> Proof<A> {
     pub fn verify(self) -> Result<(), VerificationError> {
         use VerificationError::*;
-        let _timer = Timer::new("Verification");
 
         let Proof {
             base_trace_commitment,
