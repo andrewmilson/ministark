@@ -5,8 +5,7 @@
     array_chunks,
     iter_partition_in_place,
     slice_flatten,
-    slice_as_chunks,
-    int_log
+    slice_as_chunks
 )]
 
 #[macro_use]

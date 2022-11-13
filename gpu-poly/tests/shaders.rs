@@ -1,5 +1,5 @@
 #![cfg(target_arch = "aarch64")]
-#![feature(allocator_api, int_log)]
+#![feature(allocator_api)]
 
 use ark_ff::FftField;
 use ark_ff_optimized::fp64::Fp;

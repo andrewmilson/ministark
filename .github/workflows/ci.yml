@@ -43,12 +43,12 @@ jobs:
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --locked --workspace --all-features --all-targets
+          args: --locked --workspace --features parallel,asm --all-targets
       - name: Check docs
         uses: actions-rs/cargo@v1
         with:
           command: doc
-          args: --locked --workspace --all-features --no-deps --document-private-items
+          args: --locked --workspace --features parallel,asm --no-deps --document-private-items
 
   test:
     name: Test

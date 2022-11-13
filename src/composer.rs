@@ -308,7 +308,7 @@ pub struct DeepCompositionCoeffs<F> {
 }
 
 /// Computes (P(x) - value) * k
-/// Source https://github.com/novifinancial/winterfell
+/// Source <https://github.com/novifinancial/winterfell>
 fn acc_trace_poly<F: GpuField, T: GpuField>(acc: &mut [T], poly: &[F], value: T, k: T)
 where
     T: for<'a> Mul<&'a F, Output = T>,

@@ -11,8 +11,8 @@ fn bit_reverse_index(n: usize, i: usize) -> usize {
 }
 
 /// Fills a slice with twiddle factors
-/// TODO: Generate of the GPU https://kieber-emmons.medium.com/9e60b974d62 or cache
-/// [Inverse](FftDirection::Inverse) twiddles are normalized by `1 / n`.
+/// TODO: Generate of the GPU <https://kieber-emmons.medium.com/9e60b974d62> or cache
+/// inverse twiddles are normalized by `1 / n`.
 pub fn fill_twiddles<F: FftField>(dst: &mut [F], root: F) {
     #[cfg(not(feature = "parallel"))]
     let chunk_size = dst.len();

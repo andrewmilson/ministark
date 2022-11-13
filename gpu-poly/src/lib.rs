@@ -1,4 +1,4 @@
-#![feature(test, allocator_api, const_try, int_log, int_roundings)]
+#![feature(test, allocator_api, const_try, int_roundings)]
 
 use allocator::PageAlignedAllocator;
 use ark_ff::Field;
