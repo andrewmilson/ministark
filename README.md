@@ -22,7 +22,7 @@ miniSTARK allows you to prove the integrity of arbitrary computations to anyone 
 |:--:|:--:|
 | *Generating the proof* | *Verifying the proof* 
 
-In this example the prover generates a proof that proves integrity of a brainf**k program that outputs "Hello World!". The verifier uses the proof, brainf\*\*k source code and output to verify execution integrity without executing the program at all. To run this demo locally:
+In this example the prover generates a proof that proves integrity of a brainf**k program that outputs "Hello World". The verifier uses the proof, brainf\*\*k source code and output to verify execution integrity without executing the program at all. To run this demo locally:
 
 ```bash
 # generate the proof
@@ -35,11 +35,11 @@ cargo +nightly run -r -F parallel,asm,gpu --example brainfuck -- \
 # verify the proof
 cargo +nightly run -r -F asm --example brainfuck -- \
   verify ./examples/brainfuck/hello_world.bf \
-         --output "Hello World\!" \
+         --output "Hello World" \
          --proof ./hello_world.proof 
 ```
 
-This is actually a miniSTARK implementation of the [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) tutorial. This is an unrealistic example since verifying by running the program is actually much quicker than verifying by checking the proof. Generating a proof of "Hello World!" or proving you can count from 1 to 10 is all fun and games but miniSTARK has much more serious ambitions. A realistic example is [coming soon](#coming-soon).
+This is actually a miniSTARK implementation of the [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) tutorial. This is an unrealistic example since verifying by running the program is actually much quicker than verifying by checking the proof. Generating a proof of "Hello World" or proving you can count from 1 to 10 is all fun and games but miniSTARK has much more serious ambitions. A realistic example is [coming soon](#coming-soon).
 
 ## Performance
 
