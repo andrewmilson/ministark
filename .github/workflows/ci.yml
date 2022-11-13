@@ -1,0 +1,96 @@
+name: CI
+# Based on https://github.com/recmo/uint/blob/main/.github/workflows/ci.yml
+
+on: [push, pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+  # Skip incremental build and debug info generation in CI
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+
+jobs:
+  accept:
+    name: Accept
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Accept
+        run: true
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: rustfmt, clippy
+      - name: Cache build
+        uses: Swatinem/rust-cache@v1
+        with:
+          key: cache-v1
+      - name: Check formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --locked --workspace --all-features --all-targets
+      - name: Check docs
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --locked --workspace --all-features --no-deps --document-private-items
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+      - name: Cache build
+        uses: Swatinem/rust-cache@v1
+        with:
+          key: cache-v1
+      - run: npm install ganache-cli@latest --global
+      # Cargo doc test is not included in `--all-targets` so we call it separately.
+      # See <https://github.com/rust-lang/cargo/issues/6669>
+      # Cargo doc test also doesn't support `--no-run`, so we run it but
+      # have it just print `--help`.
+      - name: Build tests
+        run: |
+          cargo test --locked --workspace --features parallel,asm --all-targets --no-run
+          cargo test --locked --workspace --features parallel,asm --doc -- --help
+      - name: Run tests
+        run: |
+          cargo test --locked --workspace --features parallel,asm --all-targets -- --nocapture
+          cargo test --locked --workspace --features parallel,asm --doc -- --nocapture
+
+  security-audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          default: true
+      - uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

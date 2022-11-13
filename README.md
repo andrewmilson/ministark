@@ -53,7 +53,6 @@ enum ProcessorTable {
     Cycle,
     InstructionPointer,
     CurrentInstruction,
-    InputEval,
     // ...
 }
 
