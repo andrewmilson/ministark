@@ -78,17 +78,17 @@ The representation of constraints in miniSTARK is much closer to a representatio
 
 <h2 id="coming-soon">Coming soon (help wanted)</h2>
 
-- Supporting proofs over secp256k1 aka Bitcoin's field https://github.com/andrewmilson/ministark/issues/5
-- Polynomial arithmetic implemented in [CUDA](https://en.wikipedia.org/wiki/CUDA) https://github.com/andrewmilson/ministark/issues/2
-- Speed and memory optimizations https://github.com/andrewmilson/ministark/issues/8
+- Supporting proofs over secp256k1 aka Bitcoin's field: <https://github.com/andrewmilson/ministark/issues/5>
+- Polynomial arithmetic implemented in [CUDA](https://en.wikipedia.org/wiki/CUDA): <https://github.com/andrewmilson/ministark/issues/2>
+- Speed and memory optimizations: <https://github.com/andrewmilson/ministark/issues/8>
 - Using more `arkworks` features
-- Reduce proof size using batched Merkle proofs https://github.com/andrewmilson/ministark/issues/10
-- Generate proofs with STARK friendly hash functions https://github.com/andrewmilson/ministark/issues/11 https://github.com/andrewmilson/ministark/issues/9
+- Reduce proof size using batched Merkle proofs: <https://github.com/andrewmilson/ministark/issues/10>
+- Generate proofs with STARK friendly hash functions: <https://github.com/andrewmilson/ministark/issues/11>, <https://github.com/andrewmilson/ministark/issues/9>
 - Cairo VM prover (similar to [giza](https://github.com/maxgillett/giza))
-- More tests and benchmarks https://github.com/andrewmilson/ministark/issues/3
-- More GPU field implementations https://github.com/andrewmilson/ministark/issues/1
-- Making gpu-poly less unsafe https://github.com/andrewmilson/ministark/issues/12
-- Generating zero knowledge proofs https://github.com/andrewmilson/ministark/issues/6
+- More tests and benchmarks: <https://github.com/andrewmilson/ministark/issues/3>
+- More GPU field implementations: <https://github.com/andrewmilson/ministark/issues/1>
+- Making gpu-poly less unsafe: <https://github.com/andrewmilson/ministark/issues/12>
+- Generating zero knowledge proofs: <https://github.com/andrewmilson/ministark/issues/6>
 - Periodic constraints
 - Realistic examples
 
