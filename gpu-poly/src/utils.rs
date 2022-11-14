@@ -102,7 +102,10 @@ pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &crate::GpuVec<T>)
 
 /// WARNING: keep the original data around or it will be freed.
 #[cfg(target_arch = "aarch64")]
-pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut GpuVec<T>) -> metal::Buffer {
+pub fn buffer_mut_no_copy<T: Sized>(
+    device: &metal::DeviceRef,
+    v: &mut crate::GpuVec<T>,
+) -> metal::Buffer {
     let byte_len = v.capacity() * std::mem::size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
         v.as_mut_ptr() as *mut std::ffi::c_void,
@@ -115,7 +118,7 @@ pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut GpuVec<T>
 // adapted form arkworks
 /// Multiply the `i`-th element of `coeffs` with `g^i`.
 #[cfg(target_arch = "aarch64")]
-pub(crate) fn distribute_powers<F: GpuField>(coeffs: &mut [F], g: F) {
+pub(crate) fn distribute_powers<F: crate::GpuField>(coeffs: &mut [F], g: F) {
     let n = coeffs.len();
     #[cfg(not(feature = "parallel"))]
     let chunk_size = n;

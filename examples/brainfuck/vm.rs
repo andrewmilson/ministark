@@ -135,11 +135,9 @@ pub fn simulate(
     for i in 0..program.len() {
         use InstructionBaseColumn::*;
         let mut row = [Fp::zero(); InstructionBaseColumn::NUM_TRACE_COLUMNS];
-        // assert_ne!(program[i] as u64, 12);
         row[Ip as usize] = Fp::from(i as u64);
         row[CurrInstr as usize] = Fp::from(program[i] as u64);
         row[NextInstr as usize] = Fp::from(program.get(i + 1).map_or(0, |&x| x as u64));
-        // row[Dummy as usize] = Fp::zero();
         instruction_rows.push(row);
     }
 
@@ -163,12 +161,10 @@ pub fn simulate(
 
         instruction_rows.push({
             use InstructionBaseColumn::*;
-            // assert_ne!(register.curr_instr as u64, 12);
             let mut row = [Fp::zero(); InstructionBaseColumn::NUM_TRACE_COLUMNS];
             row[Ip as usize] = Fp::from(register.ip as u64);
             row[CurrInstr as usize] = Fp::from(register.curr_instr as u64);
             row[NextInstr as usize] = Fp::from(register.next_instr as u64);
-            // row[Dummy as usize] = Fp::from(register.curr_instr == 0);
             row
         });
 
@@ -242,7 +238,6 @@ pub fn simulate(
         row[Ip as usize] = Fp::from(register.ip as u64);
         row[CurrInstr as usize] = Fp::from(register.curr_instr as u64);
         row[NextInstr as usize] = Fp::from(register.next_instr as u64);
-        // row[Dummy as usize] = Fp::from(register.curr_instr == 0);
         row
     });
 
@@ -311,7 +306,6 @@ fn pad_processor_rows(rows: &mut Vec<[Fp; ProcessorBaseColumn::NUM_TRACE_COLUMNS
     }
 }
 
-// TODO: could move pad functions to trace.rs
 fn pad_memory_rows(rows: &mut Vec<[Fp; MemoryBaseColumn::NUM_TRACE_COLUMNS]>, n: usize) {
     use MemoryBaseColumn::*;
     while rows.len() < n {
@@ -330,7 +324,6 @@ fn pad_instruction_rows(rows: &mut Vec<[Fp; InstructionBaseColumn::NUM_TRACE_COL
     let last_ip = rows.last().unwrap()[Ip as usize];
     while rows.len() < n {
         let mut new_row = [Fp::zero(); InstructionBaseColumn::NUM_TRACE_COLUMNS];
-        // new_row[Dummy as usize] = Fp::zero(); // handled after table generation
         new_row[Ip as usize] = last_ip;
         new_row[CurrInstr as usize] = Fp::zero();
         new_row[NextInstr as usize] = Fp::zero();
@@ -355,9 +348,6 @@ fn pad_output_rows(rows: &mut Vec<[Fp; OutputBaseColumn::NUM_TRACE_COLUMNS]>, n:
 fn derive_memory_rows(
     processor_rows: &[[Fp; ProcessorBaseColumn::NUM_TRACE_COLUMNS]],
 ) -> Vec<[Fp; MemoryBaseColumn::NUM_TRACE_COLUMNS]> {
-    // copy unpadded rows and sort
-    // TODO: sorted by IP and then CYCLE. Check to see if processor table sorts by
-    // cycle.
     use MemoryBaseColumn::*;
     let mut memory_rows = processor_rows
         .iter()
@@ -382,12 +372,6 @@ fn derive_memory_rows(
     while i < memory_rows.len() - 1 {
         let curr = &memory_rows[i];
         let next = &memory_rows[i + 1];
-
-        // // check sorted by memory address then cycle
-        // if curr_row[Mp as usize] == next[Mp as usize] {
-        //     // assert!(curr_row[Self::CYCLE] == next[Self::CYCLE] -
-        //     // Fp::BasePrimeField::one())
-        // }
 
         if curr[Mp as usize] == next[Mp as usize]
             && curr[Cycle as usize] + Fp::one() != next[Cycle as usize]

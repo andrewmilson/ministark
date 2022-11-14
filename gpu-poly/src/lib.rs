@@ -14,10 +14,11 @@ pub mod prelude;
 pub mod stage;
 pub mod utils;
 
-/// A trait to be implemented if the field can be used for FFTs on the GPU.
+/// A marker trait to be implemented if the field can be used for FFTs on the
+/// GPU.
 pub trait GpuFftField: GpuField<FftField = Self> + ark_ff::FftField {}
 
-/// A trait to be implemented if `Self * Rhs` can be done on the GPU
+/// A marker trait to be implemented if `Self * Rhs` can be done on the GPU
 pub trait GpuMulAssign<Rhs>: MulAssign<Rhs> {}
 
 pub trait GpuDomainCoeff<F: GpuFftField>: DomainCoeff<F> + GpuMulAssign<F> {}
@@ -29,7 +30,7 @@ where
 {
 }
 
-// A trait for fields that have a GPU implementation
+// A marker trait for fields that have a GPU implementation
 pub trait GpuField:
     Field + GpuMulAssign<Self> + GpuDomainCoeff<Self::FftField> + From<Self::FftField>
 {

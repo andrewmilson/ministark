@@ -98,7 +98,6 @@ impl Trace for BrainfuckTrace {
             ..
         } = self;
 
-        // TODO: use random numbers again
         let mut rng = rand::thread_rng();
         let instr_initial = Fq3::rand(&mut rng);
         let mem_initial = Fq3::rand(&mut rng);

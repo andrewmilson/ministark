@@ -129,7 +129,6 @@ impl ProcessorExtensionColumn {
         use ProcessorExtensionColumn::*;
         let one = F::one();
         vec![
-            // TODO: can clean this up. generate in a loop
             // instruction permutation:
             // 1. instruction and processor are not padding
             InstructionBaseColumn::CurrInstr.curr()
