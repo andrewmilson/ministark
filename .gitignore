@@ -5,6 +5,5 @@
 # example artifacts
 *.proof
 
-# Metal GPU artifacts
+# Metal artifacts
 *.air
-*.metallib
