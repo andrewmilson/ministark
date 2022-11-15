@@ -5,9 +5,7 @@ use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
 use crate::stage::ScaleAndNormalizeGpuStage;
 use crate::stage::Variant;
-use crate::utils::bit_reverse;
-use crate::utils::buffer_mut_no_copy;
-use crate::utils::fill_twiddles;
+use crate::utils;
 use crate::GpuField;
 use crate::GpuVec;
 use ark_ff::One;
@@ -77,7 +75,7 @@ impl<'a, F: GpuField> GpuFft<'a, F> {
     pub fn encode(&mut self, buffer: &mut GpuVec<F>) {
         assert!(self.0.n >= buffer.len());
         buffer.resize(self.0.n, F::zero());
-        let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), buffer);
+        let mut input_buffer = utils::buffer_mut_no_copy(self.0.command_queue.device(), buffer);
         self.0.encode_scale_stage(&mut input_buffer);
         self.0.encode_butterfly_stages(&mut input_buffer);
         self.0.encode_bit_reverse_stage(&mut input_buffer);
@@ -101,7 +99,7 @@ impl<'a, F: GpuField> GpuIfft<'a, F> {
 
     pub fn encode(&mut self, input: &mut GpuVec<F>) {
         assert_eq!(self.0.n, input.len());
-        let mut input_buffer = buffer_mut_no_copy(self.0.command_queue.device(), input);
+        let mut input_buffer = utils::buffer_mut_no_copy(self.0.command_queue.device(), input);
         self.0.encode_butterfly_stages(&mut input_buffer);
         self.0.encode_bit_reverse_stage(&mut input_buffer);
         self.0.encode_scale_stage(&mut input_buffer);
@@ -158,6 +156,7 @@ impl Planner {
         domain: Radix2EvaluationDomain<F::FftField>,
     ) -> FftEncoder<F> {
         let n = domain.size();
+        let device = self.command_queue.device();
 
         let root = match direction {
             FftDirection::Forward => domain.group_gen,
@@ -166,19 +165,10 @@ impl Planner {
 
         // generate twiddles buffer
         let mut _twiddles = Vec::with_capacity_in(n / 2, PageAlignedAllocator);
-        // use crate::stage::GenerateTwiddlesStage;
-        // unsafe { _twiddles.set_len(n / 2) }
-        // let mut twiddles_buffer = buffer_mut_no_copy(self.command_queue.device(),
-        // &mut _twiddles); let generate_twiddles_stage =
-        // GenerateTwiddlesStage::new(&self.library, n / 2); let command_buffer
-        // = self.command_queue.new_command_buffer(); generate_twiddles_stage.
-        // encode(command_buffer, &mut twiddles_buffer, root); command_buffer.
-        // commit(); // command_buffer.wait_until_completed();
-
         _twiddles.resize(n / 2, F::FftField::zero());
-        fill_twiddles(&mut _twiddles, root);
-        bit_reverse(&mut _twiddles);
-        let twiddles_buffer = buffer_mut_no_copy(self.command_queue.device(), &mut _twiddles);
+        utils::fill_twiddles(&mut _twiddles, root);
+        utils::bit_reverse(&mut _twiddles);
+        let twiddles_buffer = utils::buffer_mut_no_copy(device, &mut _twiddles);
 
         // in-place FFT requires a bit reversal
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);
@@ -208,12 +198,24 @@ impl Planner {
 
         // stages that involve an FFT butterfly
         let mut butterfly_stages = Vec::new();
+        let threadgroup_mem_len = device.max_threadgroup_memory_length() as usize;
+        // TODO: get max_threads_per_threadgroup from metal api. Depends on pipeline
+        let threadgroup_fft_size = utils::threadgroup_fft_size::<F>(threadgroup_mem_len, 1024);
         for stage in 0..n.ilog2() {
-            let variant = match n >> stage {
-                2048 => Variant::Multiple,
-                _ => Variant::Single,
+            let variant = if n >> stage == threadgroup_fft_size {
+                Variant::Multiple
+            } else {
+                Variant::Single
             };
-            butterfly_stages.push(FftGpuStage::new(&self.library, n, 1 << stage, variant));
+
+            butterfly_stages.push(FftGpuStage::new(
+                &self.library,
+                n,
+                1 << stage,
+                variant,
+                threadgroup_fft_size,
+            ));
+
             if let Variant::Multiple = variant {
                 break;
             }

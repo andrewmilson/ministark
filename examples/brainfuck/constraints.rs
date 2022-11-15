@@ -202,9 +202,9 @@ impl ProcessorExtensionColumn {
                 + MemoryBaseColumn::Dummy.curr()
                     * Dummy.curr()
                     * (MemoryExtensionColumn::Permutation.curr() - MemoryPermutation.curr()),
-            // // input evaluation:
+            // input evaluation:
             InputEvaluation.curr() - EvaluationArgumentHint::Input.get_hint(),
-            // // output evaluation:
+            // output evaluation:
             OutputEvaluation.curr() - EvaluationArgumentHint::Output.get_hint(),
         ]
     }

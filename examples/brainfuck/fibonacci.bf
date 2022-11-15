@@ -1,6 +1,5 @@
-// Source: http://esoteric dot sange dot fi/brainfuck/bf-source/prog/fibonacci dot txt
+// Source: http://esoteric dot sange dot fi/brainfuck/bf dash source/prog/fibonacci dot txt
 // This determines how many numbers to generate:
-+ // 0
 + // 1
 + // 1
 + // 2

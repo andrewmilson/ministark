@@ -452,6 +452,13 @@ where
         unsafe { scratch_fq.set_len(n) }
         let mut scratch_fq_buffer = buffer_mut_no_copy(command_queue.device(), &mut scratch_fq);
 
+        let col_buffers = (0..self.num_cols())
+            .map(|i| match self.get_column(i) {
+                Col::Fp(col) => buffer_no_copy(command_queue.device(), col),
+                Col::Fq(col) => buffer_no_copy(command_queue.device(), col),
+            })
+            .collect::<Vec<_>>();
+
         for (constraint, res_buffer) in constraints.iter().zip(&mut res_buffers) {
             // TODO: take advantage of i
             for (_i, Term(coeff, variables)) in constraint.0.iter().enumerate() {
@@ -464,29 +471,27 @@ where
                         _ => unreachable!(),
                     };
                     match self.get_column(*col_index) {
-                        Col::Fp(col) => {
-                            let column_buffer = buffer_no_copy(command_queue.device(), col);
+                        Col::Fp(_) => {
                             mul_fp.encode(
                                 command_buffer,
                                 &mut scratch_fp_buffer,
-                                &column_buffer,
+                                &col_buffers[*col_index],
                                 *power,
                                 shift,
                             );
                         }
-                        Col::Fq(col) => {
-                            let column_buffer = buffer_no_copy(command_queue.device(), col);
+                        Col::Fq(_) => {
                             mul_fq.encode(
                                 command_buffer,
                                 &mut scratch_fq_buffer,
-                                &column_buffer,
+                                &col_buffers[*col_index],
                                 *power,
                                 shift,
                             );
                         }
                     }
                 }
-                // TODO: use mul assign here
+                // TODO: use mul assign stage here
                 mul_fq_by_fp.encode(
                     command_buffer,
                     &mut scratch_fq_buffer,

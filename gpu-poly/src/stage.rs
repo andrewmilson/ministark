@@ -4,9 +4,11 @@ use super::GpuField;
 use crate::allocator::PageAlignedAllocator;
 use crate::utils::buffer_no_copy;
 use crate::utils::distribute_powers;
+use crate::utils::void_ptr;
 use crate::GpuMulAssign;
 use crate::GpuVec;
 use std::marker::PhantomData;
+use std::mem::size_of;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Variant {
@@ -31,6 +33,7 @@ pub struct FftGpuStage<E> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
+    threadgroup_fft_size: usize,
     _phantom: PhantomData<E>,
 }
 
@@ -40,9 +43,12 @@ impl<F: GpuField> FftGpuStage<F> {
         n: usize,
         num_boxes: usize,
         variant: Variant,
+        threadgroup_fft_size: usize,
     ) -> FftGpuStage<F> {
+        use metal::MTLDataType::UInt;
         assert!(n.is_power_of_two());
         assert!(num_boxes.is_power_of_two());
+        assert!(threadgroup_fft_size.is_power_of_two());
         assert!(num_boxes < n);
         assert!((2048..=1073741824).contains(&n));
 
@@ -50,16 +56,10 @@ impl<F: GpuField> FftGpuStage<F> {
         let fft_constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         let num_boxes = num_boxes as u32;
-        fft_constants.set_constant_value_at_index(
-            &n as *const u32 as *const std::ffi::c_void,
-            metal::MTLDataType::UInt,
-            0,
-        );
-        fft_constants.set_constant_value_at_index(
-            &num_boxes as *const u32 as *const std::ffi::c_void,
-            metal::MTLDataType::UInt,
-            1,
-        );
+        let tg_fft_size = threadgroup_fft_size as u32;
+        fft_constants.set_constant_value_at_index(void_ptr(&n), UInt, 0);
+        fft_constants.set_constant_value_at_index(void_ptr(&num_boxes), UInt, 1);
+        fft_constants.set_constant_value_at_index(void_ptr(&tg_fft_size), UInt, 2);
         let func = library
             .get_function(&fft_kernel_name::<F>(variant), Some(fft_constants))
             .unwrap();
@@ -67,8 +67,11 @@ impl<F: GpuField> FftGpuStage<F> {
             .device()
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        assert!(threadgroup_fft_size <= (max_threadgroup_threads / 2) as usize);
 
-        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        // each thread operates on two values each round
+        let threadgroup_dim = metal::MTLSize::new((tg_fft_size / 2).try_into().unwrap(), 1, 1);
         let grid_dim = metal::MTLSize::new((n / 2).try_into().unwrap(), 1, 1);
 
         FftGpuStage {
@@ -76,6 +79,7 @@ impl<F: GpuField> FftGpuStage<F> {
             pipeline,
             threadgroup_dim,
             grid_dim,
+            threadgroup_fft_size,
             _phantom: PhantomData,
         }
     }
@@ -89,10 +93,8 @@ impl<F: GpuField> FftGpuStage<F> {
         let command_encoder = command_buffer.new_compute_command_encoder();
         command_encoder.set_compute_pipeline_state(&self.pipeline);
         if let Variant::Multiple = self.variant {
-            // TODO: make sure this doesn't allocate more than the max.
-            // Seems that it allows you to allocate more than the max
-            // but not sure what the consequences are.
-            let num_bytes = (2048 * std::mem::size_of::<F>()).try_into().unwrap();
+            let field_size = size_of::<F>();
+            let num_bytes = (self.threadgroup_fft_size * field_size).try_into().unwrap();
             command_encoder.set_threadgroup_memory_length(0, num_bytes);
         }
         command_encoder.set_buffer(0, Some(input_buffer), 0);
@@ -121,12 +123,8 @@ impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
         norm_factor: F,
     ) -> Self {
         // Create the compute pipeline
-        let func = library
-            .get_function(
-                &format!("mul_assign_LHS_{}_RHS_{}", F::field_name(), F::field_name()),
-                None,
-            )
-            .unwrap();
+        let kernel_name = format!("mul_assign_LHS_{}_RHS_{}", F::field_name(), F::field_name());
+        let func = library.get_function(&kernel_name, None).unwrap();
         let pipeline = library
             .device()
             .new_compute_pipeline_state_with_function(&func)
@@ -177,6 +175,7 @@ pub struct BitReverseGpuStage<F> {
 
 impl<F: GpuField> BitReverseGpuStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        use metal::MTLDataType::UInt;
         assert!(n.is_power_of_two());
         assert!((2048..=1073741824).contains(&n));
 
@@ -184,21 +183,11 @@ impl<F: GpuField> BitReverseGpuStage<F> {
         let fft_constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         let num_boxes = 5u32;
-        fft_constants.set_constant_value_at_index(
-            &n as *const u32 as *const std::ffi::c_void,
-            metal::MTLDataType::UInt,
-            0,
-        );
-        fft_constants.set_constant_value_at_index(
-            &num_boxes as *const u32 as *const std::ffi::c_void,
-            metal::MTLDataType::UInt,
-            1,
-        );
+        fft_constants.set_constant_value_at_index(void_ptr(&n), UInt, 0);
+        fft_constants.set_constant_value_at_index(void_ptr(&num_boxes), UInt, 1);
+        let kernel_name = format!("bit_reverse_{}", F::field_name());
         let func = library
-            .get_function(
-                &format!("bit_reverse_{}", F::field_name()),
-                Some(fft_constants),
-            )
+            .get_function(&kernel_name, Some(fft_constants))
             .unwrap();
         let pipeline = library
             .device()
@@ -245,22 +234,13 @@ where
         // Create the compute pipeline
         let constants = metal::FunctionConstantValues::new();
         let n = n as u32;
-        constants.set_constant_value_at_index(
-            &n as *const u32 as *const std::ffi::c_void,
-            metal::MTLDataType::UInt,
-            0,
+        constants.set_constant_value_at_index(void_ptr(&n), metal::MTLDataType::UInt, 0);
+        let kernel_name = format!(
+            "mul_pow_LHS_{}_RHS_{}",
+            LhsF::field_name(),
+            RhsF::field_name()
         );
-        // Create the compute pipeline
-        let func = library
-            .get_function(
-                &format!(
-                    "mul_pow_LHS_{}_RHS_{}",
-                    LhsF::field_name(),
-                    RhsF::field_name()
-                ),
-                Some(constants),
-            )
-            .unwrap();
+        let func = library.get_function(&kernel_name, Some(constants)).unwrap();
         let pipeline = library
             .device()
             .new_compute_pipeline_state_with_function(&func)
@@ -290,20 +270,12 @@ where
         command_encoder.set_buffer(0, Some(dst_buffer), 0);
         command_encoder.set_buffer(1, Some(src_buffer), 0);
         let power = power as u32;
-        command_encoder.set_bytes(
-            2,
-            std::mem::size_of::<u32>() as u64,
-            &power as *const u32 as *const std::ffi::c_void,
-        );
+        command_encoder.set_bytes(2, size_of::<u32>().try_into().unwrap(), void_ptr(&power));
         let shift = shift as u32;
-        command_encoder.set_bytes(
-            3,
-            std::mem::size_of::<u32>() as u64,
-            &shift as *const u32 as *const std::ffi::c_void,
-        );
+        command_encoder.set_bytes(3, size_of::<u32>().try_into().unwrap(), void_ptr(&shift));
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
         command_encoder.memory_barrier_with_resources(&[dst_buffer]);
-        command_encoder.end_encoding()
+        command_encoder.end_encoding();
     }
 }
 
@@ -394,15 +366,9 @@ impl<F: GpuField> FillBuffStage<F> {
         value: F,
     ) {
         let command_encoder = command_buffer.new_compute_command_encoder();
-        // let command_encoder = command_buffer
-        //     .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Serial);
         command_encoder.set_compute_pipeline_state(&self.pipeline);
         command_encoder.set_buffer(0, Some(dst_buffer), 0);
-        command_encoder.set_bytes(
-            1,
-            std::mem::size_of::<F>() as u64,
-            &value as *const F as *const std::ffi::c_void,
-        );
+        command_encoder.set_bytes(1, size_of::<F>().try_into().unwrap(), void_ptr(&value));
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
         command_encoder.memory_barrier_with_resources(&[dst_buffer]);
         command_encoder.end_encoding()
@@ -457,11 +423,7 @@ impl<F: GpuField> GenerateTwiddlesStage<F> {
         let command_encoder = command_buffer.new_compute_command_encoder();
         command_encoder.set_compute_pipeline_state(&self.pipeline);
         command_encoder.set_buffer(0, Some(dst_buffer), 0);
-        command_encoder.set_bytes(
-            1,
-            std::mem::size_of::<F>() as u64,
-            &value as *const F as *const std::ffi::c_void,
-        );
+        command_encoder.set_bytes(1, size_of::<F>().try_into().unwrap(), void_ptr(&value));
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
         command_encoder.memory_barrier_with_resources(&[dst_buffer]);
         command_encoder.end_encoding()

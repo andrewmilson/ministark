@@ -1,6 +1,7 @@
 use ark_ff::FftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::mem::size_of;
 
 fn bit_reverse_index(n: usize, i: usize) -> usize {
     assert!(n.is_power_of_two());
@@ -135,6 +136,34 @@ pub(crate) fn distribute_powers<F: crate::GpuField>(coeffs: &mut [F], g: F) {
                 pow *= &g
             })
         });
+}
+
+const MIN_THREADGROUP_FFT_SIZE: usize = 1024;
+
+/// Returns the max FFT size each threadgroup can compute
+#[cfg(target_arch = "aarch64")]
+pub fn threadgroup_fft_size<F: crate::GpuField>(
+    max_threadgroup_mem_length: usize,
+    max_threads_per_threadgroup: usize,
+) -> usize {
+    let field_size = size_of::<F>();
+    assert!(field_size * MIN_THREADGROUP_FFT_SIZE <= max_threadgroup_mem_length);
+    assert!(max_threads_per_threadgroup.is_power_of_two());
+    assert!(max_threads_per_threadgroup >= MIN_THREADGROUP_FFT_SIZE / 2);
+
+    let mut fft_size = MIN_THREADGROUP_FFT_SIZE;
+    // 1. don't exceed the maximum allowed threadgroup memory
+    while fft_size * 2 * field_size <= max_threadgroup_mem_length {
+        fft_size *= 2;
+    }
+
+    // 2. each thread operates on 2 values so can't exceed 2 * max_threads_per_tg
+    std::cmp::min(fft_size, 2 * max_threads_per_threadgroup)
+}
+
+// Converts a reference to a void pointer
+pub(crate) fn void_ptr<T>(v: &T) -> *const std::ffi::c_void {
+    v as *const T as *const std::ffi::c_void
 }
 
 #[cfg(test)]

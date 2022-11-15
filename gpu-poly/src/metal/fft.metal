@@ -119,6 +119,10 @@ GenerateTwiddles(device FieldT *dst [[ buffer(0) ]],
     dst[i] = tmp.pow(ri);
 }
 
+// FFT size that each threadgroup computes.
+// Always a power of two.
+constant unsigned THREADGROUP_FFT_SIZE [[ function_constant(2) ]];
+
 // Performs multiple itteration stages of Cooley-Tuckey FFT
 // Code is has been optimized and may be difficult to reason about
 // TODO: Figure out poor perf reasons. Unrolls might cause instruction cache misses.
@@ -130,8 +134,8 @@ FftMultiple(device CoeffFieldT *vals [[ buffer(0) ]],
         unsigned group_id [[ threadgroup_position_in_grid ]],
         unsigned local_tid [[ thread_index_in_threadgroup ]]) {
 #pragma unroll
-    for (unsigned iteration_num = 0; iteration_num < (N / 1024 / NUM_BOXES); iteration_num++) {
-        unsigned global_tid = local_tid + iteration_num * 1024;
+    for (unsigned iteration_num = 0; iteration_num < (N / (THREADGROUP_FFT_SIZE / 2) / NUM_BOXES); iteration_num++) {
+        unsigned global_tid = local_tid + iteration_num * (THREADGROUP_FFT_SIZE / 2);
         shared_array[global_tid] = vals[global_tid + group_id * (N / NUM_BOXES)];
     }
 
@@ -140,8 +144,8 @@ FftMultiple(device CoeffFieldT *vals [[ buffer(0) ]],
         unsigned input_step = (N / boxes) / 2;
 
 #pragma unroll
-        for (unsigned iteration_num = 0; iteration_num < (N / 1024 / NUM_BOXES) / 2; iteration_num++) {
-            unsigned global_tid = local_tid + iteration_num * 1024;
+        for (unsigned iteration_num = 0; iteration_num < N / THREADGROUP_FFT_SIZE / NUM_BOXES; iteration_num++) {
+            unsigned global_tid = local_tid + iteration_num * (THREADGROUP_FFT_SIZE / 2);
             unsigned box_id = global_tid / input_step;
             unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
@@ -158,9 +162,9 @@ FftMultiple(device CoeffFieldT *vals [[ buffer(0) ]],
     }
 
 #pragma unroll
-    for (unsigned iteration_num = 0; iteration_num < (N / 1024 / NUM_BOXES); iteration_num++) {
+    for (unsigned iteration_num = 0; iteration_num < (N / (THREADGROUP_FFT_SIZE / 2) / NUM_BOXES); iteration_num++) {
         // copy back to global from shared
-        unsigned global_tid = local_tid + iteration_num * 1024;
+        unsigned global_tid = local_tid + iteration_num * (THREADGROUP_FFT_SIZE / 2);
         vals[global_tid + group_id * (N / NUM_BOXES)] = shared_array[global_tid];
     }
 }
