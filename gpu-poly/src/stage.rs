@@ -68,7 +68,7 @@ impl<F: GpuField> FftGpuStage<F> {
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
         let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
-        assert!(threadgroup_fft_size <= (max_threadgroup_threads / 2) as usize);
+        assert!(threadgroup_fft_size / 2 <= max_threadgroup_threads as usize);
 
         // each thread operates on two values each round
         let threadgroup_dim = metal::MTLSize::new((tg_fft_size / 2).try_into().unwrap(), 1, 1);

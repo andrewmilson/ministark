@@ -78,7 +78,7 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output
     let now = Instant::now();
     let trace = simulate(source_code, &mut input.as_bytes(), &mut output);
     println!(
-        "Generated execution trace (cols={}, rows={}) in {:?}",
+        "Generated execution trace (cols={}, rows={}) in {:.0?}",
         trace.base_columns().num_cols(),
         trace.base_columns().num_rows(),
         now.elapsed(),
@@ -90,7 +90,7 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output
 
     let prover = prover::BrainfuckProver::new(options);
     let proof = prover.generate_proof(trace).unwrap();
-    println!("Proof generated in: {:?}", now.elapsed());
+    println!("Proof generated in: {:.0?}", now.elapsed());
     println!(
         "Proof security (conjectured): {}bit",
         proof.conjectured_security_level()
