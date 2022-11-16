@@ -35,7 +35,6 @@ cargo +nightly run -r -F parallel,asm,gpu --example brainfuck -- \
     prove ./examples/brainfuck/hello_world.bf \
           --dst ./hello_world.proof
 
-
 # verify the proof
 cargo +nightly run -r -F asm --example brainfuck -- \
   verify ./examples/brainfuck/hello_world.bf \
@@ -98,6 +97,6 @@ The representation of constraints in miniSTARK is much closer to a representatio
 
 ## Acknowledgements
 
-- [StarkWare](https://starkware.co/) - The company started by the people who invented STARKs. There's so many great things to learn from the people at this company. It's great how public and open their educational material is. Check out: GOAT Eli Ben-Sasson's [STARK math thread](https://twitter.com/EliBenSasson/status/1578380154476208131), Cairo whitepaper ([Video](https://www.youtube.com/watch?v=DTVn0oYLVsE), [PDF](https://eprint.iacr.org/2021/1063.pdf)), [DEEP Method Medium article](https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab).
+- [StarkWare](https://starkware.co/) - The company started by the people who invented STARKs. There are so many great things to learn from the people at this company. It's great how public and open their educational material is. Check out: GOAT Eli Ben-Sasson's [STARK math thread](https://twitter.com/EliBenSasson/status/1578380154476208131), Cairo whitepaper ([Video](https://www.youtube.com/watch?v=DTVn0oYLVsE), [PDF](https://eprint.iacr.org/2021/1063.pdf)), [DEEP Method Medium article](https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab).
 - [Alan Szepieniec](https://twitter.com/aszepieniec?lang=en) - The [Anatomy of a STARK](https://aszepieniec.github.io/stark-anatomy/) tutorial is (IMHO) the best end-to-end practical resource to understand STARKs. Read through this and the magic of STARKs will start to make sense. [BrainSTARK](https://aszepieniec.github.io/stark-brainfuck/brainfuck) is a fantastic sequel to the STARK Anatomy tutorial and is a practical guide to creating an AIR that proves programs written in the Brainf**k programming language. Check out miniSTARK's [brainf\*\*k example](examples/brainfuck/) which is an implementation of the BrainSTARK AIR.
 - [Winterfell](https://github.com/novifinancial/winterfell) - A STARK prover and verifier developed at Facebook by [Bobbin Threadbare](https://twitter.com/bobbinth) and others. This repo was heavily used as a reference for several components: fast Merkle Tree, DEEP composition polynomial, channels, and STARK component traits. Bobbin has some great HackMD articles: [Miden VM program decoder](https://hackmd.io/_aaDBzbWRz6EwQQRtK1pzw), [Memory in Miden VM](https://hackmd.io/@bobbinth/HJr56BKKt), [u32 operations in Miden VM](https://hackmd.io/NC-yRmmtRQSvToTHb96e8Q#u32-operations-in-Miden-VM).
