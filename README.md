@@ -31,12 +31,12 @@ In this example the prover generates a proof that proves integrity of a brainf**
 
 # generate the proof
 # use `-F parallel,asm` if not using an M1 Mac
-cargo +nightly run -r -F parallel,asm,gpu --example brainfuck -- \
+$HOME/.cargo/bin/cargo +nightly run -r -F parallel,asm,gpu --example brainfuck -- \
     prove ./examples/brainfuck/hello_world.bf \
           --dst ./hello_world.proof
 
 # verify the proof
-cargo +nightly run -r -F asm --example brainfuck -- \
+$HOME/.cargo/bin/cargo +nightly run -r -F asm --example brainfuck -- \
   verify ./examples/brainfuck/hello_world.bf \
          --output "Hello World" \
          --proof ./hello_world.proof 
