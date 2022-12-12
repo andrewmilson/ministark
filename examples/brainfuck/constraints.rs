@@ -11,16 +11,18 @@ use crate::tables::OutputExtensionColumn;
 use crate::tables::ProcessorBaseColumn;
 use crate::tables::ProcessorExtensionColumn;
 use crate::vm::OpCode;
-use ark_ff::Zero;
-use gpu_poly::GpuField;
-use ministark::constraint::Challenge as _;
-use ministark::constraint::Hint;
-use ministark::Column;
-use ministark::Constraint;
+use gpu_poly::GpuFftField;
+use ministark::constraints::AlgebraicExpression;
+use ministark::constraints::ExecutionTraceColumn;
+use ministark::constraints::FieldConstant;
+use ministark::constraints::Hint;
+use ministark::constraints::VerifierChallenge;
+use ministark::StarkExtensionOf;
 use std::borrow::Borrow;
 
 impl ProcessorBaseColumn {
-    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use ProcessorBaseColumn::*;
         vec![
             Cycle.curr(),
@@ -32,74 +34,83 @@ impl ProcessorBaseColumn {
         ]
     }
 
-    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use ProcessorBaseColumn::*;
-        let one = F::one();
+        let one = FieldConstant::Fp(Fp::one());
         let two = one + one;
         let mem_val_is_zero = MemVal.curr() * MemValInv.curr() - one;
-        let mut constraints = (Constraint::zero(), Constraint::zero(), Constraint::zero());
+        let mut constraints = (None, None, None);
 
         use OpCode::*;
         for instr in OpCode::VALUES {
             // max degree: 4
-            let mut instr_constraints =
-                (Constraint::zero(), Constraint::zero(), Constraint::zero());
+            let mut instr_constraints = (None, None, None);
 
             match instr {
                 IncrementPointer => {
-                    instr_constraints.0 = Ip.next() - Ip.curr() - one;
-                    instr_constraints.1 = Mp.next() - Mp.curr() - one;
+                    instr_constraints.0 = Some(Ip.next() - Ip.curr() - one);
+                    instr_constraints.1 = Some(Mp.next() - Mp.curr() - one);
                 }
                 DecrementPointer => {
-                    instr_constraints.0 = Ip.next() - Ip.curr() - one;
-                    instr_constraints.1 = Mp.next() - Mp.curr() + one;
+                    instr_constraints.0 = Some(Ip.next() - Ip.curr() - one);
+                    instr_constraints.1 = Some(Mp.next() - Mp.curr() + one);
                 }
                 Increment => {
-                    instr_constraints.0 = Ip.next() - Ip.curr() - one;
-                    instr_constraints.1 = Mp.next() - Mp.curr();
-                    instr_constraints.2 = MemVal.next() - MemVal.curr() - one;
+                    instr_constraints.0 = Some(Ip.next() - Ip.curr() - one);
+                    instr_constraints.1 = Some(Mp.next() - Mp.curr());
+                    instr_constraints.2 = Some(MemVal.next() - MemVal.curr() - one);
                 }
                 Decrement => {
-                    instr_constraints.0 = Ip.next() - Ip.curr() - one;
-                    instr_constraints.1 = Mp.next() - Mp.curr();
-                    instr_constraints.2 = MemVal.next() - MemVal.curr() + one;
+                    instr_constraints.0 = Some(Ip.next() - Ip.curr() - one);
+                    instr_constraints.1 = Some(Mp.next() - Mp.curr());
+                    instr_constraints.2 = Some(MemVal.next() - MemVal.curr() + one);
                 }
                 Write => {
-                    instr_constraints.0 = Ip.next() - Ip.curr() - one;
-                    instr_constraints.1 = Mp.next() - Mp.curr();
+                    instr_constraints.0 = Some(Ip.next() - Ip.curr() - one);
+                    instr_constraints.1 = Some(Mp.next() - Mp.curr());
                 }
                 Read => {
-                    instr_constraints.0 = Ip.next() - Ip.curr() - one;
-                    instr_constraints.1 = Mp.next() - Mp.curr();
-                    instr_constraints.2 = MemVal.next() - MemVal.curr();
+                    instr_constraints.0 = Some(Ip.next() - Ip.curr() - one);
+                    instr_constraints.1 = Some(Mp.next() - Mp.curr());
+                    instr_constraints.2 = Some(MemVal.next() - MemVal.curr());
                 }
                 LoopBegin => {
-                    instr_constraints.0 = MemVal.curr() * (Ip.next() - Ip.curr() - two)
-                        + mem_val_is_zero.clone() * (Ip.next() - NextInstr.curr());
-                    instr_constraints.1 = Mp.next() - Mp.curr();
-                    instr_constraints.2 = MemVal.next() - MemVal.curr();
+                    instr_constraints.0 = Some(
+                        MemVal.curr() * (Ip.next() - Ip.curr() - two)
+                            + mem_val_is_zero.clone() * (Ip.next() - NextInstr.curr()),
+                    );
+                    instr_constraints.1 = Some(Mp.next() - Mp.curr());
+                    instr_constraints.2 = Some(MemVal.next() - MemVal.curr());
                 }
                 LoopEnd => {
-                    instr_constraints.0 = &mem_val_is_zero * (Ip.next() - Ip.curr() - two)
-                        + MemVal.curr() * (Ip.next() - NextInstr.curr());
-                    instr_constraints.1 = Mp.next() - Mp.curr();
-                    instr_constraints.2 = MemVal.next() - MemVal.curr();
+                    instr_constraints.0 = Some(
+                        &mem_val_is_zero * (Ip.next() - Ip.curr() - two)
+                            + MemVal.curr() * (Ip.next() - NextInstr.curr()),
+                    );
+                    instr_constraints.1 = Some(Mp.next() - Mp.curr());
+                    instr_constraints.2 = Some(MemVal.next() - MemVal.curr());
                 }
             }
 
             // max degree: 7
             let deselector = if_not_instr(instr, CurrInstr.curr());
+            let update = |lhs, rhs| match (lhs, rhs) {
+                (Some(lhs), Some(rhs)) => Some(lhs + &deselector * &rhs * CurrInstr.curr()),
+                (None, Some(rhs)) => Some(&deselector * &rhs * CurrInstr.curr()),
+                (v, _) => v,
+            };
 
             // account for padding and deactivate all polynomials if curr instruction is 0
-            constraints.0 += &deselector * &instr_constraints.0 * CurrInstr.curr();
-            constraints.1 += &deselector * &instr_constraints.1 * CurrInstr.curr();
-            constraints.2 += &deselector * &instr_constraints.2 * CurrInstr.curr();
+            constraints.0 = update(constraints.0, instr_constraints.0);
+            constraints.1 = update(constraints.1, instr_constraints.1);
+            constraints.2 = update(constraints.2, instr_constraints.2);
         }
 
         vec![
-            constraints.0,
-            constraints.1,
-            constraints.2,
+            constraints.0.unwrap(),
+            constraints.1.unwrap(),
+            constraints.2.unwrap(),
             // cycle independent constraints
             Cycle.next() - Cycle.curr() - one,
             MemVal.curr() * &mem_val_is_zero,
@@ -107,19 +118,21 @@ impl ProcessorBaseColumn {
             // dummy has to be zero or one
             (Dummy.next() - one) * Dummy.next(),
             // dummy indicates if the row is padding
-            instr_zerofier(CurrInstr.curr()) * (Dummy.curr() - F::one())
+            instr_zerofier(CurrInstr.curr()) * (Dummy.curr() - FieldConstant::Fp(Fp::one()))
                 + CurrInstr.curr() * Dummy.curr(),
         ]
     }
 }
 
 impl ProcessorExtensionColumn {
-    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use ProcessorExtensionColumn::*;
         vec![InputEvaluation.curr(), OutputEvaluation.curr()]
     }
 
-    pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn terminal_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Alpha;
         use Challenge::Beta;
         use Challenge::A;
@@ -127,39 +140,39 @@ impl ProcessorExtensionColumn {
         use Challenge::C;
         use ProcessorBaseColumn::*;
         use ProcessorExtensionColumn::*;
-        let one = F::one();
+        let one = FieldConstant::Fp(Fp::one());
         vec![
             // instruction permutation:
             // 1. instruction and processor are not padding
             InstructionBaseColumn::CurrInstr.curr()
                 * (Dummy.curr() - one)
                 * (InstructionExtensionColumn::ProcessorPermutation.curr()
-                    * (Alpha.get_challenge()
-                        - A.get_challenge() * InstructionBaseColumn::Ip.curr()
-                        - B.get_challenge() * InstructionBaseColumn::CurrInstr.curr()
-                        - C.get_challenge() * InstructionBaseColumn::NextInstr.curr())
+                    * (Alpha.challenge()
+                        - A.challenge() * InstructionBaseColumn::Ip.curr()
+                        - B.challenge() * InstructionBaseColumn::CurrInstr.curr()
+                        - C.challenge() * InstructionBaseColumn::NextInstr.curr())
                     - InstructionPermutation.curr()
-                        * (Alpha.get_challenge()
-                            - A.get_challenge() * Ip.curr()
-                            - B.get_challenge() * CurrInstr.curr()
-                            - C.get_challenge() * NextInstr.curr()))
+                        * (Alpha.challenge()
+                            - A.challenge() * Ip.curr()
+                            - B.challenge() * CurrInstr.curr()
+                            - C.challenge() * NextInstr.curr()))
                 // 2. instruction is padding but processor is not
                 + instr_zerofier(InstructionBaseColumn::CurrInstr.curr())
                     * (Dummy.curr() - one)
                     * (InstructionExtensionColumn::ProcessorPermutation.curr()
                         - InstructionPermutation.curr()
-                            * (Alpha.get_challenge()
-                                - A.get_challenge() * Ip.curr()
-                                - B.get_challenge() * CurrInstr.curr()
-                                - C.get_challenge() * NextInstr.curr()))
+                            * (Alpha.challenge()
+                                - A.challenge() * Ip.curr()
+                                - B.challenge() * CurrInstr.curr()
+                                - C.challenge() * NextInstr.curr()))
                 // 3. processor is padding but instruction is not
                 + InstructionBaseColumn::CurrInstr.curr()
                     * Dummy.curr()
                     * (InstructionExtensionColumn::ProcessorPermutation.curr()
-                        * (Alpha.get_challenge()
-                            - A.get_challenge() * InstructionBaseColumn::Ip.curr()
-                            - B.get_challenge() * InstructionBaseColumn::CurrInstr.curr()
-                            - C.get_challenge() * InstructionBaseColumn::NextInstr.curr())
+                        * (Alpha.challenge()
+                            - A.challenge() * InstructionBaseColumn::Ip.curr()
+                            - B.challenge() * InstructionBaseColumn::CurrInstr.curr()
+                            - C.challenge() * InstructionBaseColumn::NextInstr.curr())
                         - InstructionPermutation.curr())
                 // 4. processor and instruction are padding
                 + instr_zerofier(InstructionBaseColumn::CurrInstr.curr())
@@ -171,45 +184,46 @@ impl ProcessorExtensionColumn {
             (MemoryBaseColumn::Dummy.curr() - one)
                 * (Dummy.curr() - one)
                 * (MemoryExtensionColumn::Permutation.curr()
-                    * (Beta.get_challenge()
-                        - Challenge::D.get_challenge() * MemoryBaseColumn::Cycle.curr()
-                        - Challenge::E.get_challenge() * MemoryBaseColumn::Mp.curr()
-                        - Challenge::F.get_challenge() * MemoryBaseColumn::MemVal.curr())
+                    * (Beta.challenge()
+                        - Challenge::D.challenge() * MemoryBaseColumn::Cycle.curr()
+                        - Challenge::E.challenge() * MemoryBaseColumn::Mp.curr()
+                        - Challenge::F.challenge() * MemoryBaseColumn::MemVal.curr())
                     - MemoryPermutation.curr()
-                        * (Beta.get_challenge()
-                            - Challenge::D.get_challenge() * Cycle.curr()
-                            - Challenge::E.get_challenge() * Mp.curr()
-                            - Challenge::F.get_challenge() * MemVal.curr()))
+                        * (Beta.challenge()
+                            - Challenge::D.challenge() * Cycle.curr()
+                            - Challenge::E.challenge() * Mp.curr()
+                            - Challenge::F.challenge() * MemVal.curr()))
                 // 2. memory table is padding but processor table is not
                 + MemoryBaseColumn::Dummy.curr()
                     * (Dummy.curr() - one)
                     * (MemoryExtensionColumn::Permutation.curr()
                         - MemoryPermutation.curr()
-                            * (Beta.get_challenge()
-                                - Challenge::D.get_challenge() * Cycle.curr()
-                                - Challenge::E.get_challenge() * Mp.curr()
-                                - Challenge::F.get_challenge() * MemVal.curr()))
+                            * (Beta.challenge()
+                                - Challenge::D.challenge() * Cycle.curr()
+                                - Challenge::E.challenge() * Mp.curr()
+                                - Challenge::F.challenge() * MemVal.curr()))
                 // 3. processor is padding but memory table is not
                 + (MemoryBaseColumn::Dummy.curr() - one)
                     * Dummy.curr()
                     * (MemoryExtensionColumn::Permutation.curr()
-                        * (Beta.get_challenge()
-                            - Challenge::D.get_challenge() * MemoryBaseColumn::Cycle.curr()
-                            - Challenge::E.get_challenge() * MemoryBaseColumn::Mp.curr()
-                            - Challenge::F.get_challenge() * MemoryBaseColumn::MemVal.curr())
+                        * (Beta.challenge()
+                            - Challenge::D.challenge() * MemoryBaseColumn::Cycle.curr()
+                            - Challenge::E.challenge() * MemoryBaseColumn::Mp.curr()
+                            - Challenge::F.challenge() * MemoryBaseColumn::MemVal.curr())
                         - MemoryPermutation.curr())
                 // 4. processor and instruction are padding
                 + MemoryBaseColumn::Dummy.curr()
                     * Dummy.curr()
                     * (MemoryExtensionColumn::Permutation.curr() - MemoryPermutation.curr()),
             // input evaluation:
-            InputEvaluation.curr() - EvaluationArgumentHint::Input.get_hint(),
+            InputEvaluation.curr() - EvaluationArgumentHint::Input.hint(),
             // output evaluation:
-            OutputEvaluation.curr() - EvaluationArgumentHint::Output.get_hint(),
+            OutputEvaluation.curr() - EvaluationArgumentHint::Output.hint(),
         ]
     }
 
-    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Alpha;
         use Challenge::Beta;
         use Challenge::Delta;
@@ -224,19 +238,19 @@ impl ProcessorExtensionColumn {
             // running product for instruction table permutation
             CurrInstr.curr()
                 * (InstructionPermutation.curr()
-                    * (Alpha.get_challenge()
-                        - A.get_challenge() * Ip.curr()
-                        - B.get_challenge() * CurrInstr.curr()
-                        - C.get_challenge() * NextInstr.curr())
+                    * (Alpha.challenge()
+                        - A.challenge() * Ip.curr()
+                        - B.challenge() * CurrInstr.curr()
+                        - C.challenge() * NextInstr.curr())
                     - InstructionPermutation.next())
                 + Dummy.curr() * (InstructionPermutation.curr() - InstructionPermutation.next()),
             // running product for memory table permutation
             CurrInstr.curr()
                 * (MemoryPermutation.curr()
-                    * (Beta.get_challenge()
-                        - Challenge::D.get_challenge() * Cycle.curr()
-                        - Challenge::E.get_challenge() * Mp.curr()
-                        - Challenge::F.get_challenge() * MemVal.curr())
+                    * (Beta.challenge()
+                        - Challenge::D.challenge() * Cycle.curr()
+                        - Challenge::E.challenge() * Mp.curr()
+                        - Challenge::F.challenge() * MemVal.curr())
                     - MemoryPermutation.next())
                 * Dummy.curr()
                 * (MemoryPermutation.curr() - MemoryPermutation.next()),
@@ -244,7 +258,7 @@ impl ProcessorExtensionColumn {
             CurrInstr.curr()
                 * if_not_instr(OpCode::Read, CurrInstr.curr())
                 * (InputEvaluation.next()
-                    - Gamma.get_challenge() * InputEvaluation.curr()
+                    - Gamma.challenge() * InputEvaluation.curr()
                     - MemVal.next())
                 + if_instr(OpCode::Read, CurrInstr.curr())
                     * (InputEvaluation.next() - InputEvaluation.curr()),
@@ -252,7 +266,7 @@ impl ProcessorExtensionColumn {
             CurrInstr.curr()
                 * if_not_instr(OpCode::Write, CurrInstr.curr())
                 * (OutputEvaluation.next()
-                    - OutputEvaluation.curr() * Delta.get_challenge()
+                    - OutputEvaluation.curr() * Delta.challenge()
                     - MemVal.curr())
                 + if_instr(OpCode::Write, CurrInstr.curr())
                     * (OutputEvaluation.next() - OutputEvaluation.curr()),
@@ -261,14 +275,16 @@ impl ProcessorExtensionColumn {
 }
 
 impl MemoryBaseColumn {
-    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use MemoryBaseColumn::*;
         vec![Cycle.curr(), Mp.curr(), MemVal.curr()]
     }
 
-    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use MemoryBaseColumn::*;
-        let one = F::one();
+        let one = FieldConstant::Fp(Fp::one());
         vec![
             // 1. memory pointer increases by one or zero
             // note: remember table is sorted by memory address
@@ -292,7 +308,8 @@ impl MemoryBaseColumn {
 }
 
 impl MemoryExtensionColumn {
-    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Beta;
         use MemoryBaseColumn::*;
         use MemoryExtensionColumn::*;
@@ -300,25 +317,27 @@ impl MemoryExtensionColumn {
         vec![
             (Permutation.next()
                 - Permutation.curr()
-                    * (Beta.get_challenge()
-                        - Challenge::D.get_challenge() * Cycle.curr()
-                        - Challenge::E.get_challenge() * Mp.curr()
-                        - Challenge::F.get_challenge() * MemVal.curr()))
-                * (Dummy.curr() - F::one())
+                    * (Beta.challenge()
+                        - Challenge::D.challenge() * Cycle.curr()
+                        - Challenge::E.challenge() * Mp.curr()
+                        - Challenge::F.challenge() * MemVal.curr()))
+                * (Dummy.curr() - FieldConstant::Fp(Fp::one()))
                 + (Permutation.next() - Permutation.curr()) * Dummy.curr(),
         ]
     }
 }
 
 impl InstructionBaseColumn {
-    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InstructionBaseColumn::*;
         vec![Ip.curr()]
     }
 
-    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InstructionBaseColumn::*;
-        let one = F::one();
+        let one = FieldConstant::Fp(Fp::one());
         vec![
             // instruction pointer increases by 0 or 1
             (Ip.next() - Ip.curr() - one) * (Ip.next() - Ip.curr()),
@@ -341,7 +360,8 @@ impl InstructionBaseColumn {
 }
 
 impl InstructionExtensionColumn {
-    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::A;
         use Challenge::B;
         use Challenge::C;
@@ -349,18 +369,20 @@ impl InstructionExtensionColumn {
         use InstructionExtensionColumn::*;
         vec![
             ProgramEvaluation.curr()
-                - A.get_challenge() * Ip.curr()
-                - B.get_challenge() * CurrInstr.curr()
-                - C.get_challenge() * NextInstr.curr(),
+                - A.challenge() * Ip.curr()
+                - B.challenge() * CurrInstr.curr()
+                - C.challenge() * NextInstr.curr(),
         ]
     }
 
-    pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn terminal_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InstructionExtensionColumn::*;
-        vec![ProgramEvaluation.curr() - EvaluationArgumentHint::Instruction.get_hint()]
+        vec![ProgramEvaluation.curr() - EvaluationArgumentHint::Instruction.hint()]
     }
 
-    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Alpha;
         use Challenge::Eta;
         use Challenge::A;
@@ -368,7 +390,7 @@ impl InstructionExtensionColumn {
         use Challenge::C;
         use InstructionBaseColumn::*;
         use InstructionExtensionColumn::*;
-        let one = F::one();
+        let one = FieldConstant::Fp(Fp::one());
         vec![
             // - processor permutation changes correctly if ip changes
             // - processor permutation doesn't change if `curr_instr=0` i.e. padding
@@ -377,10 +399,10 @@ impl InstructionExtensionColumn {
                 * (Ip.curr() - Ip.next() + one)
                 * (ProcessorPermutation.next()
                     - ProcessorPermutation.curr()
-                        * (Alpha.get_challenge()
-                            - A.get_challenge() * Ip.next()
-                            - B.get_challenge() * CurrInstr.next()
-                            - C.get_challenge() * NextInstr.next()))
+                        * (Alpha.challenge()
+                            - A.challenge() * Ip.next()
+                            - B.challenge() * CurrInstr.next()
+                            - C.challenge() * NextInstr.next()))
                 + instr_zerofier(CurrInstr.curr())
                     * (ProcessorPermutation.next() - ProcessorPermutation.curr())
                 + (Ip.curr() - Ip.next())
@@ -390,89 +412,97 @@ impl InstructionExtensionColumn {
             (Ip.next() - Ip.curr() - one) * (ProgramEvaluation.next() - ProgramEvaluation.curr())
                 + (Ip.next() - Ip.curr())
                     * (ProgramEvaluation.next()
-                        - ProgramEvaluation.curr() * Eta.get_challenge()
-                        - A.get_challenge() * Ip.next()
-                        - B.get_challenge() * CurrInstr.next()
-                        - C.get_challenge() * NextInstr.next()),
+                        - ProgramEvaluation.curr() * Eta.challenge()
+                        - A.challenge() * Ip.next()
+                        - B.challenge() * CurrInstr.next()
+                        - C.challenge() * NextInstr.next()),
         ]
     }
 }
 
 impl InputExtensionColumn {
-    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InputBaseColumn::*;
         use InputExtensionColumn::*;
         vec![Evaluation.curr() - Value.curr()]
     }
 
-    pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn terminal_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InputExtensionColumn::*;
         vec![
             Evaluation.curr()
-                - EvaluationArgumentHint::Input.get_hint()
-                    * EvaluationArgumentHint::InputOffset.get_hint(),
+                - EvaluationArgumentHint::Input.hint() * EvaluationArgumentHint::InputOffset.hint(),
         ]
     }
 
-    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Gamma;
         use InputBaseColumn::*;
         use InputExtensionColumn::*;
-        vec![Evaluation.curr() * Gamma.get_challenge() + Value.next() - Evaluation.next()]
+        vec![Evaluation.curr() * Gamma.challenge() + Value.next() - Evaluation.next()]
     }
 }
 
 impl OutputExtensionColumn {
-    pub fn boundary_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use OutputBaseColumn::*;
         use OutputExtensionColumn::*;
         vec![Evaluation.curr() - Value.curr()]
     }
 
-    pub fn terminal_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn terminal_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use OutputExtensionColumn::*;
         vec![
             Evaluation.curr()
-                - EvaluationArgumentHint::Output.get_hint()
-                    * EvaluationArgumentHint::OutputOffset.get_hint(),
+                - EvaluationArgumentHint::Output.hint()
+                    * EvaluationArgumentHint::OutputOffset.hint(),
         ]
     }
 
-    pub fn transition_constraints<F: GpuField>() -> Vec<Constraint<F>> {
+    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Delta;
         use OutputBaseColumn::*;
         use OutputExtensionColumn::*;
-        vec![Evaluation.curr() * Delta.get_challenge() + Value.next() - Evaluation.next()]
+        vec![Evaluation.curr() * Delta.challenge() + Value.next() - Evaluation.next()]
     }
 }
 
-fn instr_zerofier<F: GpuField>(instr: Constraint<F>) -> Constraint<F> {
-    let mut accumulator = Constraint::from(F::one());
-    for opcode in OpCode::VALUES {
-        accumulator *= &instr - F::from(opcode as u64);
-    }
-    accumulator
+fn instr_zerofier<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    instr: impl Borrow<AlgebraicExpression<Fp, Fq>>,
+) -> AlgebraicExpression<Fp, Fq> {
+    OpCode::VALUES
+        .into_iter()
+        .map(|opcode| instr.borrow() - FieldConstant::Fp(Fp::from(opcode as u64)))
+        .product()
 }
 
 /// returns a polynomial in X that evaluates to 0 in all instructions except
 /// for one provided
-fn if_not_instr<F: GpuField>(
+fn if_not_instr<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
     instr: OpCode,
-    indeterminate: impl Borrow<Constraint<F>>,
-) -> Constraint<F> {
-    let mut accumulator = Constraint::from(F::one());
-    for opcode in OpCode::VALUES {
-        if opcode != instr {
-            let factor = indeterminate.borrow() - F::from(opcode as u64);
-            accumulator *= factor;
-        }
-    }
-    accumulator
+    indeterminate: impl Borrow<AlgebraicExpression<Fp, Fq>>,
+) -> AlgebraicExpression<Fp, Fq> {
+    OpCode::VALUES
+        .into_iter()
+        .filter_map(|opcode| {
+            if opcode != instr {
+                Some(indeterminate.borrow() - FieldConstant::Fp(Fp::from(opcode as u64)))
+            } else {
+                None
+            }
+        })
+        .product()
 }
 
-fn if_instr<F: GpuField>(
+fn if_instr<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
     instr: OpCode,
-    indeterminate: impl Borrow<Constraint<F>>,
-) -> Constraint<F> {
-    indeterminate.borrow() - F::from(instr as u64)
+    indeterminate: impl Borrow<AlgebraicExpression<Fp, Fq>>,
+) -> AlgebraicExpression<Fp, Fq> {
+    indeterminate.borrow() - FieldConstant::Fp(Fp::from(instr as u64))
 }

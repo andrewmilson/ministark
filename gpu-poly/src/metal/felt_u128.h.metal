@@ -43,20 +43,9 @@
 // using Python (integers are unbounded in size in Python)
 //
 // ```python
-// def gcdExtended(a, b):
-//     # Base Case
-//     if a == 0:
-//         return b, 0, 1
-//     gcd,x1,y1 = gcdExtended(b%a, a)
-//     # Update x and y using results of recursive call
-//     x = y1 - (b // a) * x1
-//     y = x1
-//     return gcd, x, y
-//
 // R = 1<<128
 // N = <<prime modulus>>
-// g, R_prime, N_prime = gcdExtended(R, N)
-// print(R - N_prime)
+// pow(N, -1, R)
 // ```
 template <
     /* =N **/ unsigned long N_HIGH, unsigned long N_LOW,

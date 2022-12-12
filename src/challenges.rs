@@ -1,4 +1,4 @@
-use crate::constraint::Challenge;
+use crate::constraints::VerifierChallenge;
 use ark_std::rand::Rng;
 use gpu_poly::GpuField;
 use std::ops::Deref;
@@ -21,7 +21,7 @@ impl<F: GpuField> Deref for Challenges<F> {
     }
 }
 
-impl<F: GpuField, C: Challenge> Index<C> for Challenges<F> {
+impl<F: GpuField, C: VerifierChallenge> Index<C> for Challenges<F> {
     type Output = F;
 
     fn index(&self, challenge: C) -> &Self::Output {

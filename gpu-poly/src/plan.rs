@@ -15,7 +15,7 @@ use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 
-const LIBRARY_DATA: &[u8] = include_bytes!("metal/fft.metallib");
+const LIBRARY_DATA: &[u8] = include_bytes!("metal/shaders.metallib");
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 enum FftDirection {

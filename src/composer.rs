@@ -1,23 +1,17 @@
 use crate::challenges::Challenges;
+use crate::constraints::AlgebraicExpression;
+use crate::constraints::FieldConstant;
 use crate::hints::Hints;
-use crate::matrix::GroupItem;
-use crate::matrix::MatrixGroup;
 use crate::merkle::MerkleTree;
-use crate::utils::synthetic_divide;
+use crate::utils::divide_out_point_into;
+use crate::utils::horner_evaluate;
 use crate::Air;
-use crate::Column;
-use crate::Constraint;
 use crate::Matrix;
 use ark_ff::Field;
-use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use gpu_poly::prelude::*;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 use sha2::Sha256;
-use std::collections::BTreeMap;
-use std::ops::Mul;
 
 pub struct ConstraintComposer<'a, A: Air> {
     air: &'a A,
@@ -32,108 +26,157 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         }
     }
 
-    pub fn evaluate(
-        &mut self,
+    #[cfg(feature = "gpu")]
+    pub fn evaluate_constraint_gpu(
+        &self,
+        composition_constraint: AlgebraicExpression<A::Fp, A::Fq>,
+        challenges: &Challenges<A::Fq>,
+        hints: &Hints<A::Fq>,
+        base_trace_lde: Matrix<A::Fp>,
+        extension_trace_lde: Option<Matrix<A::Fq>>,
+    ) -> Matrix<A::Fq> {
+        use crate::calculator::lde_calculator;
+        use crate::constraints::EvaluationLde;
+        let command_queue = &PLANNER.command_queue;
+        let device = command_queue.device();
+
+        #[cfg(debug_assertions)]
+        let expected_result = self.evaluate_constraint_cpu(
+            &composition_constraint,
+            challenges,
+            hints,
+            &base_trace_lde,
+            extension_trace_lde.as_ref(),
+        );
+
+        let mut trace_ldes = Vec::new();
+
+        for lde in base_trace_lde.0.into_iter() {
+            let gpu_buffer = buffer_no_copy(device, &lde);
+            trace_ldes.push(Some(EvaluationLde::Fp(lde, gpu_buffer)));
+        }
+
+        for lde in extension_trace_lde.into_iter().flatten() {
+            let gpu_buffer = buffer_no_copy(device, &lde);
+            trace_ldes.push(Some(EvaluationLde::Fq(lde, gpu_buffer)));
+        }
+
+        let result = lde_calculator(
+            self.air,
+            composition_constraint,
+            &|i| FieldConstant::Fq(hints[i]),
+            &|i| FieldConstant::Fq(challenges[i]),
+            &mut |i| trace_ldes[i].take().unwrap(),
+        );
+
+        #[cfg(debug_assertions)]
+        expected_result.0[0]
+            .iter()
+            .zip(&result.0[0])
+            .enumerate()
+            .for_each(|(i, (expected, actual))| {
+                assert_eq!(expected, actual, "mismatch at {i}");
+            });
+
+        result
+    }
+
+    #[cfg(any(not(feature = "gpu"), debug_assertions))]
+    pub fn evaluate_constraint_cpu(
+        &self,
+        composition_constraint: &AlgebraicExpression<A::Fp, A::Fq>,
         challenges: &Challenges<A::Fq>,
         hints: &Hints<A::Fq>,
         base_trace_lde: &Matrix<A::Fp>,
         extension_trace_lde: Option<&Matrix<A::Fq>>,
     ) -> Matrix<A::Fq> {
-        // create a matrix group with all the LDEs we need for composition
-        let mut lde_columns = MatrixGroup::default();
+        let lde_domain = self.air.lde_domain();
+        let step = self.air.lde_blowup_factor() as isize;
+        let xs = lde_domain.elements();
+        let n = lde_domain.size();
+        let mut result = Vec::with_capacity_in(n, PageAlignedAllocator);
+        result.resize(n, A::Fq::zero());
 
-        // add execution trace LDE
-        lde_columns.append(GroupItem::Fp(base_trace_lde));
-        if let Some(extension_trace_lde) = extension_trace_lde {
-            lde_columns.append(GroupItem::Fq(extension_trace_lde))
+        let trace_info = self.air.trace_info();
+        let base_columns_range = trace_info.base_columns_range();
+        let extension_columns_range = trace_info.extension_columns_range();
+
+        for (i, (v, x)) in result.iter_mut().zip(xs).enumerate() {
+            let eval_result = composition_constraint.eval(
+                &FieldConstant::Fp(x),
+                &|h| FieldConstant::Fq(hints[h]),
+                &|c| FieldConstant::Fq(challenges[c]),
+                &|col_idx, offset| {
+                    let position = (i as isize + step * offset).rem_euclid(n as isize) as usize;
+                    if base_columns_range.contains(&col_idx) {
+                        let column = &base_trace_lde[col_idx];
+                        FieldConstant::Fp(column[position])
+                    } else if extension_columns_range.contains(&col_idx) {
+                        let extension_column_offset = col_idx - trace_info.num_base_columns;
+                        let column = &extension_trace_lde.unwrap()[extension_column_offset];
+                        FieldConstant::Fq(column[position])
+                    } else {
+                        panic!("invalid column {col_idx}")
+                    }
+                },
+            );
+
+            *v = match eval_result {
+                FieldConstant::Fp(v) => A::Fq::from(v),
+                FieldConstant::Fq(v) => v,
+            };
         }
 
-        let boundary_constraints = self.air.boundary_constraints();
-        let boundary_divisor_idx = lde_columns.num_cols();
-        let boundary_divisor = self.air.boundary_constraint_divisor();
-        let _boundary_divisor_matrix = Matrix::new(vec![boundary_divisor.lde]);
-        // add boundary constraint divisor LDE
-        lde_columns.append(GroupItem::Fp(&_boundary_divisor_matrix));
-        let boundary_iter = boundary_constraints
-            .iter()
-            .map(|c| (c, boundary_divisor_idx.curr(), boundary_divisor.degree));
+        Matrix::new(vec![result])
+    }
 
-        let transition_constraints = self.air.transition_constraints();
-        let transition_divisor_idx = lde_columns.num_cols();
-        let transition_divisor = self.air.transition_constraint_divisor();
-        let _transition_divisor_matrix = Matrix::new(vec![transition_divisor.lde]);
-        // add transition constraint divisor LDE
-        lde_columns.append(GroupItem::Fp(&_transition_divisor_matrix));
-        let transition_iter = transition_constraints
-            .iter()
-            .map(|c| (c, transition_divisor_idx.curr(), transition_divisor.degree));
-
-        let terminal_constraints = self.air.terminal_constraints();
-        let terminal_divisor_idx = lde_columns.num_cols();
-        let terminal_divisor = self.air.terminal_constraint_divisor();
-        let _terminal_divisor_matrix = Matrix::new(vec![terminal_divisor.lde]);
-        // add terminal constraint divisor LDE
-        lde_columns.append(GroupItem::Fp(&_terminal_divisor_matrix));
-        let terminal_iter = terminal_constraints
-            .iter()
-            .map(|c| (c, terminal_divisor_idx.curr(), terminal_divisor.degree));
-
-        // add degree adjustment LDEs
+    pub fn evaluate(
+        &mut self,
+        challenges: &Challenges<A::Fq>,
+        hints: &Hints<A::Fq>,
+        base_trace_lde: Matrix<A::Fp>,
+        extension_trace_lde: Option<Matrix<A::Fq>>,
+    ) -> Matrix<A::Fq> {
+        use AlgebraicExpression::*;
         let trace_degree = self.air.trace_len() - 1;
         let composition_degree = self.air.composition_degree();
-        let lde_domain = self.air.lde_domain();
-        let mut degree_adjustment_matricies = Vec::new();
-        let mut degree_adjustment_map = BTreeMap::<usize, Constraint<A::Fq>>::new();
-        for (constraint, _, divisor_degree) in boundary_iter
-            .clone()
-            .chain(transition_iter.clone())
-            .chain(terminal_iter.clone())
-        {
-            let evaluation_degree = constraint.degree() * trace_degree - divisor_degree;
-            assert!(evaluation_degree <= composition_degree);
-            let degree_adjustment = composition_degree - evaluation_degree;
 
-            degree_adjustment_map
-                .entry(degree_adjustment)
-                .or_insert_with(|| {
-                    if degree_adjustment == 0 {
-                        Constraint::from(A::Fq::one())
-                    } else {
-                        let col_idx = lde_columns.num_cols() + degree_adjustment_matricies.len();
-                        let mut domain = lde_domain;
-                        // TODO: this is hacky. fix
-                        domain.offset = domain.offset.pow([degree_adjustment as u64]);
-                        domain.group_gen = domain.group_gen.pow([degree_adjustment as u64]);
-                        let column = domain.elements().collect::<Vec<_>>();
-                        let matrix = Matrix::new(vec![column.to_vec_in(PageAlignedAllocator)]);
-                        degree_adjustment_matricies.push(matrix);
-                        col_idx.curr()
-                    }
-                });
-        }
+        // Constraint composition as in:
+        // https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab
+        let composition_constraint = self
+            .air
+            .constraints()
+            .iter()
+            .enumerate()
+            .map(|(i, constraint)| {
+                let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
+                let evaluation_degree = numerator_degree - denominator_degree;
+                assert!(evaluation_degree <= composition_degree);
+                let degree_adjustment = composition_degree - evaluation_degree;
+                let (alpha, beta) = self.composition_coeffs[i];
+                // TODO: would be nice to use Fp is Fq and Fp are the same
+                constraint
+                    * (X.pow(degree_adjustment) * FieldConstant::Fq(alpha)
+                        + FieldConstant::Fq(beta))
+            })
+            .sum::<AlgebraicExpression<A::Fp, A::Fq>>();
 
-        // add degree adjustment LDEs
-        for degree_adjustment_matrix in &degree_adjustment_matricies {
-            lde_columns.append(GroupItem::Fp(degree_adjustment_matrix));
-        }
-
-        let mut composition_constraint = Constraint::zero();
-        for (constraint, divisor, divisor_degree) in
-            boundary_iter.chain(transition_iter).chain(terminal_iter)
-        {
-            let evaluation_degree = constraint.degree() * trace_degree - divisor_degree;
-            assert!(evaluation_degree <= composition_degree);
-            let degree_adjustment = composition_degree - evaluation_degree;
-            let degree_adjustor = degree_adjustment_map.get(&degree_adjustment).unwrap();
-
-            let (alpha, beta) = self.composition_coeffs.pop().unwrap();
-            // Constraint composition as in:
-            // https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab
-            composition_constraint += constraint * divisor * (degree_adjustor * alpha + beta);
-        }
-
-        let lde_step = self.air.lde_blowup_factor();
-        lde_columns.evaluate_symbolic(&[composition_constraint], challenges, hints, lde_step)
+        #[cfg(feature = "gpu")]
+        return self.evaluate_constraint_gpu(
+            composition_constraint,
+            challenges,
+            hints,
+            base_trace_lde,
+            extension_trace_lde,
+        );
+        #[cfg(not(feature = "gpu"))]
+        return self.evaluate_constraint_cpu(
+            &composition_constraint,
+            challenges,
+            hints,
+            &base_trace_lde,
+            extension_trace_lde.as_ref(),
+        );
     }
 
     fn trace_polys(&self, composed_evaluations: Matrix<A::Fq>) -> Matrix<A::Fq> {
@@ -170,8 +213,8 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         mut self,
         challenges: &Challenges<A::Fq>,
         hints: &Hints<A::Fq>,
-        base_trace_lde: &Matrix<A::Fp>,
-        extension_trace_lde: Option<&Matrix<A::Fq>>,
+        base_trace_lde: Matrix<A::Fp>,
+        extension_trace_lde: Option<Matrix<A::Fq>>,
     ) -> (Matrix<A::Fq>, Matrix<A::Fq>, MerkleTree<Sha256>) {
         let composed_evaluations =
             self.evaluate(challenges, hints, base_trace_lde, extension_trace_lde);
@@ -183,140 +226,146 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
 }
 
 pub struct DeepPolyComposer<'a, A: Air> {
-    air: &'a A,
-    composition_coeffs: DeepCompositionCoeffs<A::Fq>,
     z: A::Fq,
-    poly: GpuVec<A::Fq>,
+    air: &'a A,
+    base_trace_polys: &'a Matrix<A::Fp>,
+    extension_trace_polys: Option<&'a Matrix<A::Fq>>,
+    composition_trace_polys: Matrix<A::Fq>,
 }
 
 impl<'a, A: Air> DeepPolyComposer<'a, A> {
-    pub fn new(air: &'a A, composition_coeffs: DeepCompositionCoeffs<A::Fq>, z: A::Fq) -> Self {
-        let poly = Vec::with_capacity_in(air.trace_len(), PageAlignedAllocator);
+    pub fn new(
+        air: &'a A,
+        z: A::Fq,
+        base_trace_polys: &'a Matrix<A::Fp>,
+        extension_trace_polys: Option<&'a Matrix<A::Fq>>,
+        composition_trace_polys: Matrix<A::Fq>,
+    ) -> Self {
         DeepPolyComposer {
-            air,
-            composition_coeffs,
             z,
-            poly,
+            air,
+            base_trace_polys,
+            extension_trace_polys,
+            composition_trace_polys,
         }
     }
 
-    pub fn add_execution_trace_polys(
-        &mut self,
-        base_trace_polys: Matrix<A::Fp>,
-        extension_trace_polys: Option<Matrix<A::Fq>>,
-        ood_evals: Vec<A::Fq>,
-        ood_evals_next: Vec<A::Fq>,
-    ) {
-        assert!(self.poly.is_empty());
+    /// Output is of the form `(execution_trace_evals, composition_trace_evals)`
+    pub fn get_ood_evals(&mut self) -> (Vec<A::Fq>, Vec<A::Fq>) {
+        let Self {
+            z,
+            air,
+            base_trace_polys,
+            extension_trace_polys,
+            composition_trace_polys,
+            ..
+        } = self;
 
-        let trace_domain = self.air.trace_domain();
-        let next_z = self.z * A::Fq::from(trace_domain.group_gen());
-        let n = trace_domain.size();
+        let trace_domain = air.trace_domain();
+        let g = trace_domain.group_gen();
+        let g_inv = trace_domain.group_gen_inv();
 
-        let mut t1_composition = Vec::with_capacity_in(n, PageAlignedAllocator);
-        t1_composition.resize(n, A::Fq::zero());
-        let mut t2_composition = Vec::with_capacity_in(n, PageAlignedAllocator);
-        t2_composition.resize(n, A::Fq::zero());
-
-        // TODO: clean up code
-        for (i, poly) in base_trace_polys.iter().enumerate() {
-            let (alpha, beta, _) = self.composition_coeffs.base_trace[i];
-            let ood_eval = ood_evals[i];
-            let ood_eval_next = ood_evals_next[i];
-
-            acc_trace_poly(&mut t1_composition, poly, ood_eval, alpha);
-            acc_trace_poly(&mut t2_composition, poly, ood_eval_next, beta);
+        // generate ood evaluations for the execution trace polynomials
+        // TODO: parallelize
+        let trace_info = air.trace_info();
+        let base_columns_range = trace_info.base_columns_range();
+        let extension_columns_range = trace_info.extension_columns_range();
+        let mut execution_trace_evals = Vec::new();
+        for (column, offset) in air.trace_arguments() {
+            let x = *z * if offset.is_positive() { g } else { g_inv }.pow([offset.abs() as u64]);
+            execution_trace_evals.push(if base_columns_range.contains(&column) {
+                let coeffs = &base_trace_polys[column];
+                horner_evaluate(coeffs, &x)
+            } else if extension_columns_range.contains(&column) {
+                let coeffs = &extension_trace_polys.unwrap()[column - trace_info.num_base_columns];
+                horner_evaluate(coeffs, &x)
+            } else {
+                panic!(
+                    "column is {column} but there are only {} columns",
+                    trace_info.num_base_columns + trace_info.num_extension_columns
+                )
+            })
         }
 
-        if let Some(extension_trace_polys) = extension_trace_polys {
-            // TODO: not a huge fan of this of this num_base_column business
-            let num_base_columns = self.air.trace_info().num_base_columns;
-            for (i, poly) in extension_trace_polys.iter().enumerate() {
-                let (alpha, beta, _) = self.composition_coeffs.extension_trace[i];
-                let ood_eval = ood_evals[num_base_columns + i];
-                let ood_eval_next = ood_evals_next[num_base_columns + i];
+        // generate ood evaluations for the composition trace polynomials
+        let z_n = self.z.pow([composition_trace_polys.num_cols() as u64]);
+        let mut composition_trace_evals = Vec::new();
+        for column in composition_trace_polys.iter() {
+            composition_trace_evals.push(horner_evaluate(column, &z_n))
+        }
 
-                acc_trace_poly(&mut t1_composition, poly, ood_eval, alpha);
-                acc_trace_poly(&mut t2_composition, poly, ood_eval_next, beta);
+        (execution_trace_evals, composition_trace_evals)
+    }
+
+    pub fn into_deep_poly(self, composition_coeffs: DeepCompositionCoeffs<A::Fq>) -> Matrix<A::Fq> {
+        let Self {
+            z,
+            air,
+            base_trace_polys,
+            extension_trace_polys,
+            composition_trace_polys,
+            ..
+        } = self;
+
+        let DeepCompositionCoeffs {
+            execution_trace: execution_trace_alphas,
+            composition_trace: composition_trace_alphas,
+            degree: (degree_alpha, degree_beta),
+        } = composition_coeffs;
+
+        let trace_domain = air.trace_domain();
+        let g = trace_domain.group_gen();
+        let g_inv = trace_domain.group_gen_inv();
+
+        let mut combined_coeffs = Vec::new_in(PageAlignedAllocator);
+        combined_coeffs.resize(air.trace_len(), A::Fq::zero());
+
+        // divide out OOD points from execution trace polys
+        let trace_info = air.trace_info();
+        let base_columns_range = trace_info.base_columns_range();
+        let extension_columns_range = trace_info.extension_columns_range();
+        for ((col, offset), alpha) in air.trace_arguments().iter().zip(execution_trace_alphas) {
+            // TODO: a lot of duplicate code in get_ood_evals
+            let x = z * if offset.is_positive() { g } else { g_inv }.pow([offset.abs() as u64]);
+            if base_columns_range.contains(col) {
+                let coeffs = &base_trace_polys[*col];
+                divide_out_point_into::<A::Fp, A::Fq>(&mut combined_coeffs, coeffs, &x, &alpha);
+            } else if extension_columns_range.contains(col) {
+                let coeffs = &extension_trace_polys.unwrap()[col - trace_info.num_base_columns];
+                divide_out_point_into(&mut combined_coeffs, coeffs, &x, &alpha);
+            } else {
+                panic!(
+                    "column is {col} but there are only {} columns",
+                    trace_info.num_base_columns + trace_info.num_extension_columns
+                )
             }
         }
 
-        // TODO: multithread
-        synthetic_divide(&mut t1_composition, 1, self.z);
-        synthetic_divide(&mut t2_composition, 1, next_z);
-
-        for (t1, t2) in t1_composition.into_iter().zip(t2_composition) {
-            self.poly.push(t1 + t2)
+        // divide out OOD point from composition trace polys
+        let z_n = self.z.pow([composition_trace_polys.num_cols() as u64]);
+        for (coeffs, alpha) in composition_trace_polys.iter().zip(composition_trace_alphas) {
+            divide_out_point_into(&mut combined_coeffs, coeffs, &z_n, &alpha);
         }
 
-        // TODO:
-        // Check that the degree has reduced by 1 as a result of the divisions
-        assert!(self.poly.last().unwrap().is_zero());
-    }
-
-    pub fn add_composition_trace_polys(&mut self, mut polys: Matrix<A::Fq>, ood_evals: Vec<A::Fq>) {
-        assert!(!self.poly.is_empty());
-
-        let z_n = self.z.pow([polys.num_cols() as u64]);
-
-        ark_std::cfg_iter_mut!(polys.0)
-            .zip(ood_evals)
-            .for_each(|(poly, ood_eval)| {
-                poly[0] -= ood_eval;
-                synthetic_divide(poly, 1, z_n);
-            });
-
-        for (i, poly) in polys.0.into_iter().enumerate() {
-            let alpha = self.composition_coeffs.constraints[i];
-            for (lhs, rhs) in self.poly.iter_mut().zip(poly) {
-                *lhs += rhs * alpha;
-            }
-        }
-
-        // Check that the degree has reduced by 1 as a result of the divisions
-        assert!(self.poly.last().unwrap().is_zero());
-    }
-
-    pub fn into_deep_poly(mut self) -> Matrix<A::Fq> {
-        let (alpha, beta) = self.composition_coeffs.degree;
-
-        // TODO: consider making multithreaded
-        // TODO: consider using constraint system to compose polys
         // Adjust the degree
         // P(x) * (alpha + x * beta)
         let mut last = A::Fq::zero();
-        for coeff in &mut self.poly {
+        for coeff in &mut combined_coeffs {
             let tmp = *coeff;
-            *coeff *= alpha;
-            *coeff += last * beta;
+            *coeff *= degree_alpha;
+            *coeff += last * degree_beta;
             last = tmp;
         }
 
-        Matrix::new(vec![self.poly])
+        Matrix::new(vec![combined_coeffs])
     }
 }
 
 pub struct DeepCompositionCoeffs<F> {
-    /// Base trace polynomial composition coefficients
-    pub base_trace: Vec<(F, F, F)>,
-    /// Base trace polynomial composition coefficients
-    pub extension_trace: Vec<(F, F, F)>,
-    /// Composition poly trace column composition coefficients
-    pub constraints: Vec<F>,
-    /// Degree adjustment composition coefficients
+    /// Execution trace poly coefficients
+    pub execution_trace: Vec<F>,
+    /// Composition trace poly coefficients
+    pub composition_trace: Vec<F>,
+    /// Degree adjustment coefficients
     pub degree: (F, F),
-}
-
-/// Computes (P(x) - value) * k
-/// Source <https://github.com/novifinancial/winterfell>
-fn acc_trace_poly<F: GpuField, T: GpuField>(acc: &mut [T], poly: &[F], value: T, k: T)
-where
-    T: for<'a> Mul<&'a F, Output = T>,
-{
-    // P(x) * k
-    ark_std::cfg_iter_mut!(acc)
-        .zip(poly)
-        .for_each(|(v, coeff)| *v += k * coeff);
-    // -value * k
-    acc[0] -= value * k;
 }

@@ -22,6 +22,7 @@ use gpu_poly::fields::p18446744069414584321::Fp;
 use gpu_poly::fields::p18446744069414584321::Fq3;
 use gpu_poly::GpuVec;
 use ministark::challenges::Challenges;
+use ministark::constraints::VerifierChallenge;
 // use ministark::constraint::Challenge as _;
 use ministark::Matrix;
 use ministark::Trace;
@@ -80,10 +81,6 @@ impl Trace for BrainfuckTrace {
 
     const NUM_BASE_COLUMNS: usize = 17;
     const NUM_EXTENSION_COLUMNS: usize = 9;
-
-    fn len(&self) -> usize {
-        self.base_trace.num_rows()
-    }
 
     fn build_extension_columns(
         &self,
@@ -152,14 +149,14 @@ fn gen_processor_ext_matrix(
         extension_row[MemoryPermutation as usize] = mem_permutation_running_product;
         // if not padding
         if !curr_base_row[CurrInstr as usize].is_zero() {
-            instr_permutation_running_product *= challenges[Alpha]
-                - challenges[A] * curr_base_row[Ip as usize]
-                - challenges[B] * curr_base_row[CurrInstr as usize]
-                - challenges[C] * curr_base_row[NextInstr as usize];
-            mem_permutation_running_product *= challenges[Beta]
-                - challenges[D] * curr_base_row[Cycle as usize]
-                - challenges[E] * curr_base_row[Mp as usize]
-                - challenges[F] * curr_base_row[MemVal as usize];
+            instr_permutation_running_product *= challenges[Alpha.index()]
+                - challenges[A.index()] * curr_base_row[Ip as usize]
+                - challenges[B.index()] * curr_base_row[CurrInstr as usize]
+                - challenges[C.index()] * curr_base_row[NextInstr as usize];
+            mem_permutation_running_product *= challenges[Beta.index()]
+                - challenges[D.index()] * curr_base_row[Cycle as usize]
+                - challenges[E.index()] * curr_base_row[Mp as usize]
+                - challenges[F.index()] * curr_base_row[MemVal as usize];
         }
 
         // Evaluation columns
@@ -168,10 +165,12 @@ fn gen_processor_ext_matrix(
         let curr_instr = curr_base_row[CurrInstr as usize].into_bigint().0[0];
         if curr_instr == OpCode::Read as u64 {
             let input_val = next_base_row.unwrap()[MemVal as usize];
-            input_running_evaluation = input_running_evaluation * challenges[Gamma] + &input_val;
+            input_running_evaluation =
+                input_running_evaluation * challenges[Gamma.index()] + input_val;
         } else if curr_instr == OpCode::Write as u64 {
             let output_val = next_base_row.unwrap()[MemVal as usize];
-            output_running_evaluation = output_running_evaluation * challenges[Delta] + &output_val;
+            output_running_evaluation =
+                output_running_evaluation * challenges[Delta.index()] + output_val;
         }
 
         extension_rows.push(extension_row);
@@ -199,10 +198,10 @@ fn gen_memory_ext_matrix(
         let mut extension_row = [Fq3::zero(); MemoryExtensionColumn::NUM_TRACE_COLUMNS];
         extension_row[Permutation as usize] = mem_permutation_running_product;
         if base_row[Dummy as usize].is_zero() {
-            mem_permutation_running_product *= challenges[Beta]
-                - challenges[D] * base_row[Cycle as usize]
-                - challenges[E] * base_row[Mp as usize]
-                - challenges[F] * base_row[MemVal as usize];
+            mem_permutation_running_product *= challenges[Beta.index()]
+                - challenges[D.index()] * base_row[Cycle as usize]
+                - challenges[E.index()] * base_row[Mp as usize]
+                - challenges[F.index()] * base_row[MemVal as usize];
         }
         extension_rows.push(extension_row);
     }
@@ -238,19 +237,19 @@ fn gen_instruction_ext_matrix(
             // update running product
             // make sure new row is not padding
             // and that the instruction address didn't just change
-            permutation_running_product *= challenges[Alpha]
-                - challenges[A] * curr_base_row[Ip as usize]
-                - challenges[B] * curr_base_row[CurrInstr as usize]
-                - challenges[C] * curr_base_row[NextInstr as usize];
+            permutation_running_product *= challenges[Alpha.index()]
+                - challenges[A.index()] * curr_base_row[Ip as usize]
+                - challenges[B.index()] * curr_base_row[CurrInstr as usize]
+                - challenges[C.index()] * curr_base_row[NextInstr as usize];
         }
         extension_row[ProcessorPermutation as usize] = permutation_running_product;
 
         // evaluation argument
         if curr_base_row[Ip as usize] != previous_address {
-            evaluation_running_sum = challenges[Eta] * evaluation_running_sum
-                + challenges[A] * curr_base_row[Ip as usize]
-                + challenges[B] * curr_base_row[CurrInstr as usize]
-                + challenges[C] * curr_base_row[NextInstr as usize];
+            evaluation_running_sum = challenges[Eta.index()] * evaluation_running_sum
+                + challenges[A.index()] * curr_base_row[Ip as usize]
+                + challenges[B.index()] * curr_base_row[CurrInstr as usize]
+                + challenges[C.index()] * curr_base_row[NextInstr as usize];
         }
         extension_row[ProgramEvaluation as usize] = evaluation_running_sum;
 
@@ -274,7 +273,8 @@ fn gen_input_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>) 
     for row in 0..base_matrix.num_rows() {
         let base_row = base_matrix.get_row(row).unwrap();
         let mut extension_row = [Fq3::zero(); InputExtensionColumn::NUM_TRACE_COLUMNS];
-        running_evaluation = running_evaluation * challenges[Gamma] + &base_row[Value as usize];
+        running_evaluation =
+            running_evaluation * challenges[Gamma.index()] + base_row[Value as usize];
         extension_row[Evaluation as usize] = running_evaluation;
         extension_rows.push(extension_row);
     }
@@ -295,7 +295,8 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>)
     for row in 0..base_matrix.num_rows() {
         let base_row = base_matrix.get_row(row).unwrap();
         let mut extension_row = [Fq3::zero(); OutputExtensionColumn::NUM_TRACE_COLUMNS];
-        running_evaluation = running_evaluation * challenges[Delta] + &base_row[Value as usize];
+        running_evaluation =
+            running_evaluation * challenges[Delta.index()] + base_row[Value as usize];
         extension_row[Evaluation as usize] = running_evaluation;
         extension_rows.push(extension_row);
     }

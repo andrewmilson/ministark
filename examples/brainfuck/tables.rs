@@ -19,7 +19,7 @@ pub enum Challenge {
     Eta,
 }
 
-impl ministark::constraint::Challenge for Challenge {
+impl ministark::constraints::VerifierChallenge for Challenge {
     fn index(&self) -> usize {
         *self as usize
     }
@@ -34,7 +34,7 @@ pub enum EvaluationArgumentHint {
     OutputOffset,
 }
 
-impl ministark::constraint::Hint for EvaluationArgumentHint {
+impl ministark::constraints::Hint for EvaluationArgumentHint {
     fn index(&self) -> usize {
         *self as usize
     }
@@ -161,7 +161,7 @@ impl BrainfuckColumn for OutputExtensionColumn {
 
 macro_rules! impl_column {
     ($t:ty) => {
-        impl ministark::constraint::Column for $t {
+        impl ministark::constraints::ExecutionTraceColumn for $t {
             fn index(&self) -> usize {
                 Self::FIRST_TRACE_COL_INDEX + *self as usize
             }

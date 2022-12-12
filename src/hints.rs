@@ -1,4 +1,4 @@
-use crate::constraint::Hint;
+use crate::constraints::Hint;
 use gpu_poly::GpuField;
 use std::ops::Deref;
 use std::ops::Index;
@@ -27,10 +27,10 @@ impl<F: GpuField> Deref for Hints<F> {
     }
 }
 
-impl<F: GpuField, H: Hint> Index<&H> for Hints<F> {
+impl<F: GpuField, H: Hint> Index<H> for Hints<F> {
     type Output = F;
 
-    fn index(&self, hint: &H) -> &Self::Output {
+    fn index(&self, hint: H) -> &Self::Output {
         &self.0[hint.index()]
     }
 }

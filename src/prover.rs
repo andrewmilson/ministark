@@ -2,15 +2,12 @@ use crate::channel::ProverChannel;
 use crate::composer::ConstraintComposer;
 use crate::composer::DeepPolyComposer;
 use crate::fri::FriProver;
-use crate::matrix::GroupItem;
-use crate::matrix::MatrixGroup;
 use crate::trace::Queries;
 use crate::Air;
 use crate::Proof;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::Trace;
-use ark_ff::Field;
 use gpu_poly::GpuFftField;
 use sha2::Sha256;
 
@@ -69,39 +66,28 @@ pub trait Prover {
         let composition_coeffs = air.get_constraint_composition_coeffs(&mut channel.public_coin);
         let constraint_coposer = ConstraintComposer::new(&air, composition_coeffs);
         // TODO: move commitment here
+        // NOTE: consuming LDEs here requires more compute later but saves on memory
         let (composition_trace_lde, composition_trace_polys, composition_trace_lde_tree) =
             constraint_coposer.build_commitment(
                 &challenges,
                 &hints,
-                &base_trace_lde,
-                extension_trace_lde.as_ref(),
+                base_trace_lde,
+                extension_trace_lde,
             );
         channel.commit_composition_trace(composition_trace_lde_tree.root());
 
-        let g = &trace_xs.group_gen;
-        let z = channel.get_ood_point();
-        let mut execution_trace_polys = MatrixGroup::new(vec![GroupItem::Fp(&base_trace_polys)]);
-        if let Some(extension_trace_polys) = extension_trace_polys.as_ref() {
-            execution_trace_polys.append(GroupItem::Fq(extension_trace_polys))
-        }
-        let ood_execution_trace_evals = execution_trace_polys.evaluate_at(z);
-        let ood_execution_trace_evals_next = execution_trace_polys.evaluate_at(z * g);
-        channel.send_ood_trace_states(&ood_execution_trace_evals, &ood_execution_trace_evals_next);
-        let z_n = z.pow([composition_trace_polys.num_cols() as u64]);
-        let ood_composition_trace_evals = composition_trace_polys.evaluate_at(z_n);
-        channel.send_ood_constraint_evaluations(&ood_composition_trace_evals);
-
-        let deep_coeffs = air.get_deep_composition_coeffs(&mut channel.public_coin);
-        let mut deep_poly_composer = DeepPolyComposer::new(&air, deep_coeffs, z);
-        deep_poly_composer.add_execution_trace_polys(
-            base_trace_polys,
-            extension_trace_polys,
-            ood_execution_trace_evals,
-            ood_execution_trace_evals_next,
+        let mut deep_poly_composer = DeepPolyComposer::new(
+            &air,
+            channel.get_ood_point(),
+            &base_trace_polys,
+            extension_trace_polys.as_ref(),
+            composition_trace_polys,
         );
-        deep_poly_composer
-            .add_composition_trace_polys(composition_trace_polys, ood_composition_trace_evals);
-        let deep_composition_poly = deep_poly_composer.into_deep_poly();
+        let (execution_trace_oods, composition_trace_oods) = deep_poly_composer.get_ood_evals();
+        channel.send_execution_trace_ood_evals(execution_trace_oods);
+        channel.send_composition_trace_ood_evals(composition_trace_oods);
+        let deep_coeffs = air.get_deep_composition_coeffs(&mut channel.public_coin);
+        let deep_composition_poly = deep_poly_composer.into_deep_poly(deep_coeffs);
         let deep_composition_lde = deep_composition_poly.into_evaluations(lde_xs);
 
         let mut fri_prover = FriProver::<Self::Fq, Sha256>::new(air.options().into_fri_options());
@@ -113,15 +99,15 @@ pub trait Prover {
         let fri_proof = fri_prover.into_proof(&query_positions);
 
         let queries = Queries::new(
-            &base_trace_lde,
-            extension_trace_lde.as_ref(),
+            &air,
+            &base_trace_polys,
+            extension_trace_polys.as_ref(),
             &composition_trace_lde,
             base_trace_lde_tree,
             extension_trace_tree,
             composition_trace_lde_tree,
             &query_positions,
         );
-
         Ok(channel.build_proof(queries, fri_proof))
     }
 }

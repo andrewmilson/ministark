@@ -1,11 +1,10 @@
 use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
-use crate::constraint::Element;
+use crate::constraints::AlgebraicExpression;
 use crate::hints::Hints;
 use crate::random::PublicCoin;
 use crate::utils;
 use crate::utils::fill_vanishing_polynomial;
-use crate::Constraint;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::TraceInfo;
@@ -24,6 +23,7 @@ use gpu_poly::prelude::*;
 use gpu_poly::GpuFftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::collections::BTreeSet;
 use std::ops::Deref;
 
 pub trait Air {
@@ -46,52 +46,27 @@ pub trait Air {
     }
 
     fn trace_len(&self) -> usize {
-        self.trace_info().trace_len
+        let len = self.trace_info().trace_len;
+        assert!(len.is_power_of_two());
+        len
     }
 
     /// Constraint evaluation blowup factor
     /// Must be a power of two.
     fn ce_blowup_factor(&self) -> usize {
-        let max_boundary_constraint_degree = self
-            .boundary_constraints()
-            .iter()
-            .map(|constraint| constraint.degree())
-            .max()
-            .unwrap_or(0);
-        let boundary_ce_blowup_factor = utils::ceil_power_of_two(max_boundary_constraint_degree);
-
-        let max_terminal_constraint_degree = self
-            .terminal_constraints()
-            .iter()
-            .map(|constraint| constraint.degree())
-            .max()
-            .unwrap_or(0);
-        let terminal_ce_blowup_factor = utils::ceil_power_of_two(max_terminal_constraint_degree);
-
-        let max_transition_constraint_degree = self
-            .transition_constraints()
-            .iter()
-            .map(|constraint| constraint.degree())
-            .max()
-            .unwrap_or(0);
-        // TODO: improve explanation of why we negate these constraint degrees by 1
-        // Transition constraints must evaluate to zero in all execution trace rows
-        // except the last. These rows are divided out from the transition constraint
-        // evaluations which has the effect of reducing the overall degree of the
-        // transition constraint evaluations by `trace_len - 1`. Therefore the
-        // total constraint evaluation degree is `constraint_degree * (trace_len - 1) -
-        // (trace_len - 1) = (constraint_degree - 1) * (trace_len - 1)`
-        let transition_ce_blowup_factor =
-            utils::ceil_power_of_two(max_transition_constraint_degree.saturating_sub(1));
-
-        [
-            transition_ce_blowup_factor,
-            terminal_ce_blowup_factor,
-            boundary_ce_blowup_factor,
-        ]
-        .into_iter()
-        .max()
-        .unwrap()
+        let trace_degree = self.trace_len() - 1;
+        let ret = utils::ceil_power_of_two(
+            self.constraints()
+                .iter()
+                .map(|constraint| {
+                    let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
+                    numerator_degree - denominator_degree
+                })
+                .max()
+                // TODO: ceil_power_of_two might not be correct here. check the math
+                .map_or(0, |degree| utils::ceil_power_of_two(degree) / trace_degree),
+        );
+        ret
     }
 
     /// Returns a degree that all constraints polynomials must be normalized to.
@@ -137,17 +112,8 @@ pub trait Air {
         Radix2EvaluationDomain::new_coset(trace_len * lde_blowup_factor, offset).unwrap()
     }
 
-    fn boundary_constraints(&self) -> &[Constraint<Self::Fq>] {
-        &[]
-    }
-
-    fn transition_constraints(&self) -> &[Constraint<Self::Fq>] {
-        &[]
-    }
-
-    fn terminal_constraints(&self) -> &[Constraint<Self::Fq>] {
-        &[]
-    }
+    // TODO: consider changing back to borrow
+    fn constraints(&self) -> Vec<AlgebraicExpression<Self::Fp, Self::Fq>>;
 
     fn transition_constraint_divisor(&self) -> Divisor<Self::Fp> {
         let trace_domain = self.trace_domain();
@@ -169,7 +135,7 @@ pub trait Air {
         // transition constraints apply to all rows except the last
         // multiplies out the last term of the vanishing polynomial
         // i.e. evaluations of `1 / (x - t_0)(x - t_1)...(x - t_n-2)`
-        // Note: `t^(n-1) = t^(-1)`
+        // NOTE: `t^(n-1) = t^(-1)`
         #[cfg(feature = "parallel")]
         let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
         #[cfg(not(feature = "parallel"))]
@@ -230,7 +196,7 @@ pub trait Air {
         let chunk_size = n;
 
         // evaluates `(x - t_n-1)` over the lde domain
-        // Note: `t^(n-1) = t^(-1)`
+        // NOTE: `t^(n-1) = t^(-1)`
         ark_std::cfg_chunks_mut!(lde, chunk_size)
             .enumerate()
             .for_each(|(i, chunk)| {
@@ -249,17 +215,14 @@ pub trait Air {
     }
 
     fn get_challenges(&self, public_coin: &mut PublicCoin<impl Digest>) -> Challenges<Self::Fq> {
-        // TODO: change get_challenge_indices to a constraint iterator and extract the
-        // constraint with the highest index
-        let num_challenges = self
-            .all_constraint_elements()
-            .iter()
-            .filter_map(|element| match element {
-                Element::Challenge(index) => Some(index + 1),
-                _ => None,
+        let mut num_challenges = 0;
+        for constraint in self.constraints() {
+            constraint.traverse(&mut |node| {
+                if let AlgebraicExpression::Challenge(i) = node {
+                    num_challenges = std::cmp::max(num_challenges, *i + 1)
+                }
             })
-            .max()
-            .unwrap_or(0);
+        }
 
         if num_challenges == 0 {
             Challenges::default()
@@ -279,9 +242,16 @@ pub trait Air {
         public_coin: &mut PublicCoin<impl Digest>,
     ) -> Vec<(Self::Fq, Self::Fq)> {
         let mut rng = public_coin.draw_rng();
-        (0..self.num_constraints())
+        (0..self.constraints().len())
             .map(|_| (Self::Fq::rand(&mut rng), Self::Fq::rand(&mut rng)))
             .collect()
+    }
+
+    fn trace_arguments(&self) -> BTreeSet<(usize, isize)> {
+        self.constraints()
+            .iter()
+            .map(AlgebraicExpression::trace_arguments)
+            .fold(BTreeSet::new(), |a, b| &a | &b)
     }
 
     // TODO: make this generic
@@ -294,23 +264,9 @@ pub trait Air {
         let mut rng = public_coin.draw_rng();
 
         // execution trace coeffs
-        let trace_info = self.trace_info();
-        let mut base_trace_coeffs = Vec::new();
-        for _ in 0..trace_info.num_base_columns {
-            base_trace_coeffs.push((
-                Self::Fq::rand(&mut rng),
-                Self::Fq::rand(&mut rng),
-                Self::Fq::rand(&mut rng),
-            ));
-        }
-
-        let mut extension_trace_coeffs = Vec::new();
-        for _ in 0..trace_info.num_extension_columns {
-            extension_trace_coeffs.push((
-                Self::Fq::rand(&mut rng),
-                Self::Fq::rand(&mut rng),
-                Self::Fq::rand(&mut rng),
-            ));
+        let mut execution_trace_coeffs = Vec::new();
+        for _ in self.trace_arguments() {
+            execution_trace_coeffs.push(Self::Fq::rand(&mut rng));
         }
 
         // composition trace coeffs
@@ -321,28 +277,10 @@ pub trait Air {
         }
 
         DeepCompositionCoeffs {
-            base_trace: base_trace_coeffs,
-            extension_trace: extension_trace_coeffs,
-            constraints: composition_trace_coeffs,
+            execution_trace: execution_trace_coeffs,
+            composition_trace: composition_trace_coeffs,
             degree: (Self::Fq::rand(&mut rng), Self::Fq::rand(&mut rng)),
         }
-    }
-
-    fn all_constraint_elements(&self) -> Vec<Element> {
-        // TODO: change get_challenge_indices to a constraint iterator and extract the
-        // constraint with the highest index
-        let mut indicies: Vec<Element> = [
-            self.boundary_constraints(),
-            self.transition_constraints(),
-            self.terminal_constraints(),
-        ]
-        .into_iter()
-        .flatten()
-        .flat_map(|constraint| constraint.get_elements())
-        .collect();
-        indicies.sort();
-        indicies.dedup();
-        indicies
     }
 
     #[cfg(debug_assertions)]
@@ -350,33 +288,33 @@ pub trait Air {
         &self,
         challenges: &Challenges<Self::Fq>,
         hints: &Hints<Self::Fq>,
-        base_trace: &crate::Matrix<Self::Fp>,
-        extension_trace: Option<&crate::Matrix<Self::Fq>>,
+        _base_trace: &crate::Matrix<Self::Fp>,
+        _extension_trace: Option<&crate::Matrix<Self::Fq>>,
     ) {
-        use crate::matrix::GroupItem;
-        use crate::matrix::MatrixGroup;
+        let trace_info = self.trace_info();
+        let num_execution_trace_columns =
+            trace_info.num_base_columns + trace_info.num_extension_columns;
 
-        let mut execution_trace = MatrixGroup::new(vec![GroupItem::Fp(base_trace)]);
-        if let Some(extension_trace) = extension_trace.as_ref() {
-            execution_trace.append(GroupItem::Fq(extension_trace))
-        }
-
-        let mut col_indicies = vec![false; execution_trace.num_cols()];
+        let mut col_indicies = vec![false; num_execution_trace_columns];
         let mut challenge_indicies = vec![false; challenges.len()];
         let mut hint_indicies = vec![false; hints.len()];
 
-        for element in self.all_constraint_elements() {
-            match element {
-                Element::Curr(i) | Element::Next(i) => col_indicies[i] = true,
-                Element::Challenge(i) => challenge_indicies[i] = true,
-                Element::Hint(i) => hint_indicies[i] = true,
-            }
+        for constraint in self.constraints() {
+            constraint.traverse(&mut |node| {
+                use AlgebraicExpression::*;
+                match node {
+                    Challenge(i) => challenge_indicies[*i] = true,
+                    Trace(i, _) => col_indicies[*i] = true,
+                    Hint(i) => hint_indicies[*i] = true,
+                    _ => {}
+                }
+            })
         }
 
         for (index, exists) in col_indicies.into_iter().enumerate() {
             if !exists {
                 // TODO: make assertion
-                println!("WARN: no constraints for column {index}");
+                println!("WARN: no constraints for execution trace column {index}");
             }
         }
 
@@ -394,36 +332,8 @@ pub trait Air {
             }
         }
 
-        let trace_rows = execution_trace.rows();
-        let first_row = trace_rows.first().unwrap();
-        let last_row = trace_rows.last().unwrap();
-
-        // check boundary constraints
-        for (i, constraint) in self.boundary_constraints().iter().enumerate() {
-            let eval = constraint.evaluate(challenges, hints, first_row, &[]);
-            assert!(eval.is_zero(), "boundary {i} mismatch");
-        }
-
-        // check terminal constraints
-        for (i, constraint) in self.terminal_constraints().iter().enumerate() {
-            let eval = constraint.evaluate(challenges, hints, last_row, &[]);
-            assert!(eval.is_zero(), "terminal {i} mismatch");
-        }
-
-        // check transition constraints
-        for (i, [curr, next]) in trace_rows.array_windows::<2>().enumerate() {
-            for (j, constraint) in self.transition_constraints().iter().enumerate() {
-                let eval = constraint.evaluate(challenges, hints, curr, next);
-                assert!(eval.is_zero(), "transition {j} mismatch at row {i}");
-            }
-        }
-    }
-
-    fn num_constraints(&self) -> usize {
-        //Vec<(Self::Fp, Self::Fp)> {
-        self.boundary_constraints().len()
-            + self.transition_constraints().len()
-            + self.terminal_constraints().len()
+        // TODO: idea for validation. evaluate numerator and denominator.
+        // when denominator is 0 make sure numerator is 0.
     }
 }
 

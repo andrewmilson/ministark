@@ -1,11 +1,19 @@
+use crate::constraints::AlgebraicExpression;
+use crate::StarkExtensionOf;
 use ark_ff::FftField;
 use ark_ff::Field;
-use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
+use gpu_poly::GpuFftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::ops::Add;
+use std::ops::AddAssign;
+use std::ops::Mul;
 use std::time::Instant;
 
 pub struct Timer<'a> {
@@ -109,24 +117,28 @@ where
         .rfold(T::zero(), move |result, coeff| result * point + coeff)
 }
 
-// calculates `p / (x^a - b)` using synthetic division
-// https://en.wikipedia.org/wiki/Synthetic_division
-// remainder is discarded. code copied from Winterfell STARK
-pub fn synthetic_divide<F: Field>(coeffs: &mut [F], a: usize, b: F) {
-    assert!(!a.is_zero());
-    assert!(!b.is_zero());
-    assert!(coeffs.len() > a);
-    if a == 1 {
-        let mut c = F::zero();
-        for coeff in coeffs.iter_mut().rev() {
-            *coeff += b * c;
-            core::mem::swap(coeff, &mut c);
-        }
-    } else {
-        todo!()
+/// Calculates `c * (P(X) - P(z)) / (x^a - z)` using synthetic division
+/// https://en.wikipedia.org/wiki/Synthetic_division
+/// code taken from OpenZKP
+pub fn divide_out_point_into<
+    Fp: Field,
+    Fq: Field + for<'a> AddAssign<&'a Fp> + for<'a> Mul<&'a Fp>,
+>(
+    dst_coeffs: &mut [Fq],
+    src_coeffs: &[Fp],
+    z: &Fq,
+    c: &Fq,
+) {
+    let mut remainder = Fq::zero();
+    for (coefficient, target) in src_coeffs.iter().rev().zip(dst_coeffs.iter_mut().rev()) {
+        // TODO: see if there is a perf difference using references
+        *target += remainder * c;
+        remainder *= z;
+        remainder += coefficient;
     }
 }
 
+// TODO: change name/add description
 const GRINDING_CONTRIBUTION_FLOOR: usize = 80;
 
 // taken from Winterfell
@@ -158,4 +170,54 @@ pub fn conjectured_security_level(
         std::cmp::min(field_security, query_security) - 1,
         hash_fn_security,
     )
+}
+
+fn id<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(expr: &AlgebraicExpression<Fp, Fq>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    expr.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub fn mermaid_string<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    seen: &mut HashSet<u64>,
+    expr: &AlgebraicExpression<Fp, Fq>,
+) -> String {
+    let mut parts = vec![];
+    let mut count = 0;
+
+    expr.traverse(&mut |node| {
+        use AlgebraicExpression::*;
+        let node_id = id(node);
+
+        count += 1;
+
+        if seen.insert(node_id) {
+            parts.push(match node {
+                Exp(child, i) => format!("{node_id}{{{{**{i}}}}}-->{}", id(&*child.borrow())),
+                X => format!("{node_id}[X]"),
+                Constant(_c) => format!("{node_id}[C]"),
+                Challenge(i) => format!("{node_id}[α {i}]"),
+                Hint(i) => format!("{node_id}[H {i}]"),
+                Add(a, b) => format!(
+                    "{node_id}[+]-->{}\n{node_id}-->{}",
+                    id(&*a.borrow()),
+                    id(&*b.borrow())
+                ),
+                Neg(a) => format!("{node_id}[-]-->{}", id(&*a.borrow())),
+                // Inv(a) => format!("{node_id}{{{{inv}}}}-->{}", id(a)),
+                Mul(a, b) => format!(
+                    "{node_id}[*]-->{}\n{node_id}-->{}",
+                    id(&*a.borrow()),
+                    id(&*b.borrow())
+                ),
+                Trace(i, j) => format!("{node_id}[Tr_{i}_{j}]"),
+                #[cfg(feature = "gpu")]
+                Lde(_, j) => format!("{node_id}[Lde_{j}]"),
+            })
+        }
+    });
+
+    println!("count {count}");
+
+    parts.join("\n")
 }

@@ -9,6 +9,7 @@ use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
 use ark_poly::Polynomial;
 use gpu_poly::fields::p18446744069414584321::Fq3;
+use gpu_poly::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::Fp as Fp256;
 use gpu_poly::prelude::*;
 use objc::rc::autoreleasepool;
 
@@ -54,6 +55,30 @@ fn fft_with_extension_field() {
             fft.execute();
 
             for (j, (x, y)) in domain.elements().map(Fq3::from).zip(evals).enumerate() {
+                assert_eq!(poly.evaluate(&x), y, "domain ({i}) mismatch at index {j}");
+            }
+        }
+    });
+}
+
+#[test]
+fn fft_with_256_bit_field() {
+    autoreleasepool(|| {
+        let domains = [
+            Radix2EvaluationDomain::new(2048).unwrap(),
+            Radix2EvaluationDomain::new(4096).unwrap(),
+            Radix2EvaluationDomain::new_coset(2048, Fp256::GENERATOR).unwrap(),
+            Radix2EvaluationDomain::new_coset(4096, Fp256::GENERATOR).unwrap(),
+        ];
+
+        for (i, domain) in domains.into_iter().enumerate() {
+            let poly = DensePolynomial::<Fp256>::rand(domain.size() - 1, &mut ark_std::test_rng());
+            let mut evals = poly.coeffs.to_vec_in(PageAlignedAllocator);
+            let mut fft = GpuFft::from(domain);
+            fft.encode(&mut evals);
+            fft.execute();
+
+            for (j, (x, y)) in domain.elements().map(Fp256::from).zip(evals).enumerate() {
                 assert_eq!(poly.evaluate(&x), y, "domain ({i}) mismatch at index {j}");
             }
         }

@@ -3,7 +3,10 @@
 use allocator::PageAlignedAllocator;
 use ark_ff::Field;
 use ark_poly::domain::DomainCoeff;
-use std::ops::MulAssign;
+use core::ops::Add;
+use core::ops::AddAssign;
+use core::ops::Mul;
+use core::ops::MulAssign;
 
 #[macro_use]
 pub mod macros;
@@ -18,21 +21,16 @@ pub mod utils;
 /// GPU.
 pub trait GpuFftField: GpuField<FftField = Self> + ark_ff::FftField {}
 
-/// A marker trait to be implemented if `Self * Rhs` can be done on the GPU
-pub trait GpuMulAssign<Rhs>: MulAssign<Rhs> {}
+/// A marker trait to be implemented if `Self *= Rhs` can be done on the GPU
+pub trait GpuMul<Rhs>: MulAssign<Rhs> + Mul<Rhs, Output = Self> {}
 
-pub trait GpuDomainCoeff<F: GpuFftField>: DomainCoeff<F> + GpuMulAssign<F> {}
-
-impl<T, F> GpuDomainCoeff<F> for T
-where
-    F: GpuFftField,
-    T: DomainCoeff<F> + GpuMulAssign<F>,
-{
-}
+/// A marker trait to be implemented if `Self += Rhs` can be done on the GPU
+pub trait GpuAdd<Rhs>: AddAssign<Rhs> + Add<Rhs, Output = Self> {}
 
 // A marker trait for fields that have a GPU implementation
+// TODO: consider removing DomainCoeff
 pub trait GpuField:
-    Field + GpuMulAssign<Self> + GpuDomainCoeff<Self::FftField> + From<Self::FftField>
+    Field + DomainCoeff<Self::FftField> + GpuMul<Self> + GpuAdd<Self> + From<Self::FftField>
 {
     type FftField: GpuFftField;
 

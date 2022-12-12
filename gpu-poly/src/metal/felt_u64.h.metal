@@ -1,8 +1,6 @@
 #ifndef felt_u64_h
 #define felt_u64_h
 
-#include "u128.h.metal"
-
 // Fields that use prime 18446744069414584321
 namespace p18446744069414584321
 {
@@ -50,6 +48,26 @@ namespace p18446744069414584321
 
             return res;
         }
+
+        Fp inverse() 
+        {
+            unsigned long t2 = exp_acc<1>(inner, inner);
+            unsigned long t3 = exp_acc<1>(t2, inner);
+            unsigned long t6 = exp_acc<3>(t3, t3);
+            unsigned long t12 = exp_acc<6>(t6, t6);
+            unsigned long t24 = exp_acc<12>(t12, t12);
+            unsigned long t30 = exp_acc<6>(t24, t6);
+            unsigned long t31 = exp_acc<1>(t30, inner);
+            unsigned long t63 = exp_acc<32>(t31, t31);
+            unsigned long inv = exp_acc<1>(t63, inner);
+            return Fp(inv);
+        }
+
+        Fp neg()
+        {
+            // TODO: can improve
+            return Fp(sub(0, inner));
+        }
         
         // 1 in Montgomery representation
         constexpr static const constant unsigned long ONE = 4294967295;
@@ -63,6 +81,15 @@ namespace p18446744069414584321
         // Square of auxiliary modulus R for Montgomery reduction `R2 ≡ (2^64)^2 mod p`
         constexpr static const constant unsigned long R2 = 18446744065119617025;
 
+        template<unsigned N_ACC>
+        inline unsigned long exp_acc(const unsigned long base, const unsigned long tail) const {
+            unsigned long result = base;
+#pragma unroll
+            for (unsigned i = 0; i < N_ACC; i++) {
+                result = mul(result, result);
+            }
+            return mul(result, tail);
+        }
 
         inline unsigned long add(const unsigned long a, const unsigned long b) const
         {
@@ -105,7 +132,13 @@ namespace p18446744069414584321
     {
     public:
         Fq3() = default;
+        constexpr Fq3(Fp c) : c0(c), c1(Fp(0)), c2(Fp(0)) {}
         constexpr Fq3(Fp c0, Fp c1, Fp c2) : c0(c0), c1(c1), c2(c2) {}
+
+        constexpr Fq3 operator+(const Fp rhs) const
+        {
+            return Fq3(c0 + rhs, c1, c2);
+        }
 
         constexpr Fq3 operator+(const Fq3 rhs) const
         {
@@ -173,6 +206,17 @@ namespace p18446744069414584321
             return res;
         }
 
+        Fq3 neg()
+        {
+            // TODO: can improve
+            return Fq3(Fp(0) - c0, Fp(0) - c1, Fp(0) - c2);
+        }
+
+        // Fq3 inverse() 
+        // {
+        //     // TODO
+        // }
+
     private:
         Fp c0, c1, c2;
 
@@ -180,7 +224,6 @@ namespace p18446744069414584321
         // That is, `NONRESIDUE` is such that the cubic polynomial
         // `f(X) = X^3 - NONRESIDUE` in Fp\[X\] is irreducible in `Fp`.
         constexpr static const constant unsigned long NONREDIDUE = /* =2 */ 8589934590;
-
     };
 
 }

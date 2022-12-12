@@ -1,12 +1,14 @@
+use crate::GpuAdd;
 use crate::GpuFftField;
 use crate::GpuField;
-use crate::GpuMulAssign;
+use crate::GpuMul;
 use ark_ff::BigInt;
 use ark_ff::Field;
 use ark_ff::Fp3;
 use ark_ff::Fp3Config;
 use ark_ff::FpConfig;
 use std::ops::Add;
+use std::ops::AddAssign;
 use std::ops::Mul;
 use std::ops::MulAssign;
 
@@ -17,7 +19,7 @@ pub mod p18446744069414584321 {
     pub use fp64::FpParams;
     use std::marker::PhantomData;
 
-    impl GpuField for fp64::Fp {
+    impl GpuField for Fp {
         type FftField = Self;
 
         fn field_name() -> String {
@@ -25,7 +27,13 @@ pub mod p18446744069414584321 {
         }
     }
 
-    impl GpuMulAssign<fp64::Fp> for fp64::Fp {}
+    impl GpuMul<Fp> for Fp {}
+
+    impl GpuMul<&Fp> for Fp {}
+
+    impl GpuAdd<Fp> for Fp {}
+
+    impl GpuAdd<&fp64::Fp> for fp64::Fp {}
 
     impl GpuFftField for fp64::Fp {}
 
@@ -64,11 +72,31 @@ pub mod p18446744069414584321 {
         }
     }
 
+    impl AddAssign<Fp> for Fq3 {
+        fn add_assign(&mut self, rhs: Fp) {
+            *self += Fq3::from(rhs);
+        }
+    }
+
+    impl AddAssign<&Fp> for Fq3 {
+        fn add_assign(&mut self, rhs: &Fp) {
+            *self += Fq3::from(*rhs);
+        }
+    }
+
     impl Add<&Fp> for Fq3 {
         type Output = Fq3;
 
         fn add(self, rhs: &Fp) -> Self::Output {
             self + Fq3::from(*rhs)
+        }
+    }
+
+    impl Add<Fp> for Fq3 {
+        type Output = Fq3;
+
+        fn add(self, rhs: Fp) -> Self::Output {
+            self + Fq3::from(rhs)
         }
     }
 
@@ -96,9 +124,21 @@ pub mod p18446744069414584321 {
         }
     }
 
-    impl GpuMulAssign<Fp> for Fq3 {}
+    impl GpuMul<Fp> for Fq3 {}
 
-    impl GpuMulAssign<Fq3> for Fq3 {}
+    impl GpuMul<&Fp> for Fq3 {}
+
+    impl GpuMul<Fq3> for Fq3 {}
+
+    impl GpuMul<&Fq3> for Fq3 {}
+
+    impl GpuAdd<Fp> for Fq3 {}
+
+    impl GpuAdd<&Fp> for Fq3 {}
+
+    impl GpuAdd<Fq3> for Fq3 {}
+
+    impl GpuAdd<&Fq3> for Fq3 {}
 
     impl GpuField for Fq3 {
         type FftField = Fp;
@@ -107,4 +147,40 @@ pub mod p18446744069414584321 {
             "p18446744069414584321_fq3".to_string()
         }
     }
+}
+
+// StarkWare field
+pub mod p3618502788666131213697322783095070105623107215331596699973092056135872020481 {
+    use super::*;
+
+    #[derive(ark_ff::MontConfig)]
+    #[modulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
+    #[generator = "3"]
+    pub struct FpMontConfig;
+
+    /// The 252-bit prime field used by StarkWare for Cairo
+    /// Field has modulus `2^251 + 17 * 2^192 + 1`
+    pub type Fp = ark_ff::Fp256<ark_ff::MontBackend<FpMontConfig, 4>>;
+
+    // TODO: GPU field implementation
+    impl GpuField for Fp {
+        type FftField = Self;
+
+        fn field_name() -> String {
+            "p3618502788666131213697322783095070105623107215331596699973092056135872020481_fp"
+                .to_string()
+        }
+    }
+
+    impl GpuMul<Fp> for Fp {}
+
+    impl GpuMul<&Fp> for Fp {}
+
+    impl GpuAdd<Fp> for Fp {}
+
+    impl GpuAdd<&Fp> for Fp {}
+
+    // impl GpuAdd<&Fp> for Fp {}
+
+    impl GpuFftField for Fp {}
 }

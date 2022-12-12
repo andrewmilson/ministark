@@ -1,8 +1,8 @@
 #![feature(allocator_api)]
 use ark_ff::FftField;
 use ark_ff::One;
+use ark_ff::UniformRand;
 use ark_ff::Zero;
-use ark_ff_optimized::fp64::Fp;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
@@ -10,35 +10,98 @@ use ark_poly::Polynomial;
 use ark_poly::Radix2EvaluationDomain;
 use ark_std::rand::seq::SliceRandom;
 use ark_std::rand::Rng;
-use ark_std::UniformRand;
 use gpu_poly::allocator::PageAlignedAllocator;
+use gpu_poly::fields::p18446744069414584321::Fp;
+use gpu_poly::GpuFftField;
 use gpu_poly::GpuField;
-use ministark::constraint::are_eq;
-use ministark::constraint::is_binary;
-use ministark::constraint::Challenge;
-use ministark::constraint::Column;
-use ministark::matrix::GroupItem;
-use ministark::matrix::MatrixGroup;
-use ministark::Constraint;
+use ministark::constraints::AlgebraicExpression;
+use ministark::constraints::ExecutionTraceColumn;
+use ministark::constraints::FieldConstant;
+use ministark::constraints::VerifierChallenge;
+use ministark::utils;
+use ministark::Air;
 use ministark::Matrix;
+use ministark::ProofOptions;
+use ministark::StarkExtensionOf;
+use ministark::TraceInfo;
+use std::marker::PhantomData;
+
+struct TestAir<Fp, Fq = Fp>(TraceInfo, ProofOptions, PhantomData<(Fp, Fq)>);
+
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Air for TestAir<Fp, Fq> {
+    type Fp = Fp;
+    type Fq = Fq;
+    type PublicInputs = ();
+
+    fn new(info: TraceInfo, _: Self::PublicInputs, options: ProofOptions) -> Self {
+        TestAir(info, options, PhantomData)
+    }
+
+    fn pub_inputs(&self) -> &Self::PublicInputs {
+        &()
+    }
+
+    fn trace_info(&self) -> &ministark::TraceInfo {
+        &self.0
+    }
+
+    fn options(&self) -> &ministark::ProofOptions {
+        &self.1
+    }
+
+    fn constraints(&self) -> Vec<AlgebraicExpression<Self::Fp, Self::Fq>> {
+        todo!()
+    }
+}
+
+#[test]
+fn expressions_are_equal() {
+    use AlgebraicExpression::*;
+    let mut rng = ark_std::test_rng();
+    let x = Fp::rand(&mut rng);
+    let left: AlgebraicExpression<Fp> = X;
+    let right: AlgebraicExpression<Fp> = X.pow(2) / X;
+
+    assert_eq!(left.evaluation_hash(x), right.evaluation_hash(x));
+}
+
+#[test]
+fn expressions_are_unequal() {
+    use AlgebraicExpression::*;
+    let mut rng = ark_std::test_rng();
+    let x = Fp::rand(&mut rng);
+    let left: AlgebraicExpression<Fp> = X;
+    let right: AlgebraicExpression<Fp> = X.pow(3) / X;
+
+    assert_ne!(left.evaluation_hash(x), right.evaluation_hash(x));
+}
 
 #[test]
 fn constraint_with_challenges() {
     // TODO: hints
-    let constraint = (0.get_challenge() - 0.curr()) * 1.curr();
+    let constraint: AlgebraicExpression<Fp> = (0.challenge() - 0.curr()) * 1.curr();
     let challenges = [Fp::one()];
     let col_values = [Fp::one(), Fp::from(100)];
 
     assert!(constraint
-        .evaluate(&challenges, &[], &col_values, &[])
+        .eval(
+            &FieldConstant::Fp(Fp::one()),
+            &|_| unreachable!(),
+            &|i| FieldConstant::Fp(challenges[i]),
+            &|i, j| {
+                assert_eq!(0, j);
+                FieldConstant::Fp(col_values[i])
+            }
+        )
         .is_zero());
 }
 
 #[test]
 fn symbolic_evaluation_with_challenges() {
     let n = 2048;
-    let constraint = (0.curr() - 0.get_challenge()) * (0.curr() - 1.get_challenge());
-    let blowup = constraint.degree();
+    let constraint = (0.curr() - 0.challenge()) * (0.curr() - 1.challenge());
+    let (numerator_degree, denominator_degree) = constraint.degree(n);
+    let blowup = utils::ceil_power_of_two((numerator_degree - denominator_degree) / n);
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
     let alpha = Fp::from(3);
@@ -46,10 +109,15 @@ fn symbolic_evaluation_with_challenges() {
     let matrix = gen_binary_valued_matrix(n, alpha, beta);
     let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
-    let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
 
-    let constraint_eval =
-        matrix_group.evaluate_symbolic(&[constraint], &[alpha, beta], &[], blowup);
+    let constraint_eval = evaluate_symbolic(
+        lde_domain,
+        blowup,
+        &[],
+        &[alpha, beta],
+        &constraint,
+        &lde_matrix,
+    );
 
     let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
@@ -57,8 +125,8 @@ fn symbolic_evaluation_with_challenges() {
 
 #[test]
 fn constraint_multiplication() {
-    let zero = Fp::zero();
-    let one = Fp::one();
+    let zero = FieldConstant::Fp(Fp::zero());
+    let one = FieldConstant::Fp(Fp::one());
     let two = one + one;
     let three = two + one;
     let four = three + one;
@@ -72,7 +140,7 @@ fn constraint_multiplication() {
     let twelve = eleven + one;
 
     // checks the column values are between 0 and 10
-    let between_0_and_10: Constraint<Fp> = (0.curr() - one)
+    let between_0_and_10 = (0.curr() - one)
         * (0.curr() - two)
         * (0.curr() - three)
         * (0.curr() - four)
@@ -82,25 +150,32 @@ fn constraint_multiplication() {
         * (0.curr() - eight)
         * (0.curr() - nine);
 
-    assert!(!between_0_and_10.evaluate(&[], &[], &[-two], &[]).is_zero());
-    assert!(!between_0_and_10.evaluate(&[], &[], &[-one], &[]).is_zero());
-    assert!(!between_0_and_10.evaluate(&[], &[], &[zero], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[one], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[two], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[three], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[four], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[five], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[six], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[seven], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[eight], &[]).is_zero());
-    assert!(between_0_and_10.evaluate(&[], &[], &[nine], &[]).is_zero());
-    assert!(!between_0_and_10.evaluate(&[], &[], &[ten], &[]).is_zero());
-    assert!(!between_0_and_10
-        .evaluate(&[], &[], &[eleven], &[])
-        .is_zero());
-    assert!(!between_0_and_10
-        .evaluate(&[], &[], &[twelve], &[])
-        .is_zero());
+    let x = FieldConstant::Fp(Fp::one());
+    let h = &|_| unreachable!();
+    let c = &|_| unreachable!();
+    let t = |val: FieldConstant<Fp, Fp>| {
+        move |i, j| {
+            assert_eq!(0, i, "for value {val}");
+            assert_eq!(0, j, "for value {val}");
+            val
+        }
+    };
+
+    assert!(!between_0_and_10.eval(&x, h, c, &t(-two)).is_zero());
+    assert!(!between_0_and_10.eval(&x, h, c, &t(-one)).is_zero());
+    assert!(!between_0_and_10.eval(&x, h, c, &t(zero)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(one)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(two)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(three)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(four)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(five)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(six)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(seven)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(eight)).is_zero());
+    assert!(between_0_and_10.eval(&x, h, c, &t(nine)).is_zero());
+    assert!(!between_0_and_10.eval(&x, h, c, &t(ten)).is_zero());
+    assert!(!between_0_and_10.eval(&x, h, c, &t(eleven)).is_zero());
+    assert!(!between_0_and_10.eval(&x, h, c, &t(twelve)).is_zero());
 }
 
 #[test]
@@ -111,13 +186,17 @@ fn evaluate_fibonacci_constraint() {
     let matrix = gen_fib_matrix(n);
     let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
-    let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
-    let constraints: Vec<Constraint<Fp>> = vec![
-        are_eq(0.next(), 0.curr() + 1.curr()),
-        are_eq(1.next(), 0.next() + 1.curr()),
+    let constraints: Vec<AlgebraicExpression<Fp>> = vec![
+        0.next() - (0.curr() + 1.curr()),
+        1.next() - (0.next() + 1.curr()),
     ];
 
-    let constraint_evals = matrix_group.evaluate_symbolic(&constraints, &[], &[], 1);
+    let constraint_evals = Matrix::join(
+        constraints
+            .into_iter()
+            .map(|c| evaluate_symbolic(lde_domain, 1, &[], &[], &c, &lde_matrix))
+            .collect(),
+    );
 
     let constraint_evals_poly = constraint_evals.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_evals_poly);
@@ -126,16 +205,17 @@ fn evaluate_fibonacci_constraint() {
 #[test]
 fn evaluate_binary_constraint() {
     let n = 2048;
-    let constraint: Constraint<Fp> = is_binary(0.curr());
-    let blowup = constraint.degree();
+    // constrains column 0 values to 0 or 1
+    let constraint = 0.curr() * (0.curr() - FieldConstant::Fp(Fp::one()));
+    let (numerator_degree, denominator_degree) = constraint.degree(n);
+    let blowup = utils::ceil_power_of_two((numerator_degree - denominator_degree) / n);
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
     let matrix = gen_binary_valued_matrix(n, Fp::zero(), Fp::one());
     let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
-    let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
 
-    let constraint_eval = matrix_group.evaluate_symbolic(&[constraint], &[], &[], blowup);
+    let constraint_eval = evaluate_symbolic(lde_domain, blowup, &[], &[], &constraint, &lde_matrix);
 
     let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
@@ -177,9 +257,9 @@ fn evaluate_permutation_constraint() {
     let original_product = 2;
     let shuffled_product = 3;
     let constraints = vec![
-        original_product.curr() * (alpha.get_challenge() - original_col.curr())
+        original_product.curr() * (alpha.challenge() - original_col.curr())
             - original_product.next(),
-        shuffled_product.curr() * (alpha.get_challenge() - shuffled_col.curr())
+        shuffled_product.curr() * (alpha.challenge() - shuffled_col.curr())
             - shuffled_product.next(),
     ];
     let blowup = 2;
@@ -187,9 +267,13 @@ fn evaluate_permutation_constraint() {
     let lde_domain = Radix2EvaluationDomain::new_coset(n * blowup, Fp::GENERATOR).unwrap();
     let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
-    let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
 
-    let constraint_evals = matrix_group.evaluate_symbolic(&constraints, &[challenge], &[], blowup);
+    let constraint_evals = Matrix::join(
+        constraints
+            .into_iter()
+            .map(|c| evaluate_symbolic(lde_domain, blowup, &[], &[challenge], &c, &lde_matrix))
+            .collect(),
+    );
 
     let last_original_val = matrix.0[original_col].last().unwrap();
     let last_shuffled_val = matrix.0[shuffled_col].last().unwrap();
@@ -213,9 +297,10 @@ fn evaluate_zerofier_constraint() {
     let a = 1;
     let instr = Fp::from(b'+');
     let constraint = curr_instr.curr()
-        * (permutation.curr() * (alpha.get_challenge() - a.get_challenge() * curr_instr.curr())
+        * (permutation.curr() * (alpha.challenge() - a.challenge() * curr_instr.curr())
             - permutation.next())
-        + (curr_instr.curr() - instr) * (permutation.curr() - permutation.next());
+        + (curr_instr.curr() - FieldConstant::Fp(instr))
+            * (permutation.curr() - permutation.next());
     let blowup = 16;
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
@@ -231,9 +316,15 @@ fn evaluate_zerofier_constraint() {
     let matrix = Matrix::new(vec![curr_instr_column, permutation_column]);
     let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
-    let matrix_group = MatrixGroup::new(vec![GroupItem::Fp(&lde_matrix)]);
 
-    let constraint_eval = matrix_group.evaluate_symbolic(&[constraint], challenges, &[], blowup);
+    let constraint_eval = evaluate_symbolic(
+        lde_domain,
+        blowup,
+        &[],
+        challenges,
+        &constraint,
+        &lde_matrix,
+    );
 
     let constraint_eval_poly = constraint_eval.interpolate(lde_domain);
     assert_valid_over_transition_domain(trace_domain, constraint_eval_poly);
@@ -267,7 +358,7 @@ fn gen_fib_matrix<F: GpuField>(n: usize) -> Matrix<F> {
     Matrix::new(columns)
 }
 
-/// Generates a single column matrix of consisting of two values i.e.
+/// Generates a single column matrix consisting of two values i.e.
 /// ┌───────┐
 /// │ Col 0 │
 /// ├───────┤
@@ -310,4 +401,40 @@ fn assert_valid_over_transition_domain<F: GpuField>(
             assert!(y.is_zero(), "polynomial {i} invalid at index {j}");
         }
     }
+}
+
+/// TODO: consider merging with ConstraintComposer::evaluate_constraint_cpu
+fn evaluate_symbolic<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    lde_domain: Radix2EvaluationDomain<Fp>,
+    blowup_factor: usize,
+    hints: &[Fq],
+    challenges: &[Fq],
+    constraint: &AlgebraicExpression<Fp, Fq>,
+    lde_matrix: &Matrix<Fq>,
+) -> Matrix<Fq> {
+    let blowup_factor = blowup_factor as isize;
+    let xs = lde_domain.elements();
+    let n = lde_domain.size();
+    let mut result = Vec::with_capacity_in(n, PageAlignedAllocator);
+    result.resize(n, Fq::zero());
+
+    for (i, (v, x)) in result.iter_mut().zip(xs).enumerate() {
+        let eval_result = constraint.eval(
+            &FieldConstant::Fp(x),
+            &|h| FieldConstant::Fq(hints[h]),
+            &|c| FieldConstant::Fq(challenges[c]),
+            &|col_idx, offset| {
+                let pos = (i as isize + blowup_factor * offset).rem_euclid(n as isize) as usize;
+                let column = &lde_matrix[col_idx];
+                FieldConstant::Fq(column[pos])
+            },
+        );
+
+        *v = match eval_result {
+            FieldConstant::Fp(v) => Fq::from(v),
+            FieldConstant::Fq(v) => v,
+        };
+    }
+
+    Matrix::new(vec![result])
 }

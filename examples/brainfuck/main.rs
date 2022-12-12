@@ -89,6 +89,7 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output
     );
 
     let prover = prover::BrainfuckProver::new(options);
+    let now = Instant::now();
     let proof = prover.generate_proof(trace).unwrap();
     println!("Proof generated in: {:.0?}", now.elapsed());
     println!(

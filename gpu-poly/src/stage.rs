@@ -5,7 +5,8 @@ use crate::allocator::PageAlignedAllocator;
 use crate::utils::buffer_no_copy;
 use crate::utils::distribute_powers;
 use crate::utils::void_ptr;
-use crate::GpuMulAssign;
+use crate::GpuAdd;
+use crate::GpuMul;
 use crate::GpuVec;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -68,6 +69,7 @@ impl<F: GpuField> FftGpuStage<F> {
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
         let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        // TODO: figure out a solution to handle if this arises
         assert!(threadgroup_fft_size / 2 <= max_threadgroup_threads as usize);
 
         // each thread operates on two values each round
@@ -105,13 +107,136 @@ impl<F: GpuField> FftGpuStage<F> {
     }
 }
 
-pub struct ScaleAndNormalizeGpuStage<F> {
+pub struct MulIntoStage<LhsF, RhsF = LhsF> {
+    n: u32,
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
+    _phantom: PhantomData<(LhsF, RhsF)>,
+}
+
+impl<LhsF: GpuField, RhsF: GpuField> MulIntoStage<LhsF, RhsF>
+where
+    LhsF: GpuMul<RhsF>,
+{
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let constants = metal::FunctionConstantValues::new();
+        let n = n as u32;
+        constants.set_constant_value_at_index(void_ptr(&n), metal::MTLDataType::UInt, 0);
+        let kernel_name = format!(
+            "mul_into_LHS_{}_RHS_{}",
+            LhsF::field_name(),
+            RhsF::field_name()
+        );
+        let func = library.get_function(&kernel_name, Some(constants)).unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        MulIntoStage {
+            n,
+            pipeline,
+            threadgroup_dim,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst: &metal::BufferRef,
+        lhs: &metal::BufferRef,
+        rhs: &metal::BufferRef,
+        shift: isize,
+    ) {
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst), 0);
+        command_encoder.set_buffer(1, Some(lhs), 0);
+        command_encoder.set_buffer(2, Some(rhs), 0);
+        let shift = ((self.n as isize + shift) % (self.n as isize)) as u32;
+        command_encoder.set_bytes(3, size_of::<u32>().try_into().unwrap(), void_ptr(&shift));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst, lhs, rhs]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct MulAssignStage<LhsF, RhsF = LhsF> {
+    n: u32,
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<(LhsF, RhsF)>,
+}
+
+impl<LhsF: GpuField, RhsF: GpuField> MulAssignStage<LhsF, RhsF>
+where
+    LhsF: GpuMul<RhsF>,
+{
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let constants = metal::FunctionConstantValues::new();
+        let n = n as u32;
+        constants.set_constant_value_at_index(void_ptr(&n), metal::MTLDataType::UInt, 0);
+        let kernel_name = format!(
+            "mul_assign_LHS_{}_RHS_{}",
+            LhsF::field_name(),
+            RhsF::field_name()
+        );
+        let func = library.get_function(&kernel_name, Some(constants)).unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        MulAssignStage {
+            n,
+            pipeline,
+            threadgroup_dim,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        lhs: &metal::BufferRef,
+        rhs: &metal::BufferRef,
+        shift: isize,
+    ) {
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(lhs), 0);
+        command_encoder.set_buffer(1, Some(rhs), 0);
+        let shift = ((self.n as isize + shift) % (self.n as isize)) as u32;
+        command_encoder.set_bytes(2, size_of::<u32>().try_into().unwrap(), void_ptr(&shift));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[lhs, rhs]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct ScaleAndNormalizeGpuStage<F> {
+    mul_assign_stage: MulAssignStage<F>,
     _scale_factors: GpuVec<F>,
     scale_factors_buffer: metal::Buffer,
-    _phantom: PhantomData<F>,
 }
 
 impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
@@ -122,14 +247,7 @@ impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
         scale_factor: F,
         norm_factor: F,
     ) -> Self {
-        // Create the compute pipeline
-        let kernel_name = format!("mul_assign_LHS_{}_RHS_{}", F::field_name(), F::field_name());
-        let func = library.get_function(&kernel_name, None).unwrap();
-        let pipeline = library
-            .device()
-            .new_compute_pipeline_state_with_function(&func)
-            .unwrap();
-
+        let mul_assign_stage = MulAssignStage::new(library, n);
         let mut _scale_factors = Vec::with_capacity_in(n, PageAlignedAllocator);
         _scale_factors.resize(n, norm_factor);
         if !scale_factor.is_one() {
@@ -137,31 +255,20 @@ impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
         }
         let scale_factors_buffer = buffer_no_copy(command_queue.device(), &_scale_factors);
 
-        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
-        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
-
         ScaleAndNormalizeGpuStage {
-            pipeline,
-            threadgroup_dim,
-            grid_dim,
+            mul_assign_stage,
             _scale_factors,
             scale_factors_buffer,
-            _phantom: PhantomData,
         }
     }
 
     pub fn encode(
         &self,
         command_buffer: &metal::CommandBufferRef,
-        input_buffer: &mut metal::BufferRef,
+        input_buffer: &metal::BufferRef,
     ) {
-        let command_encoder = command_buffer.new_compute_command_encoder();
-        command_encoder.set_compute_pipeline_state(&self.pipeline);
-        command_encoder.set_buffer(0, Some(input_buffer), 0);
-        command_encoder.set_buffer(1, Some(&self.scale_factors_buffer), 0);
-        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
-        command_encoder.memory_barrier_with_resources(&[input_buffer]);
-        command_encoder.end_encoding()
+        self.mul_assign_stage
+            .encode(command_buffer, input_buffer, &self.scale_factors_buffer, 0);
     }
 }
 
@@ -194,7 +301,8 @@ impl<F: GpuField> BitReverseGpuStage<F> {
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
 
-        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
         BitReverseGpuStage {
@@ -219,16 +327,16 @@ impl<F: GpuField> BitReverseGpuStage<F> {
     }
 }
 
-pub struct MulPowStage<Lhs, Rhs = Lhs> {
+pub struct MulPowStage<LhsF, RhsF = LhsF> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
-    _phantom: PhantomData<(Lhs, Rhs)>,
+    _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
 impl<LhsF: GpuField, RhsF: GpuField> MulPowStage<LhsF, RhsF>
 where
-    LhsF: GpuMulAssign<RhsF>,
+    LhsF: GpuMul<RhsF>,
 {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
@@ -246,7 +354,9 @@ where
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
 
-        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        // TODO: remove
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
         MulPowStage {
@@ -274,25 +384,36 @@ where
         let shift = shift as u32;
         command_encoder.set_bytes(3, size_of::<u32>().try_into().unwrap(), void_ptr(&shift));
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
-        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.memory_barrier_with_resources(&[src_buffer, dst_buffer]);
         command_encoder.end_encoding();
     }
 }
 
-pub struct AddAssignStage<F> {
+pub struct AddAssignStage<LhsF, RhsF = LhsF> {
+    n: u32,
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
-    _phantom: PhantomData<F>,
+    _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<F: GpuField> AddAssignStage<F> {
+impl<LhsF: GpuField, RhsF: GpuField> AddAssignStage<LhsF, RhsF>
+where
+    LhsF: GpuAdd<RhsF>,
+{
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        let constants = metal::FunctionConstantValues::new();
+        let n = n as u32;
+        constants.set_constant_value_at_index(void_ptr(&n), metal::MTLDataType::UInt, 0);
         // Create the compute pipeline
         let func = library
             .get_function(
-                &format!("add_assign_LHS_{}_RHS_{}", F::field_name(), F::field_name()),
-                None,
+                &format!(
+                    "add_assign_LHS_{}_RHS_{}",
+                    LhsF::field_name(),
+                    RhsF::field_name()
+                ),
+                Some(constants),
             )
             .unwrap();
         let pipeline = library
@@ -300,11 +421,12 @@ impl<F: GpuField> AddAssignStage<F> {
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
 
-        let n = n as u32;
-        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
         AddAssignStage {
+            n,
             threadgroup_dim,
             pipeline,
             grid_dim,
@@ -315,14 +437,687 @@ impl<F: GpuField> AddAssignStage<F> {
     pub fn encode(
         &self,
         command_buffer: &metal::CommandBufferRef,
-        dst_buffer: &mut metal::BufferRef,
+        dst_buffer: &metal::BufferRef,
         src_buffer: &metal::BufferRef,
+        shift: isize,
     ) {
         // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
-        let command_encoder = command_buffer.new_compute_command_encoder();
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
         command_encoder.set_compute_pipeline_state(&self.pipeline);
         command_encoder.set_buffer(0, Some(dst_buffer), 0);
         command_encoder.set_buffer(1, Some(src_buffer), 0);
+        let shift = ((self.n as isize + shift) % (self.n as isize)) as u32;
+        command_encoder.set_bytes(2, size_of::<u32>().try_into().unwrap(), void_ptr(&shift));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer, src_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct AddIntoStage<LhsF, RhsF = LhsF> {
+    n: u32,
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<(LhsF, RhsF)>,
+}
+
+impl<LhsF: GpuField, RhsF: GpuField> AddIntoStage<LhsF, RhsF>
+where
+    LhsF: GpuAdd<RhsF>,
+{
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        let constants = metal::FunctionConstantValues::new();
+        let n = n as u32;
+        constants.set_constant_value_at_index(void_ptr(&n), metal::MTLDataType::UInt, 0);
+        // Create the compute pipeline
+        let func = library
+            .get_function(
+                &format!(
+                    "add_into_LHS_{}_RHS_{}",
+                    LhsF::field_name(),
+                    RhsF::field_name()
+                ),
+                Some(constants),
+            )
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        AddIntoStage {
+            n,
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        lhs_buffer: &metal::BufferRef,
+        rhs_buffer: &metal::BufferRef,
+        shift: isize,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(lhs_buffer), 0);
+        command_encoder.set_buffer(2, Some(rhs_buffer), 0);
+        let shift = ((self.n as isize + shift) % (self.n as isize)) as u32;
+        command_encoder.set_bytes(3, size_of::<u32>().try_into().unwrap(), void_ptr(&shift));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer, lhs_buffer, rhs_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct AddIntoConstStage<LhsF, RhsF = LhsF> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<(LhsF, RhsF)>,
+}
+
+impl<LhsF: GpuField, RhsF: GpuField> AddIntoConstStage<LhsF, RhsF>
+where
+    LhsF: GpuAdd<RhsF>,
+{
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(
+                &format!(
+                    "add_into_const_LHS_{}_RHS_{}",
+                    LhsF::field_name(),
+                    RhsF::field_name()
+                ),
+                None,
+            )
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        AddIntoConstStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        lhs_buffer: &metal::BufferRef,
+        rhs_val: RhsF,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(lhs_buffer), 0);
+        command_encoder.set_bytes(2, size_of::<RhsF>().try_into().unwrap(), void_ptr(&rhs_val));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer, lhs_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+pub struct ConvertIntoStage<LhsF, RhsF = LhsF> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<(LhsF, RhsF)>,
+}
+
+impl<LhsF: GpuField, RhsF: GpuField> ConvertIntoStage<LhsF, RhsF>
+where
+    LhsF: GpuAdd<RhsF>,
+{
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(
+                &format!(
+                    "convert_into_LHS_{}_RHS_{}",
+                    LhsF::field_name(),
+                    RhsF::field_name()
+                ),
+                None,
+            )
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        ConvertIntoStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        src_buffer: &metal::BufferRef,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(src_buffer), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer, src_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct AddAssignConstStage<LhsF, RhsF = LhsF> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<(LhsF, RhsF)>,
+}
+
+impl<LhsF: GpuField, RhsF: GpuField> AddAssignConstStage<LhsF, RhsF>
+where
+    LhsF: GpuAdd<RhsF>,
+{
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(
+                &format!(
+                    "add_assign_const_LHS_{}_RHS_{}",
+                    LhsF::field_name(),
+                    RhsF::field_name()
+                ),
+                None,
+            )
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        AddAssignConstStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        val: &RhsF,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_bytes(1, size_of::<RhsF>().try_into().unwrap(), void_ptr(val));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct MulIntoConstStage<LhsF, RhsF = LhsF> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<(LhsF, RhsF)>,
+}
+
+impl<LhsF: GpuField, RhsF: GpuField> MulIntoConstStage<LhsF, RhsF>
+where
+    LhsF: GpuMul<RhsF>,
+{
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(
+                &format!(
+                    "mul_into_const_LHS_{}_RHS_{}",
+                    LhsF::field_name(),
+                    RhsF::field_name()
+                ),
+                None,
+            )
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        MulIntoConstStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        lhs_buffer: &metal::BufferRef,
+        rhs_val: &RhsF,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(lhs_buffer), 0);
+        command_encoder.set_bytes(2, size_of::<RhsF>().try_into().unwrap(), void_ptr(rhs_val));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct MulAssignConstStage<LhsF, RhsF = LhsF> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<(LhsF, RhsF)>,
+}
+
+impl<LhsF: GpuField, RhsF: GpuField> MulAssignConstStage<LhsF, RhsF>
+where
+    LhsF: GpuMul<RhsF>,
+{
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(
+                &format!(
+                    "mul_assign_const_LHS_{}_RHS_{}",
+                    LhsF::field_name(),
+                    RhsF::field_name()
+                ),
+                None,
+            )
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        MulAssignConstStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        val: RhsF,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_bytes(1, size_of::<RhsF>().try_into().unwrap(), void_ptr(&val));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct InverseInPlaceStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> InverseInPlaceStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(&format!("inverse_in_place_{}", F::field_name()), None)
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let n = n as u32;
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        InverseInPlaceStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(&self, command_buffer: &metal::CommandBufferRef, dst_buffer: &metal::BufferRef) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct NegInPlaceStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> NegInPlaceStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(&format!("neg_in_place_{}", F::field_name()), None)
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let n = n as u32;
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        NegInPlaceStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(&self, command_buffer: &metal::CommandBufferRef, dst_buffer: &metal::BufferRef) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct NegIntoStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> NegIntoStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(&format!("neg_into_{}", F::field_name()), None)
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let n = n as u32;
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        NegIntoStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        src_buffer: &metal::BufferRef,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(src_buffer), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer, src_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct InverseIntoStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> InverseIntoStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(&format!("inverse_into_{}", F::field_name()), None)
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let n = n as u32;
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        InverseIntoStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        src_buffer: &metal::BufferRef,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(src_buffer), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer, src_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct ExpIntoStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> ExpIntoStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(&format!("exp_into_{}", F::field_name()), None)
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let n = n as u32;
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        ExpIntoStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        src_buffer: &metal::BufferRef,
+        exponent: usize,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        command_encoder.set_buffer(1, Some(src_buffer), 0);
+        let expoonent = u32::try_from(exponent).unwrap();
+        command_encoder.set_bytes(
+            2,
+            size_of::<u32>().try_into().unwrap(),
+            void_ptr(&expoonent),
+        );
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer, src_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct ExpInPlaceStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> ExpInPlaceStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let func = library
+            .get_function(&format!("exp_in_place_{}", F::field_name()), None)
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let n = n as u32;
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
+        let threadgroup_dim = metal::MTLSize::new(max_threadgroup_threads, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        ExpInPlaceStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        dst_buffer: &metal::BufferRef,
+        exponent: usize,
+    ) {
+        // TODO: why is `metal::MTLDispatchType::Concurrent` slower?
+        // let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(dst_buffer), 0);
+        let expoonent = u32::try_from(exponent).unwrap();
+        command_encoder.set_bytes(
+            1,
+            size_of::<u32>().try_into().unwrap(),
+            void_ptr(&expoonent),
+        );
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
         command_encoder.memory_barrier_with_resources(&[dst_buffer]);
         command_encoder.end_encoding()
@@ -424,6 +1219,115 @@ impl<F: GpuField> GenerateTwiddlesStage<F> {
         command_encoder.set_compute_pipeline_state(&self.pipeline);
         command_encoder.set_buffer(0, Some(dst_buffer), 0);
         command_encoder.set_bytes(1, size_of::<F>().try_into().unwrap(), void_ptr(&value));
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct FibEvalStage<F> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> FibEvalStage<F> {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        // Create the compute pipeline
+        let constants = metal::FunctionConstantValues::new();
+        let n = n as u32;
+        constants.set_constant_value_at_index(
+            &n as *const u32 as *const std::ffi::c_void,
+            metal::MTLDataType::UInt,
+            0,
+        );
+        let func = library.get_function("fib_eval", Some(constants)).unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let threadgroup_dim = metal::MTLSize::new(1024, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        FibEvalStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        t0: &metal::BufferRef,
+        t1: &metal::BufferRef,
+        t2: &metal::BufferRef,
+        t3: &metal::BufferRef,
+        t4: &metal::BufferRef,
+        t5: &metal::BufferRef,
+        t6: &metal::BufferRef,
+        t7: &metal::BufferRef,
+        t8: &metal::BufferRef,
+        t9: &metal::BufferRef,
+        t10: &metal::BufferRef,
+        t11: &metal::BufferRef,
+        t12: &metal::BufferRef,
+        t13: &metal::BufferRef,
+        t14: &metal::BufferRef,
+        t15: &metal::BufferRef,
+        t16: &metal::BufferRef,
+        t17: &metal::BufferRef,
+        t18: &metal::BufferRef,
+        t19: &metal::BufferRef,
+        t20: &metal::BufferRef,
+        t21: &metal::BufferRef,
+        t22: &metal::BufferRef,
+        t23: &metal::BufferRef,
+        t24: &metal::BufferRef,
+        t25: &metal::BufferRef,
+        t26: &metal::BufferRef,
+        t27: &metal::BufferRef,
+        t28: &metal::BufferRef,
+        t29: &metal::BufferRef,
+        dst_buffer: &mut metal::BufferRef,
+    ) {
+        let command_encoder = command_buffer.new_compute_command_encoder();
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(t0), 0);
+        command_encoder.set_buffer(1, Some(t1), 0);
+        command_encoder.set_buffer(2, Some(t2), 0);
+        command_encoder.set_buffer(3, Some(t3), 0);
+        command_encoder.set_buffer(4, Some(t4), 0);
+        command_encoder.set_buffer(5, Some(t5), 0);
+        command_encoder.set_buffer(6, Some(t6), 0);
+        command_encoder.set_buffer(7, Some(t7), 0);
+        command_encoder.set_buffer(8, Some(t8), 0);
+        command_encoder.set_buffer(9, Some(t9), 0);
+        command_encoder.set_buffer(10, Some(t10), 0);
+        command_encoder.set_buffer(11, Some(t11), 0);
+        command_encoder.set_buffer(12, Some(t12), 0);
+        command_encoder.set_buffer(13, Some(t13), 0);
+        command_encoder.set_buffer(14, Some(t14), 0);
+        command_encoder.set_buffer(15, Some(t15), 0);
+        command_encoder.set_buffer(16, Some(t16), 0);
+        command_encoder.set_buffer(17, Some(t17), 0);
+        command_encoder.set_buffer(18, Some(t18), 0);
+        command_encoder.set_buffer(19, Some(t19), 0);
+        command_encoder.set_buffer(20, Some(t20), 0);
+        command_encoder.set_buffer(21, Some(t21), 0);
+        command_encoder.set_buffer(22, Some(t22), 0);
+        command_encoder.set_buffer(23, Some(t23), 0);
+        command_encoder.set_buffer(24, Some(t24), 0);
+        command_encoder.set_buffer(25, Some(t25), 0);
+        command_encoder.set_buffer(26, Some(t26), 0);
+        command_encoder.set_buffer(27, Some(t27), 0);
+        command_encoder.set_buffer(28, Some(t28), 0);
+        command_encoder.set_buffer(29, Some(t29), 0);
+        command_encoder.set_buffer(30, Some(dst_buffer), 0);
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
         command_encoder.memory_barrier_with_resources(&[dst_buffer]);
         command_encoder.end_encoding()

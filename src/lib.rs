@@ -1,3 +1,4 @@
+#![allow(clippy::cast_abs_to_unsigned)]
 #![feature(
     allocator_api,
     let_chains,
@@ -5,16 +6,18 @@
     array_chunks,
     iter_partition_in_place,
     slice_flatten,
-    slice_as_chunks
+    slice_as_chunks,
+    box_patterns
 )]
 
 #[macro_use]
 mod macros;
 mod air;
+pub mod calculator;
 pub mod challenges;
 mod channel;
 mod composer;
-pub mod constraint;
+pub mod constraints;
 pub mod fri;
 pub mod hints;
 pub mod matrix;
@@ -31,17 +34,14 @@ use ark_ff::Field;
 use ark_ff::PrimeField;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-pub use constraint::Column;
-pub use constraint::Constraint;
 use fri::FriOptions;
 use fri::FriProof;
+use gpu_poly::GpuAdd;
 use gpu_poly::GpuFftField;
 use gpu_poly::GpuField;
-use gpu_poly::GpuMulAssign;
+use gpu_poly::GpuMul;
 pub use matrix::Matrix;
 pub use prover::Prover;
-use std::ops::Add;
-use std::ops::Mul;
 use trace::Queries;
 pub use trace::Trace;
 pub use trace::TraceInfo;
@@ -62,7 +62,7 @@ pub struct ProofOptions {
 impl ProofOptions {
     pub const MIN_NUM_QUERIES: u8 = 1;
     pub const MAX_NUM_QUERIES: u8 = 128;
-    pub const MIN_BLOWUP_FACTOR: u8 = 2;
+    pub const MIN_BLOWUP_FACTOR: u8 = 1;
     pub const MAX_BLOWUP_FACTOR: u8 = 64;
     pub const MAX_GRINDING_FACTOR: u8 = 32;
 
@@ -108,10 +108,10 @@ pub struct Proof<A: Air> {
     pub composition_trace_commitment: Vec<u8>,
     pub fri_proof: FriProof<A::Fq>,
     pub pow_nonce: u64,
-    pub trace_queries: Queries<A::Fp, A::Fq>,
+    pub trace_queries: Queries<A>,
     pub public_inputs: A::PublicInputs,
-    pub ood_trace_states: (Vec<A::Fq>, Vec<A::Fq>),
-    pub ood_constraint_evaluations: Vec<A::Fq>,
+    pub execution_trace_ood_evals: Vec<A::Fq>,
+    pub composition_trace_ood_evals: Vec<A::Fq>,
 }
 
 impl<A: Air> Proof<A> {
@@ -132,9 +132,10 @@ impl<A: Air> Proof<A> {
 
 pub trait StarkExtensionOf<Fp: GpuFftField>:
     GpuField<FftField = Fp>
-    + for<'a> Mul<&'a Fp, Output = Self>
-    + for<'a> Add<&'a Fp, Output = Self>
-    + GpuMulAssign<Fp>
+    + GpuMul<Fp>
+    + GpuAdd<Fp>
+    + for<'a> GpuMul<&'a Fp>
+    + for<'a> GpuAdd<&'a Fp>
     + From<Fp>
 {
 }
@@ -143,9 +144,10 @@ impl<T, F> StarkExtensionOf<F> for T
 where
     F: GpuFftField,
     T: GpuField<FftField = F>
-        + for<'a> Mul<&'a F, Output = T>
-        + for<'a> Add<&'a F, Output = T>
-        + GpuMulAssign<F>
+        + GpuMul<F>
+        + GpuAdd<F>
+        + for<'a> GpuMul<&'a F>
+        + for<'a> GpuAdd<&'a F>
         + From<F>,
 {
 }

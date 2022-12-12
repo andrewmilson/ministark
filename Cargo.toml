@@ -43,9 +43,17 @@ rand = "0.8.5"
 thiserror = "1.0.37"
 rayon = { version = "1.5.3", optional = true }
 
+# Apple silicon depencencies
+# TODO: remove. this should be abstracted away
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = { git = "https://github.com/gfx-rs/metal-rs" }
+
 [dev-dependencies]
 criterion = "0.4.0"
 structopt = "0.3.26"
+sha3 = "0.10.6"
+num-bigint = "0.4.3"
+num-integer = "0.1.45"
 
 # taken from https://github.com/recmo/uint
 # Compilation profile for any non-workspace member.

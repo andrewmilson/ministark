@@ -20,8 +20,8 @@ pub struct ProverChannel<'a, A: Air, D: Digest> {
     extension_trace_commitment: Option<Output<D>>,
     composition_trace_commitment: Output<D>,
     fri_layer_commitments: Vec<Output<D>>,
-    ood_trace_states: (Vec<A::Fq>, Vec<A::Fq>),
-    ood_constraint_evaluations: Vec<A::Fq>,
+    execution_trace_ood_evals: Vec<A::Fq>,
+    composition_trace_ood_evals: Vec<A::Fq>,
     pow_nonce: u64,
 }
 
@@ -43,8 +43,8 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
             extension_trace_commitment: None,
             base_trace_commitment: Default::default(),
             composition_trace_commitment: Default::default(),
-            ood_trace_states: Default::default(),
-            ood_constraint_evaluations: Default::default(),
+            execution_trace_ood_evals: Default::default(),
+            composition_trace_ood_evals: Default::default(),
             fri_layer_commitments: Default::default(),
             pow_nonce: 0,
         }
@@ -69,16 +69,14 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         self.public_coin.draw()
     }
 
-    pub fn send_ood_trace_states(&mut self, evals: &[A::Fq], next_evals: &[A::Fq]) {
-        assert_eq!(evals.len(), next_evals.len());
+    pub fn send_execution_trace_ood_evals(&mut self, evals: Vec<A::Fq>) {
         self.public_coin.reseed(&evals);
-        self.public_coin.reseed(&next_evals);
-        self.ood_trace_states = (evals.to_vec(), next_evals.to_vec());
+        self.execution_trace_ood_evals = evals;
     }
 
-    pub fn send_ood_constraint_evaluations(&mut self, evals: &[A::Fq]) {
+    pub fn send_composition_trace_ood_evals(&mut self, evals: Vec<A::Fq>) {
         self.public_coin.reseed(&evals);
-        self.ood_constraint_evaluations = evals.to_vec();
+        self.composition_trace_ood_evals = evals;
     }
 
     pub fn grind_fri_commitments(&mut self) {
@@ -111,11 +109,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
             .collect()
     }
 
-    pub fn build_proof(
-        self,
-        trace_queries: Queries<A::Fp, A::Fq>,
-        fri_proof: FriProof<A::Fq>,
-    ) -> Proof<A> {
+    pub fn build_proof(self, trace_queries: Queries<A>, fri_proof: FriProof<A::Fq>) -> Proof<A> {
         Proof {
             options: *self.air.options(),
             trace_info: self.air.trace_info().clone(),
@@ -123,8 +117,8 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
             extension_trace_commitment: self.extension_trace_commitment.map(|o| o.to_vec()),
             composition_trace_commitment: self.composition_trace_commitment.to_vec(),
             public_inputs: self.air.pub_inputs().clone(),
-            ood_trace_states: self.ood_trace_states,
-            ood_constraint_evaluations: self.ood_constraint_evaluations,
+            execution_trace_ood_evals: self.execution_trace_ood_evals,
+            composition_trace_ood_evals: self.composition_trace_ood_evals,
             pow_nonce: self.pow_nonce,
             fri_proof,
             trace_queries,

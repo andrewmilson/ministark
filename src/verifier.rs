@@ -1,5 +1,6 @@
 use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
+use crate::constraints::FieldConstant;
 use crate::fri;
 use crate::fri::FriVerifier;
 use crate::hints::Hints;
@@ -7,7 +8,6 @@ use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
 use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
-use crate::utils::evaluate_vanishing_polynomial;
 use crate::Air;
 // use crate::channel::VerifierChannel;
 use crate::Proof;
@@ -20,6 +20,7 @@ use digest::Digest;
 use digest::Output;
 use rand::Rng;
 use sha2::Sha256;
+use std::collections::BTreeMap;
 use std::ops::Deref;
 use thiserror::Error;
 
@@ -48,8 +49,8 @@ impl<A: Air> Proof<A> {
             base_trace_commitment,
             extension_trace_commitment,
             composition_trace_commitment,
-            ood_constraint_evaluations,
-            ood_trace_states,
+            execution_trace_ood_evals,
+            composition_trace_ood_evals,
             trace_queries,
             trace_info,
             public_inputs,
@@ -86,22 +87,26 @@ impl<A: Air> Proof<A> {
         public_coin.reseed(&composition_trace_commitment.deref());
 
         let z = public_coin.draw::<A::Fq>();
-        public_coin.reseed(&ood_trace_states.0);
-        public_coin.reseed(&ood_trace_states.1);
+        public_coin.reseed(&execution_trace_ood_evals);
+        // execution trace ood evaluation map
+        let trace_ood_eval_map = air
+            .trace_arguments()
+            .into_iter()
+            .zip(execution_trace_ood_evals.iter().copied())
+            .collect::<BTreeMap<(usize, isize), A::Fq>>();
         let calculated_ood_constraint_evaluation = ood_constraint_evaluation(
-            composition_coeffs,
+            &composition_coeffs,
             &challenges,
             &hints,
-            &ood_trace_states.0,
-            &ood_trace_states.1,
+            &trace_ood_eval_map,
             &air,
             z,
         );
 
-        public_coin.reseed(&ood_constraint_evaluations);
+        public_coin.reseed(&composition_trace_ood_evals);
         let mut acc = A::Fq::one();
         let provided_ood_constraint_evaluation =
-            ood_constraint_evaluations
+            composition_trace_ood_evals
                 .iter()
                 .fold(A::Fq::zero(), |mut res, value| {
                     res += *value * acc;
@@ -189,8 +194,8 @@ impl<A: Air> Proof<A> {
             extension_trace_rows,
             composition_trace_rows,
             z,
-            ood_trace_states,
-            ood_constraint_evaluations,
+            trace_ood_eval_map,
+            composition_trace_ood_evals,
         );
 
         Ok(fri_verifier.verify(&query_positions, &deep_evaluations)?)
@@ -198,63 +203,40 @@ impl<A: Air> Proof<A> {
 }
 
 fn ood_constraint_evaluation<A: Air>(
-    mut composition_coefficients: Vec<(A::Fq, A::Fq)>,
+    composition_coefficients: &[(A::Fq, A::Fq)],
     challenges: &Challenges<A::Fq>,
     hints: &Hints<A::Fq>,
-    curr_trace_evals: &[A::Fq],
-    next_trace_evals: &[A::Fq],
+    trace_ood_eval_map: &BTreeMap<(usize, isize), A::Fq>,
     air: &A,
     x: A::Fq,
 ) -> A::Fq {
-    // TODO: refactor constraint and their divisors so they are grouped together
-    let boundary_constraints = air.boundary_constraints();
-    let transition_constraints = air.transition_constraints();
-    let terminal_constraints = air.terminal_constraints();
-
-    let boundary_divisor_degree = 1;
-    let transition_divisor_degree = air.trace_len() - 1;
-    let terminal_divisor_degree = 1;
-
-    let trace_domain = air.trace_domain();
-    let first_trace_x = A::Fp::one();
-    let last_trace_x = trace_domain.group_gen_inv;
-    // TODO docs
-    let boundary_divisor = (x - A::Fq::from(first_trace_x)).inverse().unwrap();
-    let terminal_divisor = (x - A::Fq::from(last_trace_x)).inverse().unwrap();
-    let transition_divisor = (x - A::Fq::from(last_trace_x))
-        * evaluate_vanishing_polynomial(&trace_domain, x)
-            .inverse()
-            .unwrap();
-
-    // TODO: honestly I hate this
-    let boundary_iter = boundary_constraints
-        .iter()
-        .map(|constraint| (constraint, boundary_divisor, boundary_divisor_degree));
-    let transition_iter = transition_constraints
-        .iter()
-        .map(|constraint| (constraint, transition_divisor, transition_divisor_degree));
-    let terminal_iter = terminal_constraints
-        .iter()
-        .map(|constraint| (constraint, terminal_divisor, terminal_divisor_degree));
-
     let mut result = A::Fq::zero();
     let trace_degree = air.trace_len() - 1;
     let composition_degree = air.composition_degree();
-    for (constraint, divisor, divisor_degree) in
-        boundary_iter.chain(transition_iter).chain(terminal_iter)
-    {
-        // TODO: proper errors
-        let evaluation = constraint.evaluate(challenges, hints, curr_trace_evals, next_trace_evals);
-        // TODO: consider better name here. Multiplying by divisor seems kinda retarded
-        let quotient = evaluation * divisor;
 
-        // TODO: don't allow degree 0 constraints
-        let evaluation_degree = constraint.degree() * trace_degree - divisor_degree;
+    for (i, constraint) in air.constraints().iter().enumerate() {
+        let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
+        let evaluation_degree = numerator_degree - denominator_degree;
         assert!(evaluation_degree <= composition_degree);
         let degree_adjustment = (composition_degree - evaluation_degree) as u64;
 
-        let (alpha, beta) = composition_coefficients.pop().unwrap();
-        result += quotient * (alpha * x.pow([degree_adjustment]) + beta)
+        let eval_result = constraint.eval(
+            &FieldConstant::Fq(x),
+            &|i| FieldConstant::Fq(hints[i]),
+            &|i| FieldConstant::Fq(challenges[i]),
+            &|i, j| FieldConstant::Fq(*trace_ood_eval_map.get(&(i, j)).unwrap()),
+        );
+
+        let eval_result = match eval_result {
+            FieldConstant::Fq(v) => v,
+            FieldConstant::Fp(_) => unreachable!(),
+        };
+
+        // TODO docs
+        // TODO: proper errors
+        // TODO: don't allow degree 0 constraints
+        let (alpha, beta) = composition_coefficients[i];
+        result += eval_result * (alpha * x.pow([degree_adjustment]) + beta)
     }
 
     result
@@ -292,10 +274,12 @@ fn deep_composition_evaluations<A: Air>(
     extension_trace_rows: Vec<&[A::Fq]>,
     composition_trace_rows: Vec<&[A::Fq]>,
     z: A::Fq,
-    ood_trace_states: (Vec<A::Fq>, Vec<A::Fq>),
-    ood_constraint_evaluations: Vec<A::Fq>,
+    execution_trace_ood_evals_map: BTreeMap<(usize, isize), A::Fq>,
+    composition_trace_ood_evals: Vec<A::Fq>,
 ) -> Vec<A::Fq> {
     let trace_domain = air.trace_domain();
+    let g = trace_domain.group_gen();
+    let g_inv = trace_domain.group_gen_inv();
     let lde_domain = air.lde_domain();
     let xs = query_positions
         .iter()
@@ -304,34 +288,33 @@ fn deep_composition_evaluations<A: Air>(
 
     let mut evals = vec![A::Fq::zero(); query_positions.len()];
 
-    // add base trace
-    let next_z = z * &trace_domain.group_gen();
-    for ((&x, row), eval) in xs.iter().zip(base_trace_rows).zip(&mut evals) {
-        for (i, &val) in row.iter().enumerate() {
-            let (alpha, beta, _) = composition_coeffs.base_trace[i];
-            let t1 = (A::Fq::from(val) - ood_trace_states.0[i]) / (A::Fq::from(x) - z);
-            let t2 = (A::Fq::from(val) - ood_trace_states.1[i]) / (A::Fq::from(x) - next_z);
-            *eval += t1 * alpha + t2 * beta;
-        }
-    }
+    // add execution trace
+    let trace_info = air.trace_info();
+    let base_columns_range = trace_info.base_columns_range();
+    let extension_columns_range = trace_info.extension_columns_range();
+    for (i, (&x, eval)) in xs.iter().zip(&mut evals).enumerate() {
+        for (j, ((column, offset), ood_eval)) in execution_trace_ood_evals_map.iter().enumerate() {
+            let trace_value = if base_columns_range.contains(column) {
+                A::Fq::from(base_trace_rows[i][*column])
+            } else if extension_columns_range.contains(column) {
+                extension_trace_rows[i][column - trace_info.num_base_columns]
+            } else {
+                panic!("column {column} does not exist");
+            };
 
-    // add extension trace
-    let num_base_columns = air.trace_info().num_base_columns;
-    for ((&x, row), eval) in xs.iter().zip(extension_trace_rows).zip(&mut evals) {
-        for (i, &val) in row.iter().enumerate() {
-            let (alpha, beta, _) = composition_coeffs.extension_trace[i];
-            let t1 = (val - ood_trace_states.0[num_base_columns + i]) / (A::Fq::from(x) - z);
-            let t2 = (val - ood_trace_states.1[num_base_columns + i]) / (A::Fq::from(x) - next_z);
-            *eval += t1 * alpha + t2 * beta;
+            let alpha = composition_coeffs.execution_trace[j];
+            let shift = if offset.is_positive() { g } else { g_inv }.pow([offset.abs() as u64]);
+            *eval += alpha * (trace_value - ood_eval) / (A::Fq::from(x) - z * shift);
         }
     }
 
     // add composition trace
     let z_n = z.pow([air.ce_blowup_factor() as u64]);
     for ((&x, row), eval) in xs.iter().zip(composition_trace_rows).zip(&mut evals) {
-        for (i, &value) in row.iter().enumerate() {
-            let alpha = composition_coeffs.constraints[i];
-            *eval += alpha * (value - ood_constraint_evaluations[i]) / (A::Fq::from(x) - z_n);
+        for (i, value) in row.iter().enumerate() {
+            let alpha = composition_coeffs.composition_trace[i];
+            let ood_eval = composition_trace_ood_evals[i];
+            *eval += alpha * (*value - ood_eval) / (A::Fq::from(x) - z_n);
         }
     }
 

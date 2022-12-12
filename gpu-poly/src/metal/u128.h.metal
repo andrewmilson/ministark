@@ -52,6 +52,11 @@ public:
         return u128(high & rhs.high, low & rhs.low);
     }
 
+    constexpr u128 operator|(const u128 rhs) const
+    {
+        return u128(high | rhs.high, low | rhs.low);
+    }
+
     constexpr bool operator>(const u128 rhs) const
     {
         return ((high == rhs.high) && (low > rhs.low)) || (high > rhs.high);
@@ -67,11 +72,10 @@ public:
         return !(*this > rhs);
     }
 
-    constexpr inline u128 operator>>(const u128 rhs) const
+    constexpr inline u128 operator>>(unsigned shift) const
     {
-        const unsigned long shift = rhs.low;
         // TODO: reduce branch conditions
-        if (((bool)rhs.high) || (shift >= 128))
+        if (shift >= 128)
         {
             return u128(0);
         }
@@ -85,7 +89,7 @@ public:
         }
         else if (shift < 64)
         {
-            return u128(high >> shift, (high << (64 - shift)) + (low >> shift));
+            return u128(high >> shift, (high << (64 - shift)) | (low >> shift));
         }
         else if ((128 > shift) && (shift > 64))
         {
@@ -97,7 +101,36 @@ public:
         }
     }
 
-    constexpr u128 operator>>=(const u128 rhs)
+    constexpr inline u128 operator<<(unsigned shift) const
+    {
+        // TODO: reduce branch conditions
+        if (shift >= 128)
+        {
+            return u128(0);
+        }
+        else if (shift == 64)
+        {
+            return u128(low, 0);
+        }
+        else if (shift == 0)
+        {
+            return *this;
+        }
+        else if (shift < 64)
+        {
+            return u128((high << shift) | (low >> (64 - shift)), low << shift);
+        }
+        else if ((128 > shift) && (shift > 64))
+        {
+            return u128((low >> (shift - 64)), 0);
+        }
+        else
+        {
+            return u128(0);
+        }
+    }
+
+    constexpr u128 operator>>=(unsigned rhs)
     {
         *this = *this >> rhs;
         return *this;

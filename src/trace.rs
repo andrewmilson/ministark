@@ -1,35 +1,41 @@
 use crate::challenges::Challenges;
 use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
+use crate::Air;
 use crate::Matrix;
 use ark_ff::FftField;
+use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use gpu_poly::GpuField;
 use std::ops::Add;
 use std::ops::MulAssign;
+use std::ops::Range;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct Queries<Fp: GpuField, Fq: GpuField> {
-    pub base_trace_values: Vec<Fp>,
-    pub extension_trace_values: Vec<Fq>,
-    pub composition_trace_values: Vec<Fq>,
+pub struct Queries<A: Air> {
+    pub base_trace_values: Vec<A::Fp>,
+    pub extension_trace_values: Vec<A::Fq>,
+    pub composition_trace_values: Vec<A::Fq>,
     pub base_trace_proofs: Vec<MerkleProof>,
     pub extension_trace_proofs: Vec<MerkleProof>,
     pub composition_trace_proofs: Vec<MerkleProof>,
 }
 
-impl<Fp: GpuField, Fq: GpuField> Queries<Fp, Fq> {
+impl<A: Air> Queries<A> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new<D: Digest>(
-        base_trace_lde: &Matrix<Fp>,
-        extension_trace_lde: Option<&Matrix<Fq>>,
-        composition_trace_lde: &Matrix<Fq>,
+        air: &A,
+        base_trace_polys: &Matrix<A::Fp>,
+        extension_trace_polys: Option<&Matrix<A::Fq>>,
+        composition_trace_lde: &Matrix<A::Fq>,
         base_commitment: MerkleTree<D>,
         extension_commitment: Option<MerkleTree<D>>,
         composition_commitment: MerkleTree<D>,
         positions: &[usize],
     ) -> Self {
+        let lde_xs = air.lde_domain();
         let mut base_trace_values = Vec::new();
         let mut extension_trace_values = Vec::new();
         let mut composition_trace_values = Vec::new();
@@ -38,13 +44,15 @@ impl<Fp: GpuField, Fq: GpuField> Queries<Fp, Fq> {
         let mut composition_trace_proofs = Vec::new();
         for &position in positions {
             // execution trace
-            let base_trace_row = base_trace_lde.get_row(position).unwrap();
+            let lde_x = lde_xs.element(position);
+            let base_trace_row = base_trace_polys.evaluate_at(lde_x);
             base_trace_values.extend(base_trace_row);
             let base_proof = base_commitment.prove(position).unwrap();
             base_trace_proofs.push(base_proof);
 
-            if let Some(extension_trace_lde) = extension_trace_lde {
-                let extension_trace_row = extension_trace_lde.get_row(position).unwrap();
+            if let Some(extension_trace_polys) = extension_trace_polys {
+                // TODO: suport ark DomainCoeff on evaluate_at
+                let extension_trace_row = extension_trace_polys.evaluate_at(A::Fq::from(lde_x));
                 extension_trace_values.extend(extension_trace_row);
                 let extension_proof = extension_commitment
                     .as_ref()
@@ -109,6 +117,14 @@ impl TraceInfo {
             meta,
         }
     }
+
+    pub fn base_columns_range(&self) -> Range<usize> {
+        0..self.num_base_columns
+    }
+
+    pub fn extension_columns_range(&self) -> Range<usize> {
+        self.num_base_columns..self.num_base_columns + self.num_extension_columns
+    }
 }
 
 // TODO: docs: An execution trace of a computation, or the trace in short, is a
@@ -123,7 +139,9 @@ pub trait Trace {
         + for<'a> Add<&'a Self::Fp, Output = Self::Fq>;
 
     /// Returns the number of rows in this trace.
-    fn len(&self) -> usize;
+    fn len(&self) -> usize {
+        self.base_columns().num_rows()
+    }
 
     /// Returns a reference to the base trace columns.
     fn base_columns(&self) -> &Matrix<Self::Fp>;
