@@ -1,18 +1,17 @@
 // Implementation is adapted from RationalExpression in https://github.com/0xProject/OpenZKP
 
+use crate::StarkExtensionOf;
 use ark_ff::Field;
+use ark_std::Zero;
 use digest::Digest;
 use gpu_poly::GpuFftField;
-use gpu_poly::GpuField;
-use gpu_poly::GpuVec;
 use sha2::Sha256;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::hash::Hash;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::hash::Hasher;
-use ark_std::Zero;
 use std::iter::Product;
 use std::iter::Sum;
 use std::ops::Add;
@@ -26,8 +25,6 @@ use std::ops::Sub;
 use std::ops::SubAssign;
 use std::rc::Rc;
 
-use crate::StarkExtensionOf;
-
 fn from_bytes<F: Field>(bytes: &[u8]) -> F {
     let mut acc = F::one();
     for byte in bytes {
@@ -36,7 +33,6 @@ fn from_bytes<F: Field>(bytes: &[u8]) -> F {
     }
     acc
 }
-
 
 pub trait Hint {
     fn index(&self) -> usize;
@@ -85,7 +81,10 @@ pub trait ExecutionTraceColumn {
         self.offset(1)
     }
 
-    fn offset<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(&self, offset: isize) -> AlgebraicExpression<Fp, Fq> {
+    fn offset<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+        &self,
+        offset: isize,
+    ) -> AlgebraicExpression<Fp, Fq> {
         AlgebraicExpression::Trace(self.index(), offset)
     }
 }
@@ -156,27 +155,31 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Zero for FieldConstant<Fp, Fq> {
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<FieldConstant<Fp, Fq>> for FieldConstant<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<FieldConstant<Fp, Fq>>
+    for FieldConstant<Fp, Fq>
+{
     type Output = FieldConstant<Fp, Fq>;
 
     fn add(self, rhs: FieldConstant<Fp, Fq>) -> Self::Output {
         match (self, rhs) {
             (FieldConstant::Fp(a), FieldConstant::Fp(b)) => FieldConstant::Fp(a + b),
             (FieldConstant::Fq(a), FieldConstant::Fq(b)) => FieldConstant::Fq(a + b),
-            (FieldConstant::Fp(a), FieldConstant::Fq(b)) 
+            (FieldConstant::Fp(a), FieldConstant::Fq(b))
             | (FieldConstant::Fq(b), FieldConstant::Fp(a)) => FieldConstant::Fq(Fq::from(a) + b),
         }
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<FieldConstant<Fp, Fq>> for FieldConstant<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<FieldConstant<Fp, Fq>>
+    for FieldConstant<Fp, Fq>
+{
     type Output = FieldConstant<Fp, Fq>;
 
     fn mul(self, rhs: FieldConstant<Fp, Fq>) -> Self::Output {
         match (self, rhs) {
             (FieldConstant::Fp(a), FieldConstant::Fp(b)) => FieldConstant::Fp(a * b),
             (FieldConstant::Fq(a), FieldConstant::Fq(b)) => FieldConstant::Fq(a * b),
-            (FieldConstant::Fp(a), FieldConstant::Fq(b)) 
+            (FieldConstant::Fp(a), FieldConstant::Fq(b))
             | (FieldConstant::Fq(b), FieldConstant::Fp(a)) => FieldConstant::Fq(Fq::from(a) * b),
         }
     }
@@ -193,16 +196,18 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Neg for FieldConstant<Fp, Fq> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FieldType {
     Fp,
-    Fq
+    Fq,
 }
 
 #[derive(Debug)]
+#[cfg(feature = "gpu")]
 pub enum EvaluationLde<Fp, Fq> {
-    Fp(GpuVec<Fp>, metal::Buffer),
-    Fq(GpuVec<Fq>, metal::Buffer),
+    Fp(gpu_poly::GpuVec<Fp>, metal::Buffer),
+    Fq(gpu_poly::GpuVec<Fq>, metal::Buffer),
 }
 
-impl<Fp: GpuField, Fq: GpuField> EvaluationLde<Fp, Fq> {
+#[cfg(feature = "gpu")]
+impl<Fp: gpu_poly::GpuField, Fq: gpu_poly::GpuField> EvaluationLde<Fp, Fq> {
     pub fn get_gpu_buffer(&self) -> &metal::BufferRef {
         match self {
             EvaluationLde::Fp(_, buff) => buff,
@@ -220,9 +225,15 @@ pub enum AlgebraicExpression<Fp: GpuFftField, Fq: StarkExtensionOf<Fp> = Fp> {
     Trace(/* =column */ usize, /* =offset */ isize),
     #[cfg(feature = "gpu")]
     Lde(Rc<EvaluationLde<Fp, Fq>>, /* =offset */ isize),
-    Add(Rc<RefCell<AlgebraicExpression<Fp, Fq>>>, Rc<RefCell<AlgebraicExpression<Fp, Fq>>>),
+    Add(
+        Rc<RefCell<AlgebraicExpression<Fp, Fq>>>,
+        Rc<RefCell<AlgebraicExpression<Fp, Fq>>>,
+    ),
     Neg(Rc<RefCell<AlgebraicExpression<Fp, Fq>>>),
-    Mul(Rc<RefCell<AlgebraicExpression<Fp, Fq>>>, Rc<RefCell<AlgebraicExpression<Fp, Fq>>>),
+    Mul(
+        Rc<RefCell<AlgebraicExpression<Fp, Fq>>>,
+        Rc<RefCell<AlgebraicExpression<Fp, Fq>>>,
+    ),
     Exp(Rc<RefCell<AlgebraicExpression<Fp, Fq>>>, isize),
 }
 
@@ -270,7 +281,7 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
             // lde degrees can't be determined
             // TODO: could keep track of lde degree in type
             #[cfg(feature = "gpu")]
-            Lde(..) => panic!()
+            Lde(..) => panic!(),
         }
     }
 
@@ -282,9 +293,15 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
         // TODO: why can't the copiler do this as a param
         let result = match self {
             // Tree types are recursed first
-            Add(a, b) => Add(Rc::new(RefCell::new(a.borrow().map(f))), Rc::new(RefCell::new(b.borrow().map(f)))),
+            Add(a, b) => Add(
+                Rc::new(RefCell::new(a.borrow().map(f))),
+                Rc::new(RefCell::new(b.borrow().map(f))),
+            ),
             Neg(a) => Neg(Rc::new(RefCell::new(a.borrow().map(f)))),
-            Mul(a, b) => Mul(Rc::new(RefCell::new(a.borrow().map(f))), Rc::new(RefCell::new(b.borrow().map(f)))),
+            Mul(a, b) => Mul(
+                Rc::new(RefCell::new(a.borrow().map(f))),
+                Rc::new(RefCell::new(b.borrow().map(f))),
+            ),
             Exp(a, e) => Exp(Rc::new(RefCell::new(a.borrow().map(f))), *e),
 
             // Leaf types are mapped as is.
@@ -340,7 +357,7 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
             }
             #[cfg(feature = "gpu")]
             Lde(..) => panic!(),
-            _ => ()
+            _ => (),
         });
         arguments
     }
@@ -360,11 +377,20 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
             &Challenge(i) => challenge(i),
             &Hint(i) => hint(i),
             &Trace(i, j) => trace(i, j),
-            Add(a, b) => a.borrow().eval(x, hint, challenge, trace) + b.borrow().eval(x, hint, challenge, trace),
+            Add(a, b) => {
+                a.borrow().eval(x, hint, challenge, trace)
+                    + b.borrow().eval(x, hint, challenge, trace)
+            }
             Neg(a) => -a.borrow().eval(x, hint, challenge, trace),
-            Mul(a, b) => a.borrow().eval(x, hint, challenge, trace) * b.borrow().eval(x, hint, challenge, trace),
+            Mul(a, b) => {
+                a.borrow().eval(x, hint, challenge, trace)
+                    * b.borrow().eval(x, hint, challenge, trace)
+            }
             Exp(a, e) => {
-                let eval = a.borrow().eval(x, hint, challenge, trace).pow([e.unsigned_abs() as u64]);
+                let eval = a
+                    .borrow()
+                    .eval(x, hint, challenge, trace)
+                    .pow([e.unsigned_abs() as u64]);
                 if *e >= 0 {
                     eval
                 } else {
@@ -373,7 +399,7 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
             }
             // TODO: clean this up
             #[cfg(feature = "gpu")]
-            Lde(..) => panic!()
+            Lde(..) => panic!(),
         }
     }
 
@@ -411,7 +437,8 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
             FieldConstant::Fq(from_bytes::<Fq>(&hasher.finalize()))
         };
 
-        self.eval(&FieldConstant::Fq(x), &hint, &challenge, &trace).as_fq()
+        self.eval(&FieldConstant::Fq(x), &hint, &challenge, &trace)
+            .as_fq()
     }
 
     /// TODO: improve the explanation: reuses shared nodes. determines node
@@ -426,7 +453,7 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
         let mut visited = BTreeMap::new();
         let Constant(root_hash) = self.map(&mut |node| {
             let evaluation_hash = node.evaluation_hash(x);
-            
+
             // can't use entry with `or_insert_with` with because `visited` is borrowed inside
             #[allow(clippy::map_entry)]
             if !visited.contains_key(&evaluation_hash) {
@@ -531,12 +558,14 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Hash for AlgebraicExpression<Fp,
             // LDEs should not be hashed
             // TODO: sort this out
             #[cfg(feature = "gpu")]
-            Lde(..) => panic!()
+            Lde(..) => panic!(),
         }
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sum<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sum<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn sum<I: Iterator<Item = AlgebraicExpression<Fp, Fq>>>(mut iter: I) -> Self {
         use AlgebraicExpression::Constant;
         iter.next()
@@ -546,7 +575,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sum<AlgebraicExpression<Fp, Fq>>
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Product<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Product<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn product<I: Iterator<Item = AlgebraicExpression<Fp, Fq>>>(mut iter: I) -> Self {
         // TODO: zero or one?
         use AlgebraicExpression::Constant;
@@ -557,7 +588,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Product<AlgebraicExpression<Fp, 
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<&AlgebraicExpression<Fp, Fq>> for &AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<&AlgebraicExpression<Fp, Fq>>
+    for &AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn mul(self, rhs: &AlgebraicExpression<Fp, Fq>) -> Self::Output {
@@ -565,7 +598,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<&AlgebraicExpression<Fp, Fq>
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn mul(self, rhs: AlgebraicExpression<Fp, Fq>) -> AlgebraicExpression<Fp, Fq> {
@@ -573,7 +608,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<AlgebraicExpression<Fp, Fq>>
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<&AlgebraicExpression<Fp, Fq>> for &AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<&AlgebraicExpression<Fp, Fq>>
+    for &AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn div(self, rhs: &AlgebraicExpression<Fp, Fq>) -> Self::Output {
@@ -581,7 +618,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<&AlgebraicExpression<Fp, Fq>
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -591,7 +630,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<AlgebraicExpression<Fp, Fq>>
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<&AlgebraicExpression<Fp, Fq>> for &AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<&AlgebraicExpression<Fp, Fq>>
+    for &AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn add(self, rhs: &AlgebraicExpression<Fp, Fq>) -> Self::Output {
@@ -599,7 +640,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<&AlgebraicExpression<Fp, Fq>
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn add(self, rhs: AlgebraicExpression<Fp, Fq>) -> AlgebraicExpression<Fp, Fq> {
@@ -607,7 +650,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<AlgebraicExpression<Fp, Fq>>
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<&AlgebraicExpression<Fp, Fq>> for &AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<&AlgebraicExpression<Fp, Fq>>
+    for &AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn sub(self, rhs: &AlgebraicExpression<Fp, Fq>) -> Self::Output {
@@ -615,7 +660,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<&AlgebraicExpression<Fp, Fq>
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -641,7 +688,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Neg for &AlgebraicExpression<Fp,
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<FieldConstant<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<FieldConstant<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn mul(self, rhs: FieldConstant<Fp, Fq>) -> Self::Output {
@@ -649,7 +698,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<FieldConstant<Fp, Fq>> for A
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<&FieldConstant<Fp, Fq>> for &AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<&FieldConstant<Fp, Fq>>
+    for &AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn mul(self, rhs: &FieldConstant<Fp, Fq>) -> Self::Output {
@@ -657,7 +708,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Mul<&FieldConstant<Fp, Fq>> for 
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<FieldConstant<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<FieldConstant<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -666,7 +719,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<FieldConstant<Fp, Fq>> for A
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<&FieldConstant<Fp, Fq>> for &AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<&FieldConstant<Fp, Fq>>
+    for &AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -675,7 +730,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Div<&FieldConstant<Fp, Fq>> for 
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<FieldConstant<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<FieldConstant<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn add(self, rhs: FieldConstant<Fp, Fq>) -> Self::Output {
@@ -683,7 +740,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<FieldConstant<Fp, Fq>> for A
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<&FieldConstant<Fp, Fq>> for &AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<&FieldConstant<Fp, Fq>>
+    for &AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn add(self, rhs: &FieldConstant<Fp, Fq>) -> Self::Output {
@@ -691,7 +750,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Add<&FieldConstant<Fp, Fq>> for 
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<FieldConstant<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<FieldConstant<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn sub(self, rhs: FieldConstant<Fp, Fq>) -> Self::Output {
@@ -699,7 +760,9 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<FieldConstant<Fp, Fq>> for A
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<&FieldConstant<Fp, Fq>> for &AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Sub<&FieldConstant<Fp, Fq>>
+    for &AlgebraicExpression<Fp, Fq>
+{
     type Output = AlgebraicExpression<Fp, Fq>;
 
     fn sub(self, rhs: &FieldConstant<Fp, Fq>) -> Self::Output {
@@ -716,49 +779,65 @@ forward_ref_binop!(impl< Fp: GpuFftField, Fq: StarkExtensionOf<Fp> > Div, div fo
 forward_ref_binop!(impl< Fp: GpuFftField, Fq: StarkExtensionOf<Fp> > Add, add for AlgebraicExpression<Fp, Fq>, FieldConstant<Fp, Fq>);
 forward_ref_binop!(impl< Fp: GpuFftField, Fq: StarkExtensionOf<Fp> > Sub, sub for AlgebraicExpression<Fp, Fq>, FieldConstant<Fp, Fq>);
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> MulAssign<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> MulAssign<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn mul_assign(&mut self, other: AlgebraicExpression<Fp, Fq>) {
         *self = &*self * other
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> MulAssign<FieldConstant<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> MulAssign<FieldConstant<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn mul_assign(&mut self, rhs: FieldConstant<Fp, Fq>) {
         *self = &*self * rhs
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> DivAssign<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> DivAssign<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn div_assign(&mut self, other: AlgebraicExpression<Fp, Fq>) {
         *self = &*self / other
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> DivAssign<FieldConstant<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> DivAssign<FieldConstant<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn div_assign(&mut self, rhs: FieldConstant<Fp, Fq>) {
         *self = &*self / rhs
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AddAssign<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AddAssign<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn add_assign(&mut self, other: AlgebraicExpression<Fp, Fq>) {
         *self = &*self + other
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AddAssign<FieldConstant<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AddAssign<FieldConstant<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn add_assign(&mut self, rhs: FieldConstant<Fp, Fq>) {
         *self = &*self + rhs
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> SubAssign<AlgebraicExpression<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> SubAssign<AlgebraicExpression<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn sub_assign(&mut self, other: AlgebraicExpression<Fp, Fq>) {
         *self = &*self - other
     }
 }
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> SubAssign<FieldConstant<Fp, Fq>> for AlgebraicExpression<Fp, Fq> {
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> SubAssign<FieldConstant<Fp, Fq>>
+    for AlgebraicExpression<Fp, Fq>
+{
     fn sub_assign(&mut self, rhs: FieldConstant<Fp, Fq>) {
         *self = &*self - rhs
     }
