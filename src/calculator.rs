@@ -4,7 +4,6 @@ use crate::constraints::AlgebraicExpression;
 use crate::constraints::EvaluationLde;
 use crate::constraints::FieldConstant;
 use crate::constraints::FieldType;
-use crate::utils::Timer;
 use crate::Air;
 use crate::Matrix;
 use ark_ff::One;
