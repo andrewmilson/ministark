@@ -5,6 +5,7 @@ use ark_ff::Field;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
 use gpu_poly::GpuFftField;
+use gpu_poly::GpuVec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::collections::hash_map::DefaultHasher;
@@ -220,4 +221,26 @@ pub fn mermaid_string<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
     println!("count {count}");
 
     parts.join("\n")
+}
+
+// TODO: docs
+pub fn reduce_lde_blowup_factor<T: Copy>(
+    lde: &mut GpuVec<T>,
+    blowup_from: usize,
+    blowup_to: usize,
+) {
+    assert!(blowup_to <= blowup_from);
+    assert!(blowup_from.is_power_of_two());
+    assert!(blowup_to.is_power_of_two());
+    let reduction_factor = blowup_from / blowup_to;
+
+    if reduction_factor == 1 {
+        return;
+    }
+
+    for i in 0..lde.len() / reduction_factor {
+        lde[i] = lde[i * reduction_factor];
+    }
+
+    lde.truncate(lde.len() / reduction_factor)
 }

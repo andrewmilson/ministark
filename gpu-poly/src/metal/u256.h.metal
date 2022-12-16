@@ -114,6 +114,22 @@ public:
 
     u256 operator*(const u256 rhs) const
     {
+        // u128 t_low = low * rhs.low;
+
+        // unsigned long t_low_high = metal::mulhi(low.low, rhs.low.high);
+        // unsigned long t_high_low = metal::mulhi(low.high, rhs.low.low);
+        // unsigned long t_high = metal::mulhi(low.low, rhs.low.low);
+        // unsigned long t_low = low.low * rhs.low.low;
+
+        // u128 low_low = u128(t_low_high + t_high_low + t_high, t_low);
+
+        // t_low_high = metal::mulhi(low.low, rhs.low.high);
+        // t_high_low = metal::mulhi(low.high, rhs.low.low);
+        // t_high = metal::mulhi(low.low, rhs.low.low);
+        // t_low = low.low * rhs.low.low;
+
+        // return ;
+
         // split values into 4 64-bit parts
         u128 top[4] = {u128(high.high), u128(high.low), u128(low.high), u128(low.low)};
         u128 bottom[4] = {u128(rhs.high.high), u128(rhs.high.low), u128(rhs.low.high), u128(rhs.low.low)};
@@ -171,20 +187,20 @@ public:
                u256(second64, 0) +
                u256(fourth64);
 
-        // // move carry to next digit
-        // // third64 += fourth64 >> 64; // TODO: figure out if this is a nop
-        // second64 += u128(third64.high);
-        // first64 += u128(second64.high);
+        // move carry to next digit
+        // third64 += fourth64 >> 64; // TODO: figure out if this is a nop
+        second64 += u128(third64.high);
+        first64 += u128(second64.high);
 
-        // // remove carry from current digit
-        // // fourth64 &= 0xffffffff; // TODO: figure out if this is a nop
-        // // third64 &= 0xffffffff;
-        // // second64 = u128(second64.low);
-        // // first64 &= 0xffffffff;
+        // remove carry from current digit
+        // fourth64 &= 0xffffffff; // TODO: figure out if this is a nop
+        // third64 &= 0xffffffff;
+        // second64 = u128(second64.low);
+        // first64 &= 0xffffffff;
 
-        // // combine components
-        // // return u256((first64 << 64) | second64, (third64 << 64) | fourth64);
-        // return u256(u128(first64.low, second64.low), u128(third64.low, fourth64.low));
+        // combine components
+        // return u256((first64 << 64) | second64, (third64 << 64) | fourth64);
+        return u256(u128(first64.low, second64.low), u128(third64.low, fourth64.low));
 
         // return u128((first64.high second64, (third64 << 64) | fourth64);
     }

@@ -441,8 +441,63 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
             .as_fq()
     }
 
+    /// Returns the evaluation result if the numerator is 0 when the denominator
+    /// is 0 otherwise returns None. This can be used as a heuristic check by
+    /// the prover to ensure they have a valid execution trace.
+    pub fn check(
+        &self,
+        x: &FieldConstant<Fp, Fq>,
+        hint: &impl Fn(usize) -> FieldConstant<Fp, Fq>,
+        challenge: &impl Fn(usize) -> FieldConstant<Fp, Fq>,
+        trace: &impl Fn(usize, isize) -> FieldConstant<Fp, Fq>,
+    ) -> Option<FieldConstant<Fp, Fq>> {
+        use AlgebraicExpression::*;
+        match self {
+            X => Some(*x),
+            &Constant(c) => Some(c),
+            &Challenge(i) => Some(challenge(i)),
+            &Hint(i) => Some(hint(i)),
+            &Trace(i, j) => Some(trace(i, j)),
+            Add(a, b) => {
+                let a = a.borrow().check(x, hint, challenge, trace);
+                let b = b.borrow().check(x, hint, challenge, trace);
+                if let Some(a) = a && let Some(b) = b {
+                    Some(a + b)
+                } else {
+                    None
+                }
+            }
+            Neg(a) => a.borrow().check(x, hint, challenge, trace).map(|a| -a),
+            Mul(a, b) => {
+                let a = a.borrow().check(x, hint, challenge, trace);
+                let b = b.borrow().check(x, hint, challenge, trace);
+                match (a, b) {
+                    (Some(a), Some(b)) => Some(a * b),
+                    (Some(x), None) | (None, Some(x)) => x.is_zero().then_some(x),
+                    (None, None) => None,
+                }
+            }
+            Exp(a, e) => {
+                let a = a.borrow().check(x, hint, challenge, trace);
+                a.and_then(|a| {
+                    let res = a.pow([e.abs() as u64]);
+                    if *e < 0 {
+                        res.inverse()
+                    } else {
+                        Some(res)
+                    }
+                })
+            }
+            // TODO: clean this up
+            #[cfg(feature = "gpu")]
+            Lde(..) => panic!(),
+        }
+    }
+
     /// TODO: improve the explanation: reuses shared nodes. determines node
     /// equality probabilistically using a kind of evaluation hash
+    /// Inspired by Thorkil Værge's "Reusing Shared Nodes" article:
+    /// https://neptune.cash/learn/speed-up-stark-provers-with-multicircuits/
     pub fn reuse_shared_nodes(&self) -> Self {
         use AlgebraicExpression::*;
         let mut rng = rand::thread_rng();
@@ -509,6 +564,29 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
             .flatten()
             .unwrap()
             .into_inner()
+    }
+}
+
+impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Display for AlgebraicExpression<Fp, Fq> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use AlgebraicExpression::*;
+        match self {
+            X => write!(f, "x"),
+            Constant(c) => write!(f, "{c}"),
+            Challenge(i) => write!(f, "challenge[{i}]"),
+            Hint(i) => write!(f, "hint[{i}]"),
+            Trace(i, j) => write!(f, "Trace({i}, {j})"),
+            Add(a, b) => match &*b.borrow() {
+                Neg(b) => write!(f, "({} - {})", a.borrow(), b.borrow()),
+                other => write!(f, "({} + {})", a.borrow(), other),
+            },
+            Neg(a) => write!(f, "-{}", a.borrow()),
+            Mul(a, b) => write!(f, "({} * {})", a.borrow(), b.borrow()),
+            Exp(a, e) => write!(f, "{}^({})", a.borrow(), e),
+            // don't display lde
+            #[cfg(feature = "gpu")]
+            Lde(..) => unreachable!(),
+        }
     }
 }
 

@@ -288,9 +288,12 @@ pub trait Air {
         &self,
         challenges: &Challenges<Self::Fq>,
         hints: &Hints<Self::Fq>,
-        _base_trace: &crate::Matrix<Self::Fp>,
-        _extension_trace: Option<&crate::Matrix<Self::Fq>>,
+        base_trace: &crate::Matrix<Self::Fp>,
+        extension_trace: Option<&crate::Matrix<Self::Fq>>,
     ) {
+        use crate::constraints::FieldConstant;
+        use AlgebraicExpression::*;
+
         let trace_info = self.trace_info();
         let num_execution_trace_columns =
             trace_info.num_base_columns + trace_info.num_extension_columns;
@@ -332,8 +335,60 @@ pub trait Air {
             }
         }
 
-        // TODO: idea for validation. evaluate numerator and denominator.
-        // when denominator is 0 make sure numerator is 0.
+        let trace_domain = self.trace_domain();
+        let base_column_range = trace_info.base_columns_range();
+        let extension_column_range = trace_info.extension_columns_range();
+
+        // helper function to get a value from the execution trace
+        let get_trace_value = |row: usize, col: usize, offset: isize| {
+            let pos = (row as isize + offset).rem_euclid(trace_domain.size() as isize) as usize;
+            if base_column_range.contains(&col) {
+                FieldConstant::Fp(base_trace.0[col][pos])
+            } else if extension_column_range.contains(&col) {
+                let col = col - trace_info.num_base_columns;
+                FieldConstant::Fq(extension_trace.unwrap().0[col][pos])
+            } else {
+                unreachable!("requested column {col} does not exist")
+            }
+        };
+
+        for (c_idx, constraint) in self.constraints().into_iter().enumerate() {
+            for (row, x) in trace_domain.elements().enumerate() {
+                let is_valid = constraint
+                    .check(
+                        &FieldConstant::Fp(x),
+                        &|i| FieldConstant::Fq(hints[i]),
+                        &|i| FieldConstant::Fq(challenges[i]),
+                        &|col, offset| get_trace_value(row, col, offset),
+                    )
+                    .is_some();
+
+                if !is_valid {
+                    let mut vals = vec![format!("x = {x}")];
+                    constraint.traverse(&mut |node| match *node {
+                        // get a description of each leaf node
+                        Trace(col, offset) => vals.push(format!(
+                            "Trace(col={col:0>3}, offset={offset:0>3}) = {}",
+                            get_trace_value(row, col, offset)
+                        )),
+                        Challenge(i) => vals.push(format!("Challenge({i}) = {}", challenges[i])),
+                        Hint(i) => vals.push(format!("Hint({i}) = {}", hints[i])),
+
+                        // skip tree nodes
+                        _ => (),
+                    });
+
+                    vals.sort();
+                    vals.dedup();
+
+                    // TODO: display constraint? eprintln!("Constraint is:\n{constraint}\n");
+                    eprint!("Constraint {c_idx} does not evaluate to a low degree polynomial. ");
+                    eprintln!("Divide by zero occurs at row {row}.\n");
+                    eprintln!("Expression values:\n{}", vals.join("\n"));
+                    panic!();
+                }
+            }
+        }
     }
 }
 

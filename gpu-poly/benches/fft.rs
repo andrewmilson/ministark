@@ -2,13 +2,14 @@
 #![feature(allocator_api)]
 
 use ark_ff::FftField;
-use ark_ff_optimized::fp64::Fp;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
+use gpu_poly::fields::p18446744069414584321::Fp as Fp64;
+use gpu_poly::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::Fp as Fp252;
 use gpu_poly::prelude::*;
 
 const BENCHMARK_INPUT_SIZES: [usize; 4] = [2048, 4096, 32768, 262144];
@@ -64,7 +65,8 @@ fn fft_bench<F: GpuField>(c: &mut Criterion, name: &str) {
 }
 
 fn fft_benches(c: &mut Criterion) {
-    fft_bench::<Fp>(c, "FFT (64-bit prime field)");
+    fft_bench::<Fp64>(c, "FFT (64-bit prime field)");
+    fft_bench::<Fp252>(c, "FFT (252-bit prime field)");
 }
 
 criterion_group!(benches, fft_benches);

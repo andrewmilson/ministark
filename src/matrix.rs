@@ -223,6 +223,70 @@ impl<F: GpuField> Matrix<F> {
             })
             .collect()
     }
+
+    #[cfg(not(feature = "gpu"))]
+    pub fn sum_columns_cpu(&self) -> Matrix<F> {
+        let n = self.num_rows();
+        let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
+        accumulator.resize(n, F::zero());
+
+        if self.num_cols() != 0 {
+            #[cfg(not(feature = "parallel"))]
+            let chunk_size = accumulator.len();
+            #[cfg(feature = "parallel")]
+            let chunk_size = std::cmp::max(
+                accumulator.len() / rayon::current_num_threads().next_power_of_two(),
+                1024,
+            );
+
+            ark_std::cfg_chunks_mut!(accumulator, chunk_size)
+                .enumerate()
+                .for_each(|(chunk_offset, chunk)| {
+                    let offset = chunk_size * chunk_offset;
+                    for column in &self.0 {
+                        for i in 0..chunk_size {
+                            chunk[i] += column[offset + i];
+                        }
+                    }
+                });
+        }
+
+        Matrix::new(vec![accumulator])
+    }
+
+    #[cfg(feature = "gpu")]
+    pub fn sum_columns_gpu(&self) -> Matrix<F> {
+        let n = self.num_rows();
+        // TODO: add into_sum_columns and prevent having to allocate new memory
+        let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
+        accumulator.resize(n, F::zero());
+
+        if self.num_cols() != 0 {
+            // TODO: could improve
+            let library = &PLANNER.library;
+            let command_queue = &PLANNER.command_queue;
+            let device = command_queue.device();
+            let command_buffer = command_queue.new_command_buffer();
+            let mut accumulator_buffer = buffer_mut_no_copy(device, &mut accumulator);
+            let adder = AddAssignStage::<F>::new(library, n);
+            for column in &self.0 {
+                let column_buffer = buffer_no_copy(command_queue.device(), column);
+                adder.encode(command_buffer, &mut accumulator_buffer, &column_buffer, 0);
+            }
+            command_buffer.commit();
+            command_buffer.wait_until_completed();
+        }
+
+        Matrix::new(vec![accumulator])
+    }
+
+    /// Sums columns into a single column matrix
+    pub fn sum_columns(&self) -> Matrix<F> {
+        #[cfg(not(feature = "gpu"))]
+        return self.sum_columns_cpu();
+        #[cfg(feature = "gpu")]
+        return self.sum_columns_gpu();
+    }
 }
 
 impl<F: GpuField> Clone for Matrix<F> {
@@ -273,12 +337,12 @@ impl<F: GpuField, C: ExecutionTraceColumn> IndexMut<C> for Matrix<F> {
     }
 }
 
-impl<F: GpuField> TryInto<GpuVec<F>> for Matrix<F> {
+impl<F: GpuField> TryFrom<Matrix<F>> for GpuVec<F> {
     type Error = String;
 
-    fn try_into(self) -> Result<GpuVec<F>, Self::Error> {
-        match self.num_cols().cmp(&1) {
-            Ordering::Equal => Ok(self.0.into_iter().next().unwrap()),
+    fn try_from(value: Matrix<F>) -> Result<Self, Self::Error> {
+        match value.num_cols().cmp(&1) {
+            Ordering::Equal => Ok(value.0.into_iter().next().unwrap()),
             Ordering::Greater => Err("Matrix has more than one column".to_string()),
             Ordering::Less => Err("Matrix has no columns".to_string()),
         }

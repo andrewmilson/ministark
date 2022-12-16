@@ -4,6 +4,7 @@ use crate::constraints::AlgebraicExpression;
 use crate::constraints::EvaluationLde;
 use crate::constraints::FieldConstant;
 use crate::constraints::FieldType;
+use crate::utils::Timer;
 use crate::Air;
 use crate::Matrix;
 use ark_ff::One;
@@ -40,10 +41,11 @@ pub fn lde_calculator<A: Air>(
     let library = &PLANNER.library;
     let command_queue = &PLANNER.command_queue;
     let device = command_queue.device();
-    let lde_domain = air.lde_domain();
-    let lde_size = lde_domain.size();
-    let lde_step = air.lde_blowup_factor();
-    let mut lde_cache = LdeCache::<A::Fp, A::Fq>::new(lde_size);
+    // constraint evaluation (ce)
+    let ce_domain = air.ce_domain();
+    let ce_lde_size = ce_domain.size();
+    let ce_lde_step = air.ce_blowup_factor();
+    let mut lde_cache = LdeCache::<A::Fp, A::Fq>::new(ce_lde_size);
 
     // temporary data structure for holding trace LDEs
     let mut trace_ldes = BTreeMap::new();
@@ -55,7 +57,7 @@ pub fn lde_calculator<A: Air>(
             let lde = trace_ldes
                 .entry(*i)
                 .or_insert_with(|| lde_cache.add_buffer(trace(*i)));
-            *node = Lde(Rc::clone(lde), *j * lde_step as isize)
+            *node = Lde(Rc::clone(lde), *j * ce_lde_step as isize)
         }
         Hint(i) => *node = Constant(hint(*i)),
         Challenge(i) => *node = Constant(challenge(*i)),
@@ -92,8 +94,8 @@ pub fn lde_calculator<A: Air>(
         X => {
             // there is only one X (since we are reusing shared nodes) so generate an LDE
             // for it TODO: parallelize
-            let mut x_lde = Vec::with_capacity_in(lde_domain.size(), PageAlignedAllocator);
-            for x in lde_domain.elements() {
+            let mut x_lde = Vec::with_capacity_in(ce_domain.size(), PageAlignedAllocator);
+            for x in ce_domain.elements() {
                 x_lde.push(x);
             }
 
@@ -135,45 +137,43 @@ pub fn lde_calculator<A: Air>(
     drop(trace_ldes);
 
     let command_buffer = command_queue.new_command_buffer();
-    let mul_into_const_fp = MulIntoConstStage::<A::Fp>::new(library, lde_size);
-    let mul_into_const_fq = MulIntoConstStage::<A::Fq>::new(library, lde_size);
-    let mul_into_const_fq_fp = MulIntoConstStage::<A::Fq, A::Fp>::new(library, lde_size);
-    let mul_assign_const_fp = MulAssignConstStage::<A::Fp>::new(library, lde_size);
-    let mul_assign_const_fq = MulAssignConstStage::<A::Fq>::new(library, lde_size);
-    let mul_assign_const_fq_fp = MulAssignConstStage::<A::Fq, A::Fp>::new(library, lde_size);
-    let mul_assign_fp = MulAssignStage::<A::Fp>::new(library, lde_size);
-    let mul_assign_fq = MulAssignStage::<A::Fq>::new(library, lde_size);
-    let mul_assign_fq_fp = MulAssignStage::<A::Fq, A::Fp>::new(library, lde_size);
-    let mul_into_fp = MulIntoStage::<A::Fp>::new(library, lde_size);
-    let mul_into_fq = MulIntoStage::<A::Fq>::new(library, lde_size);
-    let mul_into_fq_fp = MulIntoStage::<A::Fq, A::Fp>::new(library, lde_size);
-    let add_assign_fp = AddAssignStage::<A::Fp>::new(library, lde_size);
-    let add_assign_fq = AddAssignStage::<A::Fq>::new(library, lde_size);
-    let add_assign_fq_fp = AddAssignStage::<A::Fq, A::Fp>::new(library, lde_size);
-    let add_into_fp = AddIntoStage::<A::Fp>::new(library, lde_size);
-    let add_into_fq = AddIntoStage::<A::Fq>::new(library, lde_size);
-    let add_into_fq_fp = AddIntoStage::<A::Fq, A::Fp>::new(library, lde_size);
-    let add_into_const_fp = AddIntoConstStage::<A::Fp>::new(library, lde_size);
-    let add_into_const_fq = AddIntoConstStage::<A::Fq>::new(library, lde_size);
-    let add_into_const_fq_fp = AddIntoConstStage::<A::Fq, A::Fp>::new(library, lde_size);
-    let add_assign_const_fp = AddAssignConstStage::<A::Fp>::new(library, lde_size);
-    let add_assign_const_fq = AddAssignConstStage::<A::Fq>::new(library, lde_size);
-    let add_assign_const_fq_fp = AddAssignConstStage::<A::Fq, A::Fp>::new(library, lde_size);
+    let mul_into_const_fp = MulIntoConstStage::<A::Fp>::new(library, ce_lde_size);
+    let mul_into_const_fq = MulIntoConstStage::<A::Fq>::new(library, ce_lde_size);
+    let mul_into_const_fq_fp = MulIntoConstStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
+    let mul_assign_const_fp = MulAssignConstStage::<A::Fp>::new(library, ce_lde_size);
+    let mul_assign_const_fq = MulAssignConstStage::<A::Fq>::new(library, ce_lde_size);
+    let mul_assign_const_fq_fp = MulAssignConstStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
+    let mul_assign_fp = MulAssignStage::<A::Fp>::new(library, ce_lde_size);
+    let mul_assign_fq = MulAssignStage::<A::Fq>::new(library, ce_lde_size);
+    let mul_assign_fq_fp = MulAssignStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
+    let mul_into_fp = MulIntoStage::<A::Fp>::new(library, ce_lde_size);
+    let mul_into_fq = MulIntoStage::<A::Fq>::new(library, ce_lde_size);
+    let mul_into_fq_fp = MulIntoStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
+    let add_assign_fp = AddAssignStage::<A::Fp>::new(library, ce_lde_size);
+    let add_assign_fq = AddAssignStage::<A::Fq>::new(library, ce_lde_size);
+    let add_assign_fq_fp = AddAssignStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
+    let add_into_fp = AddIntoStage::<A::Fp>::new(library, ce_lde_size);
+    let add_into_fq = AddIntoStage::<A::Fq>::new(library, ce_lde_size);
+    let add_into_fq_fp = AddIntoStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
+    let add_into_const_fp = AddIntoConstStage::<A::Fp>::new(library, ce_lde_size);
+    let add_into_const_fq = AddIntoConstStage::<A::Fq>::new(library, ce_lde_size);
+    let add_into_const_fq_fp = AddIntoConstStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
+    let add_assign_const_fp = AddAssignConstStage::<A::Fp>::new(library, ce_lde_size);
+    let add_assign_const_fq = AddAssignConstStage::<A::Fq>::new(library, ce_lde_size);
+    let add_assign_const_fq_fp = AddAssignConstStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
     // TODO: this is problematic if Fp==Fq
-    let convert_fp_into_fq = ConvertIntoStage::<A::Fq, A::Fp>::new(library, lde_size);
-    let inverse_in_place_fp = InverseInPlaceStage::<A::Fp>::new(library, lde_size);
-    // let inverse_into_fp = InverseIntoStage::<A::Fp>::new(library, lde_size);
-    let neg_in_place_fp = NegInPlaceStage::<A::Fp>::new(library, lde_size);
-    let neg_in_place_fq = NegInPlaceStage::<A::Fq>::new(library, lde_size);
-    let neg_into_fp = NegIntoStage::<A::Fp>::new(library, lde_size);
-    let neg_into_fq = NegIntoStage::<A::Fq>::new(library, lde_size);
-    let exp_in_place_fp = ExpInPlaceStage::<A::Fp>::new(library, lde_size);
-    let exp_into_fp = ExpIntoStage::<A::Fp>::new(library, lde_size);
-    // let add_assign_constant = todo!();
-    // let add_constant = todo!();
+    let convert_fp_into_fq = ConvertIntoStage::<A::Fq, A::Fp>::new(library, ce_lde_size);
+    let inverse_in_place_fp = InverseInPlaceStage::<A::Fp>::new(library, ce_lde_size);
+    // let inverse_into_fp = InverseIntoStage::<A::Fp>::new(library, ce_lde_size);
+    let neg_in_place_fp = NegInPlaceStage::<A::Fp>::new(library, ce_lde_size);
+    let neg_in_place_fq = NegInPlaceStage::<A::Fq>::new(library, ce_lde_size);
+    let neg_into_fp = NegIntoStage::<A::Fp>::new(library, ce_lde_size);
+    let neg_into_fq = NegIntoStage::<A::Fq>::new(library, ce_lde_size);
+    let exp_in_place_fp = ExpInPlaceStage::<A::Fp>::new(library, ce_lde_size);
+    let exp_into_fp = ExpIntoStage::<A::Fp>::new(library, ce_lde_size);
 
     // evaluate the constraints
-    let lde_size = lde_size as isize;
+    let ce_lde_size = ce_lde_size as isize;
     expr.traverse_mut(&mut |node| match node {
         // evaluate tree nodes
         // Add and Mul only have to consider children of the form
@@ -257,8 +257,8 @@ pub fn lde_calculator<A: Air>(
                     )
                 }
                 (Lde(lhs, lhs_offset), Lde(rhs, rhs_offset)) => {
-                    let lhs_offset = lhs_offset % lde_size;
-                    let rhs_offset = rhs_offset % lde_size;
+                    let lhs_offset = lhs_offset % ce_lde_size;
+                    let rhs_offset = rhs_offset % ce_lde_size;
                     match (lhs.as_ref(), rhs.as_ref()) {
                         (EvaluationLde::Fp(_, lhs_buff), EvaluationLde::Fp(_, rhs_buff)) => {
                             if a_ref_count == 1 && Rc::strong_count(lhs) <= 2 {
@@ -461,8 +461,8 @@ pub fn lde_calculator<A: Air>(
                     )
                 }
                 (Lde(lhs, lhs_offset), Lde(rhs, rhs_offset)) => {
-                    let lhs_offset = lhs_offset % lde_size;
-                    let rhs_offset = rhs_offset % lde_size;
+                    let lhs_offset = lhs_offset % ce_lde_size;
+                    let rhs_offset = rhs_offset % ce_lde_size;
                     match (lhs.as_ref(), rhs.as_ref()) {
                         (EvaluationLde::Fp(_, lhs_buff), EvaluationLde::Fp(_, rhs_buff)) => {
                             if a_ref_count == 1 && Rc::strong_count(lhs) <= 2 {

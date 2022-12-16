@@ -25,12 +25,13 @@ miniSTARK allows you to prove the integrity of arbitrary computations to anyone 
 In this example the prover generates a proof that proves integrity of a brainf**k program that outputs "Hello World". The verifier uses the proof, brainf\*\*k source code and output to verify execution integrity without executing the program at all. To run this demo locally:
 
 ```bash
-# compile shaders (M1 Mac only)
+# (optional) compile shaders (M1 Mac only)
 # make sure the latest Xcode is installed
-(cd gpu-poly && make)
+# `(cd gpu-poly && make)`
 
 # generate the proof
 # use `-F parallel,asm` if not using an M1 Mac
+# make sure latest macOS is installed
 cargo +nightly run -r -F parallel,asm,gpu --example brainfuck -- \
     prove ./examples/brainfuck/hello_world.bf \
           --dst ./hello_world.proof
