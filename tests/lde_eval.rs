@@ -31,7 +31,7 @@ use ministark::Matrix;
 use ministark::ProofOptions;
 use ministark::StarkExtensionOf;
 use ministark::TraceInfo;
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 #[test]
 #[cfg(feature = "gpu")]

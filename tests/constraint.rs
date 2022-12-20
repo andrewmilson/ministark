@@ -10,6 +10,7 @@ use ark_poly::Polynomial;
 use ark_poly::Radix2EvaluationDomain;
 use ark_std::rand::seq::SliceRandom;
 use ark_std::rand::Rng;
+use core::marker::PhantomData;
 use gpu_poly::allocator::PageAlignedAllocator;
 use gpu_poly::fields::p18446744069414584321::Fp;
 use gpu_poly::GpuFftField;
@@ -24,7 +25,6 @@ use ministark::Matrix;
 use ministark::ProofOptions;
 use ministark::StarkExtensionOf;
 use ministark::TraceInfo;
-use std::marker::PhantomData;
 
 struct TestAir<Fp, Fq = Fp>(TraceInfo, ProofOptions, PhantomData<(Fp, Fq)>);
 

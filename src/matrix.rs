@@ -237,7 +237,7 @@ impl<F: GpuField> Matrix<F> {
             #[cfg(not(feature = "parallel"))]
             let chunk_size = accumulator.len();
             #[cfg(feature = "parallel")]
-            let chunk_size = std::cmp::max(
+            let chunk_size = core::cmp::max(
                 accumulator.len() / rayon::current_num_threads().next_power_of_two(),
                 1024,
             );
