@@ -1,7 +1,8 @@
 use crate::constraints::Hint;
+use alloc::vec::Vec;
+use core::ops::Deref;
+use core::ops::Index;
 use gpu_poly::GpuField;
-use std::ops::Deref;
-use std::ops::Index;
 
 #[derive(Default)]
 pub struct Hints<F: GpuField>(Vec<F>);

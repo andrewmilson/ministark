@@ -11,33 +11,35 @@ use crate::random::PublicCoin;
 use crate::Air;
 // use crate::channel::VerifierChannel;
 use crate::Proof;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
+use core::ops::Deref;
 use digest::Digest;
 use digest::Output;
 use rand::Rng;
 use sha2::Sha256;
-use std::collections::BTreeMap;
-use std::ops::Deref;
-use thiserror::Error;
+use snafu::Snafu;
 
 /// Errors that are returned during verification of a STARK proof
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 pub enum VerificationError {
-    #[error("constraint evaluations at the out-of-domain point are inconsistent")]
+    #[snafu(display("constraint evaluations at the out-of-domain point are inconsistent"))]
     InconsistentOodConstraintEvaluations,
-    #[error("fri verification failed")]
-    FriVerification(#[from] fri::VerificationError),
-    #[error("query does not resolve to the base trace commitment")]
+    #[snafu(context(false))]
+    #[snafu(display("fri verification failed: {source}"))]
+    FriVerification { source: fri::VerificationError },
+    #[snafu(display("query does not resolve to the base trace commitment"))]
     BaseTraceQueryDoesNotMatchCommitment,
-    #[error("query does not resolve to the extension trace commitment")]
+    #[snafu(display("query does not resolve to the extension trace commitment"))]
     ExtensionTraceQueryDoesNotMatchCommitment,
-    #[error("query does not resolve to the composition trace commitment")]
+    #[snafu(display("query does not resolve to the composition trace commitment"))]
     CompositionTraceQueryDoesNotMatchCommitment,
-    #[error("insufficient proof of work on fri commitments")]
+    #[snafu(display("insufficient proof of work on fri commitments"))]
     FriProofOfWork,
 }
 

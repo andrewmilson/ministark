@@ -2,22 +2,24 @@ use crate::GpuAdd;
 use crate::GpuFftField;
 use crate::GpuField;
 use crate::GpuMul;
+use alloc::string::ToString;
 use ark_ff::BigInt;
 use ark_ff::Field;
 use ark_ff::Fp3;
 use ark_ff::Fp3Config;
 use ark_ff::FpConfig;
-use std::ops::Add;
-use std::ops::AddAssign;
-use std::ops::Mul;
-use std::ops::MulAssign;
+use ark_std::string::String;
+use core::ops::Add;
+use core::ops::AddAssign;
+use core::ops::Mul;
+use core::ops::MulAssign;
 
 pub mod p18446744069414584321 {
     use super::*;
     use ark_ff_optimized::fp64;
+    use core::marker::PhantomData;
     pub use fp64::Fp;
     pub use fp64::FpParams;
-    use std::marker::PhantomData;
 
     impl GpuField for Fp {
         type FftField = Self;

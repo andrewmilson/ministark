@@ -1,29 +1,30 @@
 // Implementation is adapted from RationalExpression in https://github.com/0xProject/OpenZKP
 
 use crate::StarkExtensionOf;
+use alloc::collections::BTreeMap;
+use alloc::collections::BTreeSet;
+use alloc::rc::Rc;
+use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_std::Zero;
+use core::cell::RefCell;
+use core::fmt::Display;
+use core::hash::Hash;
+use core::hash::Hasher;
+use core::iter::Product;
+use core::iter::Sum;
+use core::ops::Add;
+use core::ops::AddAssign;
+use core::ops::Div;
+use core::ops::DivAssign;
+use core::ops::Mul;
+use core::ops::MulAssign;
+use core::ops::Neg;
+use core::ops::Sub;
+use core::ops::SubAssign;
 use digest::Digest;
 use gpu_poly::GpuFftField;
 use sha2::Sha256;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::fmt::Display;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::iter::Product;
-use std::iter::Sum;
-use std::ops::Add;
-use std::ops::AddAssign;
-use std::ops::Div;
-use std::ops::DivAssign;
-use std::ops::Mul;
-use std::ops::MulAssign;
-use std::ops::Neg;
-use std::ops::Sub;
-use std::ops::SubAssign;
-use std::rc::Rc;
 
 fn from_bytes<F: Field>(bytes: &[u8]) -> F {
     let mut acc = F::one();
@@ -134,7 +135,7 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> FieldConstant<Fp, Fq> {
 }
 
 impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Display for FieldConstant<Fp, Fq> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             FieldConstant::Fp(v) => Display::fmt(v, f),
             FieldConstant::Fq(v) => Display::fmt(v, f),
@@ -259,7 +260,7 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
                 let (a_numerator, a_denominator) = a.borrow().degree_impl(x_degree, trace_degree);
                 let (b_numerator, b_denominator) = b.borrow().degree_impl(x_degree, trace_degree);
                 (
-                    std::cmp::max(a_numerator + b_denominator, b_numerator + a_denominator),
+                    core::cmp::max(a_numerator + b_denominator, b_numerator + a_denominator),
                     a_denominator + b_denominator,
                 )
             }
@@ -568,7 +569,7 @@ impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<Fp, Fq> {
 }
 
 impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Display for AlgebraicExpression<Fp, Fq> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use AlgebraicExpression::*;
         match self {
             X => write!(f, "x"),

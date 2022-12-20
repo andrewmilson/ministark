@@ -1,27 +1,22 @@
-use crate::constraints::AlgebraicExpression;
-use crate::StarkExtensionOf;
+use alloc::vec::Vec;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
-use gpu_poly::GpuFftField;
+use core::ops::Add;
+use core::ops::AddAssign;
+use core::ops::Mul;
 use gpu_poly::GpuVec;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashSet;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::ops::Add;
-use std::ops::AddAssign;
-use std::ops::Mul;
-use std::time::Instant;
 
+#[cfg(feature = "std")]
 pub struct Timer<'a> {
     name: &'a str,
     start: Instant,
 }
 
+#[cfg(feature = "std")]
 impl<'a> Timer<'a> {
     pub fn new(name: &'a str) -> Timer<'a> {
         let start = Instant::now();
@@ -29,6 +24,7 @@ impl<'a> Timer<'a> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<'a> Drop for Timer<'a> {
     fn drop(&mut self) {
         println!("{} in {:?}", self.name, self.start.elapsed());
@@ -91,7 +87,7 @@ pub fn fill_vanishing_polynomial<F: FftField>(
     let scaled_vanish_offset = vanish_domain.coset_offset_pow_size();
 
     #[cfg(feature = "parallel")]
-    let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
+    let chunk_size = core::cmp::max(n / rayon::current_num_threads(), 1024);
     #[cfg(not(feature = "parallel"))]
     let chunk_size = n;
 
@@ -167,60 +163,10 @@ pub fn conjectured_security_level(
         query_security += grinding_factor;
     }
 
-    std::cmp::min(
-        std::cmp::min(field_security, query_security) - 1,
+    core::cmp::min(
+        core::cmp::min(field_security, query_security) - 1,
         hash_fn_security,
     )
-}
-
-fn id<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(expr: &AlgebraicExpression<Fp, Fq>) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    expr.hash(&mut hasher);
-    hasher.finish()
-}
-
-pub fn mermaid_string<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
-    seen: &mut HashSet<u64>,
-    expr: &AlgebraicExpression<Fp, Fq>,
-) -> String {
-    let mut parts = vec![];
-    let mut count = 0;
-
-    expr.traverse(&mut |node| {
-        use AlgebraicExpression::*;
-        let node_id = id(node);
-
-        count += 1;
-
-        if seen.insert(node_id) {
-            parts.push(match node {
-                Exp(child, i) => format!("{node_id}{{{{**{i}}}}}-->{}", id(&*child.borrow())),
-                X => format!("{node_id}[X]"),
-                Constant(_c) => format!("{node_id}[C]"),
-                Challenge(i) => format!("{node_id}[α {i}]"),
-                Hint(i) => format!("{node_id}[H {i}]"),
-                Add(a, b) => format!(
-                    "{node_id}[+]-->{}\n{node_id}-->{}",
-                    id(&*a.borrow()),
-                    id(&*b.borrow())
-                ),
-                Neg(a) => format!("{node_id}[-]-->{}", id(&*a.borrow())),
-                // Inv(a) => format!("{node_id}{{{{inv}}}}-->{}", id(a)),
-                Mul(a, b) => format!(
-                    "{node_id}[*]-->{}\n{node_id}-->{}",
-                    id(&*a.borrow()),
-                    id(&*b.borrow())
-                ),
-                Trace(i, j) => format!("{node_id}[Tr_{i}_{j}]"),
-                #[cfg(feature = "gpu")]
-                Lde(_, j) => format!("{node_id}[Lde_{j}]"),
-            })
-        }
-    });
-
-    println!("count {count}");
-
-    parts.join("\n")
 }
 
 // TODO: docs

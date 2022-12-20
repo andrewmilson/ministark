@@ -8,8 +8,10 @@ use crate::utils::void_ptr;
 use crate::GpuAdd;
 use crate::GpuMul;
 use crate::GpuVec;
-use std::marker::PhantomData;
-use std::mem::size_of;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+use core::mem::size_of;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Variant {
@@ -1183,7 +1185,7 @@ impl<F: GpuField> GenerateTwiddlesStage<F> {
         let constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         constants.set_constant_value_at_index(
-            &n as *const u32 as *const std::ffi::c_void,
+            &n as *const u32 as *const core::ffi::c_void,
             metal::MTLDataType::UInt,
             0,
         );
@@ -1238,7 +1240,7 @@ impl<F: GpuField> FibEvalStage<F> {
         let constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         constants.set_constant_value_at_index(
-            &n as *const u32 as *const std::ffi::c_void,
+            &n as *const u32 as *const core::ffi::c_void,
             metal::MTLDataType::UInt,
             0,
         );

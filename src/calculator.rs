@@ -6,6 +6,9 @@ use crate::constraints::FieldConstant;
 use crate::constraints::FieldType;
 use crate::Air;
 use crate::Matrix;
+use alloc::collections::BTreeMap;
+use alloc::rc::Rc;
+use alloc::vec::Vec;
 use ark_ff::One;
 use ark_poly::EvaluationDomain;
 use gpu_poly::prelude::PageAlignedAllocator;
@@ -25,8 +28,6 @@ use gpu_poly::stage::MulIntoStage;
 use gpu_poly::stage::NegInPlaceStage;
 use gpu_poly::stage::NegIntoStage;
 use gpu_poly::utils::buffer_no_copy;
-use std::collections::BTreeMap;
-use std::rc::Rc;
 
 pub fn lde_calculator<A: Air>(
     air: &A,

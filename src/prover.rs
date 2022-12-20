@@ -59,7 +59,7 @@ pub trait Prover {
             channel.commit_extension_trace(t.root())
         }
 
-        #[cfg(debug_assertions)]
+        #[cfg(all(feature = "std", debug_assertions))]
         air.validate_constraints(&challenges, &hints, base_trace, extension_trace.as_ref());
         drop((base_trace, extension_trace));
 

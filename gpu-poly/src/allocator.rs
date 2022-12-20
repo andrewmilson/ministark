@@ -1,11 +1,11 @@
+use ark_std::alloc::Global;
+use core::alloc::AllocError;
+use core::alloc::Allocator;
+use core::alloc::Layout;
+use core::ptr::NonNull;
 use libc::sysconf;
 use libc::_SC_PAGESIZE;
 use once_cell::sync::Lazy;
-use std::alloc::AllocError;
-use std::alloc::Allocator;
-use std::alloc::Global;
-use std::alloc::Layout;
-use std::ptr::NonNull;
 
 pub static PAGE_SIZE: Lazy<usize> =
     Lazy::new(|| unsafe { sysconf(_SC_PAGESIZE).try_into().unwrap() });

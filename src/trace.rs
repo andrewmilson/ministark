@@ -3,15 +3,16 @@ use crate::merkle::MerkleProof;
 use crate::merkle::MerkleTree;
 use crate::Air;
 use crate::Matrix;
+use alloc::vec::Vec;
 use ark_ff::FftField;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use core::ops::Add;
+use core::ops::MulAssign;
+use core::ops::Range;
 use digest::Digest;
 use gpu_poly::GpuField;
-use std::ops::Add;
-use std::ops::MulAssign;
-use std::ops::Range;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct Queries<A: Air> {

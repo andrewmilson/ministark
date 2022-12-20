@@ -1,21 +1,24 @@
 use crate::constraints::ExecutionTraceColumn;
 use crate::merkle::MerkleTree;
 use crate::utils::horner_evaluate;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_poly::domain::Radix2EvaluationDomain;
 #[cfg(not(feature = "gpu"))]
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
+use core::cmp::Ordering;
+use core::ops::Add;
+use core::ops::Deref;
+use core::ops::DerefMut;
+use core::ops::Index;
+use core::ops::IndexMut;
 use digest::Digest;
 use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::cmp::Ordering;
-use std::ops::Add;
-use std::ops::Deref;
-use std::ops::DerefMut;
-use std::ops::Index;
-use std::ops::IndexMut;
 
 /// Matrix is an array of columns.
 pub struct Matrix<F>(pub Vec<GpuVec<F>>);
@@ -157,7 +160,7 @@ impl<F: GpuField> Matrix<F> {
         #[cfg(not(feature = "parallel"))]
         let chunk_size = row_hashes.len();
         #[cfg(feature = "parallel")]
-        let chunk_size = std::cmp::max(
+        let chunk_size = core::cmp::max(
             row_hashes.len() / rayon::current_num_threads().next_power_of_two(),
             128,
         );

@@ -8,12 +8,13 @@ use crate::stage::Variant;
 use crate::utils;
 use crate::GpuField;
 use crate::GpuVec;
+use alloc::rc::Rc;
+use alloc::vec::Vec;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use once_cell::sync::Lazy;
-use std::sync::Arc;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/shaders.metallib");
 
@@ -27,7 +28,7 @@ enum FftDirection {
 
 pub struct FftEncoder<'a, F: GpuField> {
     n: usize,
-    command_queue: Arc<metal::CommandQueue>,
+    command_queue: Rc<metal::CommandQueue>,
     // twiddles_buffer references this memory
     // field exists to keep the memory around
     _twiddles: GpuVec<F::FftField>,
@@ -38,9 +39,9 @@ pub struct FftEncoder<'a, F: GpuField> {
     command_buffer: &'a metal::CommandBufferRef,
 }
 
-// https://github.com/gfx-rs/metal-rs/issues/40
-unsafe impl<'a, F: GpuField> Send for FftEncoder<'a, F> {}
-unsafe impl<'a, F: GpuField> Sync for FftEncoder<'a, F> {}
+// // https://github.com/gfx-rs/metal-rs/issues/40
+// unsafe impl<'a, F: GpuField> Send for FftEncoder<'a, F> {}
+// unsafe impl<'a, F: GpuField> Sync for FftEncoder<'a, F> {}
 
 impl<'a, F: GpuField> FftEncoder<'a, F> {
     fn encode_butterfly_stages(&self, input_buffer: &mut metal::Buffer) {
@@ -120,16 +121,17 @@ pub static PLANNER: Lazy<Planner> = Lazy::new(Planner::default);
 
 pub struct Planner {
     pub library: metal::Library,
-    pub command_queue: Arc<metal::CommandQueue>,
+    pub command_queue: Rc<metal::CommandQueue>,
 }
 
+// TODO: unsafe
 unsafe impl Send for Planner {}
 unsafe impl Sync for Planner {}
 
 impl Planner {
     pub fn new(device: &metal::DeviceRef) -> Self {
         let library = device.new_library_with_data(LIBRARY_DATA).unwrap();
-        let command_queue = Arc::new(device.new_command_queue());
+        let command_queue = Rc::new(device.new_command_queue());
         Self {
             library,
             command_queue,
@@ -168,7 +170,7 @@ impl Planner {
         _twiddles.resize(n / 2, F::FftField::zero());
         utils::fill_twiddles(&mut _twiddles, root);
         utils::bit_reverse(&mut _twiddles);
-        let twiddles_buffer = utils::buffer_mut_no_copy(device, &mut _twiddles);
+        let twiddles_buffer = utils::buffer_no_copy(device, &_twiddles);
 
         // in-place FFT requires a bit reversal
         let bit_reverse_stage = BitReverseGpuStage::new(&self.library, n);
@@ -228,7 +230,7 @@ impl Planner {
             scale_and_normalize_stage,
             butterfly_stages,
             bit_reverse_stage,
-            command_queue: Arc::clone(&self.command_queue),
+            command_queue: Rc::clone(&self.command_queue),
             command_buffer: self.command_queue.new_command_buffer(),
         }
     }

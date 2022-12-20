@@ -6,7 +6,7 @@ macro_rules! wrap_field {
         #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash, zeroize::Zeroize)]
         pub struct $outer($inner);
 
-        impl std::fmt::Display for $outer {
+        impl core::fmt::Display for $outer {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 write!(f, "{}", self.0)
             }
@@ -112,14 +112,14 @@ macro_rules! wrap_field {
 
         impl Ord for $outer {
             #[inline(always)]
-            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            fn cmp(&self, other: &Self) -> core::cmp::Ordering {
                 self.0.cmp(&other.0)
             }
         }
 
         impl PartialOrd for $outer {
             #[inline(always)]
-            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
                 Some(self.cmp(other))
             }
         }
@@ -193,7 +193,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Neg for $outer {
+        impl core::ops::Neg for $outer {
             type Output = Self;
 
             fn neg(self) -> Self::Output {
@@ -225,7 +225,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Mul<$outer> for $outer {
+        impl core::ops::Mul<$outer> for $outer {
             type Output = Self;
 
             fn mul(self, rhs: $outer) -> Self::Output {
@@ -233,7 +233,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Mul<&$outer> for $outer {
+        impl core::ops::Mul<&$outer> for $outer {
             type Output = Self;
 
             fn mul(self, rhs: &$outer) -> Self::Output {
@@ -241,7 +241,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Mul<&mut $outer> for $outer {
+        impl core::ops::Mul<&mut $outer> for $outer {
             type Output = Self;
 
             fn mul(self, rhs: &mut $outer) -> Self::Output {
@@ -249,7 +249,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Div<$outer> for $outer {
+        impl core::ops::Div<$outer> for $outer {
             type Output = Self;
 
             fn div(self, rhs: $outer) -> Self::Output {
@@ -257,7 +257,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Div<&$outer> for $outer {
+        impl core::ops::Div<&$outer> for $outer {
             type Output = Self;
 
             fn div(self, rhs: &$outer) -> Self::Output {
@@ -265,7 +265,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Div<&mut $outer> for $outer {
+        impl core::ops::Div<&mut $outer> for $outer {
             type Output = Self;
 
             fn div(self, rhs: &mut $outer) -> Self::Output {
@@ -273,7 +273,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Add<$outer> for $outer {
+        impl core::ops::Add<$outer> for $outer {
             type Output = Self;
 
             fn add(self, rhs: $outer) -> Self::Output {
@@ -281,7 +281,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Add<&$outer> for $outer {
+        impl core::ops::Add<&$outer> for $outer {
             type Output = Self;
 
             fn add(self, rhs: &$outer) -> Self::Output {
@@ -289,7 +289,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Add<&mut $outer> for $outer {
+        impl core::ops::Add<&mut $outer> for $outer {
             type Output = Self;
 
             fn add(self, rhs: &mut $outer) -> Self::Output {
@@ -297,7 +297,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Sub<$outer> for $outer {
+        impl core::ops::Sub<$outer> for $outer {
             type Output = Self;
 
             fn sub(self, rhs: $outer) -> Self::Output {
@@ -305,7 +305,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Sub<&$outer> for $outer {
+        impl core::ops::Sub<&$outer> for $outer {
             type Output = Self;
 
             fn sub(self, rhs: &$outer) -> Self::Output {
@@ -313,7 +313,7 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::Sub<&mut $outer> for $outer {
+        impl core::ops::Sub<&mut $outer> for $outer {
             type Output = Self;
 
             fn sub(self, rhs: &mut $outer) -> Self::Output {
@@ -321,73 +321,73 @@ macro_rules! wrap_field {
             }
         }
 
-        impl std::ops::SubAssign<$outer> for $outer {
+        impl core::ops::SubAssign<$outer> for $outer {
             fn sub_assign(&mut self, rhs: $outer) {
                 self.0 -= rhs.0;
             }
         }
 
-        impl std::ops::SubAssign<&$outer> for $outer {
+        impl core::ops::SubAssign<&$outer> for $outer {
             fn sub_assign(&mut self, rhs: &$outer) {
                 self.0 -= &rhs.0;
             }
         }
 
-        impl std::ops::SubAssign<&mut $outer> for $outer {
+        impl core::ops::SubAssign<&mut $outer> for $outer {
             fn sub_assign(&mut self, rhs: &mut $outer) {
                 self.0 -= &mut rhs.0;
             }
         }
 
-        impl std::ops::AddAssign<$outer> for $outer {
+        impl core::ops::AddAssign<$outer> for $outer {
             fn add_assign(&mut self, rhs: $outer) {
                 self.0 += rhs.0;
             }
         }
 
-        impl std::ops::AddAssign<&$outer> for $outer {
+        impl core::ops::AddAssign<&$outer> for $outer {
             fn add_assign(&mut self, rhs: &$outer) {
                 self.0 += &rhs.0;
             }
         }
 
-        impl std::ops::AddAssign<&mut $outer> for $outer {
+        impl core::ops::AddAssign<&mut $outer> for $outer {
             fn add_assign(&mut self, rhs: &mut $outer) {
                 self.0 += &mut rhs.0;
             }
         }
 
-        impl std::ops::DivAssign<$outer> for $outer {
+        impl core::ops::DivAssign<$outer> for $outer {
             fn div_assign(&mut self, rhs: $outer) {
                 self.0 /= rhs.0;
             }
         }
 
-        impl std::ops::DivAssign<&$outer> for $outer {
+        impl core::ops::DivAssign<&$outer> for $outer {
             fn div_assign(&mut self, rhs: &$outer) {
                 self.0 /= &rhs.0;
             }
         }
 
-        impl std::ops::DivAssign<&mut $outer> for $outer {
+        impl core::ops::DivAssign<&mut $outer> for $outer {
             fn div_assign(&mut self, rhs: &mut $outer) {
                 self.0 /= &mut rhs.0;
             }
         }
 
-        impl std::ops::MulAssign<$outer> for $outer {
+        impl core::ops::MulAssign<$outer> for $outer {
             fn mul_assign(&mut self, rhs: $outer) {
                 self.0 *= rhs.0;
             }
         }
 
-        impl std::ops::MulAssign<&$outer> for $outer {
+        impl core::ops::MulAssign<&$outer> for $outer {
             fn mul_assign(&mut self, rhs: &$outer) {
                 self.0 *= &rhs.0;
             }
         }
 
-        impl std::ops::MulAssign<&mut $outer> for $outer {
+        impl core::ops::MulAssign<&mut $outer> for $outer {
             fn mul_assign(&mut self, rhs: &mut $outer) {
                 self.0 *= &mut rhs.0;
             }

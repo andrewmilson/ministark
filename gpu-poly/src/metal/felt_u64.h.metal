@@ -97,6 +97,7 @@ namespace p18446744069414584321
             unsigned long tmp = N - b;
             unsigned underflow = a < tmp;
             unsigned long x1 = a - tmp;
+            // TODO: this this can just be x1 - underflow
             unsigned adj = -underflow;
             return x1 - adj;
         }

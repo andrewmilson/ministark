@@ -38,9 +38,8 @@ ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allo
 ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
 gpu-poly = { path = "./gpu-poly" }
-anyhow = "1.0.65"
 rand = "0.8.5"
-thiserror = "1.0.37"
+snafu = { version = "0.7.4", default-features = false }
 rayon = { version = "1.5.3", optional = true }
 
 # Apple silicon depencencies

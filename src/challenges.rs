@@ -1,8 +1,9 @@
 use crate::constraints::VerifierChallenge;
+use alloc::vec::Vec;
 use ark_std::rand::Rng;
+use core::ops::Deref;
+use core::ops::Index;
 use gpu_poly::GpuField;
-use std::ops::Deref;
-use std::ops::Index;
 
 #[derive(Default)]
 pub struct Challenges<F: GpuField>(Vec<F>);

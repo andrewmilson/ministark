@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;

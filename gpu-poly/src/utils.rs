@@ -1,7 +1,7 @@
 use ark_ff::FftField;
+use core::mem::size_of;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::mem::size_of;
 
 fn bit_reverse_index(n: usize, i: usize) -> usize {
     assert!(n.is_power_of_two());
@@ -15,7 +15,7 @@ pub fn fill_twiddles<F: FftField>(dst: &mut [F], root: F) {
     #[cfg(not(feature = "parallel"))]
     let chunk_size = dst.len();
     #[cfg(feature = "parallel")]
-    let chunk_size = std::cmp::max(
+    let chunk_size = core::cmp::max(
         dst.len() / rayon::current_num_threads().next_power_of_two(),
         1024,
     );
@@ -92,9 +92,9 @@ pub fn copy_to_private_buffer<T: Sized>(
 /// WARNING: keep the original data around or it will be freed.
 #[cfg(target_arch = "aarch64")]
 pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &crate::GpuVec<T>) -> metal::Buffer {
-    let byte_len = v.capacity() * std::mem::size_of::<T>();
+    let byte_len = v.capacity() * core::mem::size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
-        v.as_ptr() as *mut std::ffi::c_void,
+        v.as_ptr() as *mut core::ffi::c_void,
         byte_len.try_into().unwrap(),
         metal::MTLResourceOptions::StorageModeShared,
         None,
@@ -107,9 +107,9 @@ pub fn buffer_mut_no_copy<T: Sized>(
     device: &metal::DeviceRef,
     v: &mut crate::GpuVec<T>,
 ) -> metal::Buffer {
-    let byte_len = v.capacity() * std::mem::size_of::<T>();
+    let byte_len = v.capacity() * size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
-        v.as_mut_ptr() as *mut std::ffi::c_void,
+        v.as_mut_ptr() as *mut core::ffi::c_void,
         byte_len.try_into().unwrap(),
         metal::MTLResourceOptions::StorageModeShared,
         None,
@@ -124,7 +124,7 @@ pub(crate) fn distribute_powers<F: crate::GpuField>(coeffs: &mut [F], g: F) {
     #[cfg(not(feature = "parallel"))]
     let chunk_size = n;
     #[cfg(feature = "parallel")]
-    let chunk_size = std::cmp::max(n / rayon::current_num_threads().next_power_of_two(), 1024);
+    let chunk_size = core::cmp::max(n / rayon::current_num_threads().next_power_of_two(), 1024);
 
     ark_std::cfg_chunks_mut!(coeffs, chunk_size)
         .enumerate()
@@ -158,12 +158,12 @@ pub fn threadgroup_fft_size<F: crate::GpuField>(
     }
 
     // 2. each thread operates on 2 values so can't exceed 2 * max_threads_per_tg
-    std::cmp::min(fft_size, 2 * max_threads_per_threadgroup)
+    core::cmp::min(fft_size, 2 * max_threads_per_threadgroup)
 }
 
 // Converts a reference to a void pointer
-pub(crate) fn void_ptr<T>(v: &T) -> *const std::ffi::c_void {
-    v as *const T as *const std::ffi::c_void
+pub(crate) fn void_ptr<T>(v: &T) -> *const core::ffi::c_void {
+    v as *const T as *const core::ffi::c_void
 }
 
 #[cfg(test)]

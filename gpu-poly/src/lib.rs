@@ -1,5 +1,10 @@
 #![feature(test, allocator_api, const_try, int_roundings)]
+#![no_std]
 
+#[macro_use]
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 use allocator::PageAlignedAllocator;
 use ark_ff::Field;
 use ark_poly::domain::DomainCoeff;

@@ -4,14 +4,15 @@ use crate::random::PublicCoin;
 use crate::trace::Queries;
 use crate::Air;
 use crate::Proof;
+use alloc::vec::Vec;
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
+use core::ops::Deref;
 use digest::Digest;
 use digest::Output;
 use gpu_poly::GpuField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::ops::Deref;
 
 pub struct ProverChannel<'a, A: Air, D: Digest> {
     air: &'a A,

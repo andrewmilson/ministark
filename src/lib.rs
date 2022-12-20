@@ -1,4 +1,5 @@
 #![allow(clippy::cast_abs_to_unsigned)]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![feature(
     allocator_api,
     let_chains,
@@ -28,7 +29,10 @@ mod trace;
 pub mod utils;
 mod verifier;
 
+#[macro_use]
+extern crate alloc;
 pub use air::Air;
+use alloc::vec::Vec;
 use ark_ff::BigInteger;
 use ark_ff::Field;
 use ark_ff::PrimeField;

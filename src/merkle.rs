@@ -1,21 +1,21 @@
 //! Use arkwork_rs or re make this. Just used for personal education.
-use anyhow::Result;
+use alloc::vec::Vec;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
-use thiserror::Error;
+use snafu::Snafu;
 
 /// MerkleTree tree error
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 pub enum MerkleTreeError {
-    #[error("tree must contain at least `{0}` leaves, but `{1}` were provided")]
-    TooFewLeaves(usize, usize),
-    #[error("number of leaves must be a power of two, but `{0}` were provided")]
-    NumberOfLeavesNotPowerOfTwo(usize),
-    #[error("leaf index `{0}` cannot exceed the number of leaves (`{1}`)")]
-    LeafIndexOutOfBounds(usize, usize),
-    #[error("proof is invalid")]
+    #[snafu(display("tree must contain `{expected}` leaves, but `{actual}` were provided"))]
+    TooFewLeaves { expected: usize, actual: usize },
+    #[snafu(display("number of leaves must be a power of two, but `{n}` were provided"))]
+    NumberOfLeavesNotPowerOfTwo { n: usize },
+    #[snafu(display("leaf index `{i}` cannot exceed the number of leaves (`{n}`)"))]
+    LeafIndexOutOfBounds { i: usize, n: usize },
+    #[snafu(display("proof is invalid"))]
     InvalidProof,
 }
 
@@ -58,9 +58,12 @@ impl<D: Digest> MerkleTree<D> {
     pub fn new(leaf_nodes: Vec<Output<D>>) -> Result<Self, MerkleTreeError> {
         let n = leaf_nodes.len();
         if n < 2 {
-            return Err(MerkleTreeError::TooFewLeaves(2, n));
+            return Err(MerkleTreeError::TooFewLeaves {
+                expected: 2,
+                actual: n,
+            });
         } else if !n.is_power_of_two() {
-            return Err(MerkleTreeError::NumberOfLeavesNotPowerOfTwo(n));
+            return Err(MerkleTreeError::NumberOfLeavesNotPowerOfTwo { n });
         }
 
         let nodes = build_merkle_nodes::<D>(&leaf_nodes);
@@ -73,10 +76,10 @@ impl<D: Digest> MerkleTree<D> {
 
     pub fn prove(&self, index: usize) -> Result<MerkleProof, MerkleTreeError> {
         if index >= self.leaf_nodes.len() {
-            return Err(MerkleTreeError::LeafIndexOutOfBounds(
-                self.leaf_nodes.len(),
-                index,
-            ));
+            return Err(MerkleTreeError::LeafIndexOutOfBounds {
+                n: self.leaf_nodes.len(),
+                i: index,
+            });
         }
 
         // TODO: batch proofs
@@ -126,7 +129,7 @@ impl<D: Digest> MerkleTree<D> {
 #[cfg(feature = "parallel")]
 fn build_merkle_nodes<D: Digest>(leaf_nodes: &[Output<D>]) -> Vec<Output<D>> {
     let n = leaf_nodes.len();
-    let num_subtrees = std::cmp::min(rayon::current_num_threads().next_power_of_two(), n / 2);
+    let num_subtrees = core::cmp::min(rayon::current_num_threads().next_power_of_two(), n / 2);
     let mut nodes = vec![Output::<D>::default(); n];
 
     // code adapted from winterfell

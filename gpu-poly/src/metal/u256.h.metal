@@ -114,95 +114,130 @@ public:
 
     u256 operator*(const u256 rhs) const
     {
-        // u128 t_low = low * rhs.low;
-
-        // unsigned long t_low_high = metal::mulhi(low.low, rhs.low.high);
-        // unsigned long t_high_low = metal::mulhi(low.high, rhs.low.low);
-        // unsigned long t_high = metal::mulhi(low.low, rhs.low.low);
-        // unsigned long t_low = low.low * rhs.low.low;
-
-        // u128 low_low = u128(t_low_high + t_high_low + t_high, t_low);
-
-        // t_low_high = metal::mulhi(low.low, rhs.low.high);
-        // t_high_low = metal::mulhi(low.high, rhs.low.low);
-        // t_high = metal::mulhi(low.low, rhs.low.low);
-        // t_low = low.low * rhs.low.low;
-
-        // return ;
-
         // split values into 4 64-bit parts
-        u128 top[4] = {u128(high.high), u128(high.low), u128(low.high), u128(low.low)};
-        u128 bottom[4] = {u128(rhs.high.high), u128(rhs.high.low), u128(rhs.low.high), u128(rhs.low.low)};
-        // u128 top[4] = {high >> 32, high & 0xffffffff, low >> 32, low & 0xffffffff};
-        // u128 bottom[4] = {rhs.high >> 32, rhs.high & 0xffffffff, rhs.low >> 32, rhs.low & 0xffffffff};
-        u128 products[4][4];
+        u128 top[2] = {u128(low.high), u128(low.low)};
+        u128 bottom[3] = {u128(rhs.high.low), u128(rhs.low.high), u128(rhs.low.low)};
+        
+        unsigned long tmp3_3 = high.high * rhs.low.low;
+        unsigned long tmp0_0 = low.low * rhs.high.high;
+        unsigned long tmp2_2 = high.low * rhs.low.high;
 
-        // // multiply each component of the values
-        // Alternative:
-        //   for(int y = 3; y > -1; y--){
-        //       for(int x = 3; x > -1; x--){
-        //           products[3 - x][y] = top[x] * bottom[y];
-        //       }
-        //   }
-        products[0][3] = top[3] * bottom[3];
-        products[1][3] = top[2] * bottom[3];
-        products[2][3] = top[1] * bottom[3];
-        products[3][3] = top[0] * bottom[3];
+        u128 tmp2_3 = u128(high.low) * bottom[2];
+        u128 tmp0_3 = top[1] * bottom[2];
+        u128 tmp1_3 = top[0] * bottom[2];
 
-        products[0][2] = top[3] * bottom[2];
-        products[1][2] = top[2] * bottom[2];
-        products[2][2] = top[1] * bottom[2];
-        // products[3][2] = top[0] * bottom[2];
+        u128 tmp0_2 = top[1] * bottom[1];
+        u128 third64 = u128(tmp0_2.low) + u128(tmp0_3.high);
+        u128 tmp1_2 = top[0] * bottom[1];
 
-        products[0][1] = top[3] * bottom[1];
-        products[1][1] = top[2] * bottom[1];
-        // products[2][1] = top[1] * bottom[1];
-        products[3][1] = top[0] * bottom[1];
-
-        products[0][0] = top[3] * bottom[0];
-        // products[1][0] = top[2] * bottom[0];
-        // products[2][0] = top[1] * bottom[0];
-        // products[3][0] = top[0] * bottom[0];
-
-        // first row
-        u128 fourth64 = products[0][3].low;
-        u128 third64 = u128(products[0][2].low) + u128(products[0][3].high);
-        u128 second64 = u128(products[0][1].low) + u128(products[0][2].high);
-        u128 first64 = u128(products[0][0].low) + u128(products[0][1].high);
+        u128 tmp0_1 = top[1] * bottom[0];
+        u128 second64 = u128(tmp0_1.low) + u128(tmp0_2.high);
+        unsigned long first64 = tmp0_0 + tmp0_1.high;
+        
+        u128 tmp1_1 = top[0] * bottom[0];
+        first64 += tmp1_1.low + tmp1_2.high;
 
         // second row
-        third64 += u128(products[1][3].low);
-        second64 += u128(products[1][2].low) + u128(products[1][3].high);
-        first64 += u128(products[1][1].low) + u128(products[1][2].high);
+        third64 += u128(tmp1_3.low);
+        second64 += u128(tmp1_2.low) + u128(tmp1_3.high);
 
         // third row
-        second64 += u128(products[2][3].low);
-        first64 += u128(products[2][2].low) + u128(products[2][3].high);
+        second64 += u128(tmp2_3.low);
+        first64 += tmp2_2 + tmp2_3.high;
 
         // fourth row
-        first64 += u128(products[3][3].low);
-
-        return u256(u128(first64.low, 0), 0) +
-               u256(third64.high, u128(third64.low, 0)) +
-               u256(second64, 0) +
-               u256(fourth64);
-
-        // move carry to next digit
-        // third64 += fourth64 >> 64; // TODO: figure out if this is a nop
+        first64 += tmp3_3;
         second64 += u128(third64.high);
-        first64 += u128(second64.high);
+        first64 += second64.high;
 
-        // remove carry from current digit
-        // fourth64 &= 0xffffffff; // TODO: figure out if this is a nop
-        // third64 &= 0xffffffff;
-        // second64 = u128(second64.low);
-        // first64 &= 0xffffffff;
+        return u256(u128(first64, second64.low), u128(third64.low, tmp0_3.low));
 
-        // combine components
-        // return u256((first64 << 64) | second64, (third64 << 64) | fourth64);
-        return u256(u128(first64.low, second64.low), u128(third64.low, fourth64.low));
 
-        // return u128((first64.high second64, (third64 << 64) | fourth64);
+        // // unsigned long t_low_high_low = high * rhs.low;
+        // // unsigned long t_low_low_high = low * rhs.high;
+
+        // // unsigned long t_low = low * rhs.low;
+
+        // // u128 t_low = low * rhs.low;
+
+        // // unsigned long t_low_high = metal::mulhi(low.low, rhs.low.high);
+        // // unsigned long t_high_low = metal::mulhi(low.high, rhs.low.low);
+        // // unsigned long t_high = metal::mulhi(low.low, rhs.low.low);
+        // // unsigned long t_low = low.low * rhs.low.low;
+
+        // // u128 low_low = u128(t_low_high + t_high_low + t_high, t_low);
+
+        // // t_low_high = metal::mulhi(low.low, rhs.low.high);
+        // // t_high_low = metal::mulhi(low.high, rhs.low.low);
+        // // t_high = metal::mulhi(low.low, rhs.low.low);
+        // // t_low = low.low * rhs.low.low;
+
+        // // return ;
+
+        // // split values into 4 64-bit parts
+        // u128 top[3] = {u128(high.low), u128(low.high), u128(low.low)};
+        // u128 bottom[3] = {u128(rhs.high.low), u128(rhs.low.high), u128(rhs.low.low)};
+        // // u128 top[4] = {high >> 32, high & 0xffffffff, low >> 32, low & 0xffffffff};
+        // // u128 bottom[4] = {rhs.high >> 32, rhs.high & 0xffffffff, rhs.low >> 32, rhs.low & 0xffffffff};
+        // // u128 products[4][4];
+
+        // // // multiply each component of the values
+        // // Alternative:
+        // //   for(int y = 3; y > -1; y--){
+        // //       for(int x = 3; x > -1; x--){
+        // //           products[3 - x][y] = top[x] * bottom[y];
+        // //       }
+        // //   }
+        // u128 tmp0_3 = top[2] * bottom[2];
+        // u128 tmp1_3 = top[1] * bottom[2];
+        // u128 tmp2_3 = top[0] * bottom[2];
+        // // u128 tmp3_3 = top[0] * bottom[2];
+        // unsigned long tmp3_3 = high.high * rhs.low.low;
+        // // unsigned long tmp0 = low.low * rhs.high.high;
+
+        // u128 tmp0_2 = top[2] * bottom[1];
+        // u128 tmp1_2 = top[1] * bottom[1];
+        // // u128 tmp2_2 = top[0] * bottom[1];
+        // unsigned long tmp2_2 = high.low * rhs.low.high;
+
+
+        // u128 tmp0_1 = top[2] * bottom[0];
+        // u128 tmp1_1 = top[1] * bottom[0];
+        // // u128 tmp3_1 = top[0] * bottom[0];
+
+        // unsigned long tmp0_0 = low.low * rhs.high.high;
+
+        // // first row
+        // u128 fourth64 = tmp0_3.low;
+        // u128 third64 = u128(tmp0_2.low) + u128(tmp0_3.high);
+        // u128 second64 = u128(tmp0_1.low) + u128(tmp0_2.high);
+        // u128 first64 = u128(tmp0_0) + u128(tmp0_1.high);
+
+        // // second row
+        // third64 += u128(tmp1_3.low);
+        // second64 += u128(tmp1_2.low) + u128(tmp1_3.high);
+        // first64 += u128(tmp1_1.low) + u128(tmp1_2.high);
+
+        // // third row
+        // second64 += u128(tmp2_3.low);
+        // first64 += u128(tmp2_2) + u128(tmp2_3.high);
+
+        // // fourth row
+        // first64 += u128(tmp3_3);
+        // second64 += u128(third64.high);
+        // first64 += u128(second64.high);
+
+        // // remove carry from current digit
+        // // fourth64 &= 0xffffffff; // TODO: figure out if this is a nop
+        // // third64 &= 0xffffffff;
+        // // second64 = u128(second64.low);
+        // // first64 &= 0xffffffff;
+
+        // // combine components
+        // // return u256((first64 << 64) | second64, (third64 << 64) | fourth64);
+        // return u256(u128(first64.low, second64.low), u128(third64.low, fourth64.low));
+
+        // // return u128((first64.high second64, (third64 << 64) | fourth64);
     }
 
     u256 operator*=(const u256 rhs)

@@ -3,6 +3,7 @@ use crate::merkle::MerkleTree;
 use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
 use crate::utils::interleave;
+use alloc::vec::Vec;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_poly::univariate::DensePolynomial;
@@ -12,13 +13,13 @@ use ark_poly::Polynomial;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use core::ops::Deref;
 use digest::Digest;
 use digest::Output;
 use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::ops::Deref;
-use thiserror::Error;
+use snafu::Snafu;
 
 #[derive(Clone, Copy)]
 pub struct FriOptions {
@@ -126,7 +127,6 @@ impl<F: GpuField> FriProofLayer<F> {
             let actual_leaf = D::new_with_prefix(chunk_bytes).finalize();
 
             if *expected_leaf != actual_leaf {
-                print!("CMCMDKSMCKMDSKCMK {i}");
                 return Err(MerkleTreeError::InvalidProof);
             }
 
@@ -240,23 +240,27 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 pub enum VerificationError {
-    #[error("codeword of size {0} could not be divided evenly by folding factor {1} at layer {2}")]
-    CodewordTruncation(usize, usize, usize),
-    #[error("queries do not resolve to their commitment in layer {0}")]
-    LayerCommitmentInvalid(usize),
-    #[error("degree-respecting projection is invalid for layer {0}")]
-    InvalidDegreeRespectingProjection(usize),
-    #[error("the number of query positions does not match the number of evaluations")]
+    #[snafu(display("{size} can't be divided by {folding_factor} (layer {layer})"))]
+    CodewordTruncation {
+        size: usize,
+        folding_factor: usize,
+        layer: usize,
+    },
+    #[snafu(display("queries do not resolve to their commitment in layer {layer}"))]
+    LayerCommitmentInvalid { layer: usize },
+    #[snafu(display("degree respecting projection is invalid for layer {layer}"))]
+    InvalidDegreeRespectingProjection { layer: usize },
+    #[snafu(display("the number of query positions does not match the number of evaluations"))]
     NumPositionEvaluationMismatch,
-    #[error("remainder does not resolve to its commitment")]
+    #[snafu(display("remainder does not resolve to its commitment"))]
     RemainderCommitmentInvalid,
-    #[error("number of remainder values is less than the expected degree")]
+    #[snafu(display("number of remainder values is less than the expected degree"))]
     RemainderTooSmall,
-    #[error("remainder can not be represented as a degree {0} polynomial")]
-    RemainderDegreeMismatch(usize),
-    #[error("degree-respecting projection is invalid at the last layer")]
+    #[snafu(display("remainder can not be represented as a degree {degree} polynomial"))]
+    RemainderDegreeMismatch { degree: usize },
+    #[snafu(display("degree-respecting projection is invalid at the last layer"))]
     InvalidRemainderDegreeRespectingProjection,
 }
 
@@ -293,11 +297,11 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
             layer_commitments.push(layer_commitment);
 
             if i != proof.layers.len() - 1 && layer_codeword_len % folding_factor != 0 {
-                return Err(VerificationError::CodewordTruncation(
-                    layer_codeword_len,
+                return Err(VerificationError::CodewordTruncation {
+                    size: layer_codeword_len,
                     folding_factor,
-                    i,
-                ));
+                    layer: i,
+                });
             }
 
             layer_codeword_len /= folding_factor;
@@ -355,16 +359,16 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
                 let actual_leaf = D::new_with_prefix(&chunk_bytes).finalize();
 
                 if *expected_leaf != actual_leaf {
-                    return Err(VerificationError::LayerCommitmentInvalid(i));
+                    return Err(VerificationError::LayerCommitmentInvalid { layer: i });
                 }
 
                 MerkleTree::<D>::verify(&layer_commitment, &proof, *position)
-                    .map_err(|_| VerificationError::LayerCommitmentInvalid(i))?
+                    .map_err(|_| VerificationError::LayerCommitmentInvalid { layer: i })?
             }
 
             let query_values = get_query_values(chunks, &positions, &folded_positions, domain_size);
             if evaluations != query_values {
-                return Err(VerificationError::InvalidDegreeRespectingProjection(i));
+                return Err(VerificationError::InvalidDegreeRespectingProjection { layer: i });
             }
 
             let polys = chunks
@@ -440,7 +444,7 @@ fn verify_remainder<F: GpuField, D: Digest, const N: usize>(
         if remainder_evals.array_windows().all(|[a, b]| a == b) {
             Ok(())
         } else {
-            Err(VerificationError::RemainderDegreeMismatch(max_degree))
+            Err(VerificationError::RemainderDegreeMismatch { degree: max_degree })
         }
     } else {
         let domain = Radix2EvaluationDomain::new(remainder_evals.len()).unwrap();
@@ -448,7 +452,7 @@ fn verify_remainder<F: GpuField, D: Digest, const N: usize>(
         let poly = DensePolynomial::from_coefficients_vec(remainder_evals);
 
         if poly.degree() > max_degree {
-            Err(VerificationError::RemainderDegreeMismatch(max_degree))
+            Err(VerificationError::RemainderDegreeMismatch { degree: max_degree })
         } else {
             Ok(())
         }

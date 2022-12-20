@@ -8,6 +8,7 @@ use crate::utils::divide_out_point_into;
 use crate::utils::horner_evaluate;
 use crate::Air;
 use crate::Matrix;
+use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;

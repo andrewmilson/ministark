@@ -8,6 +8,8 @@ use crate::utils::fill_vanishing_polynomial;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::TraceInfo;
+use alloc::collections::BTreeSet;
+use alloc::vec::Vec;
 use ark_ff::batch_inversion;
 use ark_ff::FftField;
 use ark_ff::Field;
@@ -18,13 +20,12 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use core::ops::Deref;
 use digest::Digest;
 use gpu_poly::prelude::*;
 use gpu_poly::GpuFftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::collections::BTreeSet;
-use std::ops::Deref;
 
 pub trait Air {
     type Fp: GpuFftField;
@@ -137,7 +138,7 @@ pub trait Air {
         // i.e. evaluations of `1 / (x - t_0)(x - t_1)...(x - t_n-2)`
         // NOTE: `t^(n-1) = t^(-1)`
         #[cfg(feature = "parallel")]
-        let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
+        let chunk_size = core::cmp::max(n / rayon::current_num_threads(), 1024);
         #[cfg(not(feature = "parallel"))]
         let chunk_size = n;
         ark_std::cfg_chunks_mut!(lde, chunk_size)
@@ -161,7 +162,7 @@ pub trait Air {
         lde.resize(n, Self::Fp::zero());
 
         #[cfg(feature = "parallel")]
-        let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
+        let chunk_size = core::cmp::max(n / rayon::current_num_threads(), 1024);
         #[cfg(not(feature = "parallel"))]
         let chunk_size = n;
 
@@ -191,7 +192,7 @@ pub trait Air {
         lde.resize(n, lde_domain.offset);
 
         #[cfg(feature = "parallel")]
-        let chunk_size = std::cmp::max(n / rayon::current_num_threads(), 1024);
+        let chunk_size = core::cmp::max(n / rayon::current_num_threads(), 1024);
         #[cfg(not(feature = "parallel"))]
         let chunk_size = n;
 
@@ -219,7 +220,7 @@ pub trait Air {
         for constraint in self.constraints() {
             constraint.traverse(&mut |node| {
                 if let AlgebraicExpression::Challenge(i) = node {
-                    num_challenges = std::cmp::max(num_challenges, *i + 1)
+                    num_challenges = core::cmp::max(num_challenges, *i + 1)
                 }
             })
         }
@@ -283,7 +284,7 @@ pub trait Air {
         }
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(all(feature = "std", debug_assertions))]
     fn validate_constraints(
         &self,
         challenges: &Challenges<Self::Fq>,
@@ -382,8 +383,11 @@ pub trait Air {
                     vals.dedup();
 
                     // TODO: display constraint? eprintln!("Constraint is:\n{constraint}\n");
+                    #[cfg(feature = "std")]
                     eprint!("Constraint {c_idx} does not evaluate to a low degree polynomial. ");
+                    #[cfg(feature = "std")]
                     eprintln!("Divide by zero occurs at row {row}.\n");
+                    #[cfg(feature = "std")]
                     eprintln!("Expression values:\n{}", vals.join("\n"));
                     panic!();
                 }
