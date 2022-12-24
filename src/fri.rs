@@ -242,12 +242,6 @@ impl<F: GpuField, D: Digest> FriProver<F, D> {
 
 #[derive(Debug, Snafu)]
 pub enum VerificationError {
-    #[snafu(display("{size} can't be divided by {folding_factor} (layer {layer})"))]
-    CodewordTruncation {
-        size: usize,
-        folding_factor: usize,
-        layer: usize,
-    },
     #[snafu(display("queries do not resolve to their commitment in layer {layer}"))]
     LayerCommitmentInvalid { layer: usize },
     #[snafu(display("degree respecting projection is invalid for layer {layer}"))]
@@ -262,6 +256,12 @@ pub enum VerificationError {
     RemainderDegreeMismatch { degree: usize },
     #[snafu(display("degree-respecting projection is invalid at the last layer"))]
     InvalidRemainderDegreeRespectingProjection,
+    #[snafu(display("{size} can't be divided by {folding_factor} (layer {layer})"))]
+    CodewordTruncation {
+        size: usize,
+        folding_factor: usize,
+        layer: usize,
+    },
 }
 
 pub struct FriVerifier<F: GpuField, D: Digest> {

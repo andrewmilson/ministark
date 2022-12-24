@@ -4,25 +4,18 @@ use crate::constraints::AlgebraicExpression;
 use crate::hints::Hints;
 use crate::random::PublicCoin;
 use crate::utils;
-use crate::utils::fill_vanishing_polynomial;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::TraceInfo;
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
-use ark_ff::batch_inversion;
 use ark_ff::FftField;
-use ark_ff::Field;
-use ark_ff::One;
 use ark_ff::UniformRand;
-use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use core::ops::Deref;
 use digest::Digest;
-use gpu_poly::prelude::*;
 use gpu_poly::GpuFftField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -115,105 +108,6 @@ pub trait Air {
 
     // TODO: consider changing back to borrow
     fn constraints(&self) -> Vec<AlgebraicExpression<Self::Fp, Self::Fq>>;
-
-    fn transition_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let trace_domain = self.trace_domain();
-        let last_trace_x = trace_domain.group_gen_inv;
-        let degree = trace_domain.size() - 1;
-        let lde_domain = self.lde_domain();
-        let n = lde_domain.size();
-
-        let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        lde.resize(n, Self::Fp::zero());
-
-        // evaluates `(x - t_0)(x - t_1)...(x - t_n-1)` over the lde domain
-        fill_vanishing_polynomial(&mut lde, &trace_domain, &lde_domain);
-
-        // invert the vanishing polynomial evaluations
-        // i.e. evaluations of `1 / (x - t_0)(x - t_1)...(x - t_n-1)`
-        batch_inversion(&mut lde);
-
-        // transition constraints apply to all rows except the last
-        // multiplies out the last term of the vanishing polynomial
-        // i.e. evaluations of `1 / (x - t_0)(x - t_1)...(x - t_n-2)`
-        // NOTE: `t^(n-1) = t^(-1)`
-        #[cfg(feature = "parallel")]
-        let chunk_size = core::cmp::max(n / rayon::current_num_threads(), 1024);
-        #[cfg(not(feature = "parallel"))]
-        let chunk_size = n;
-        ark_std::cfg_chunks_mut!(lde, chunk_size)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                let mut lde_x = lde_domain.element(i * chunk_size);
-                chunk.iter_mut().for_each(|coeff| {
-                    *coeff *= lde_x - last_trace_x;
-                    lde_x *= &lde_domain.group_gen
-                })
-            });
-
-        Divisor { lde, degree }
-    }
-
-    fn boundary_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let first_trace_x = Self::Fp::one();
-        let lde_domain = self.lde_domain();
-        let n = lde_domain.size();
-        let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        lde.resize(n, Self::Fp::zero());
-
-        #[cfg(feature = "parallel")]
-        let chunk_size = core::cmp::max(n / rayon::current_num_threads(), 1024);
-        #[cfg(not(feature = "parallel"))]
-        let chunk_size = n;
-
-        // evaluates `(x - t_0)` over the lde domain
-        ark_std::cfg_chunks_mut!(lde, chunk_size)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                let mut lde_x = lde_domain.group_gen.pow([(i * chunk_size) as u64]);
-                chunk.iter_mut().for_each(|coeff| {
-                    *coeff = lde_domain.offset * lde_x - first_trace_x;
-                    lde_x *= &lde_domain.group_gen
-                })
-            });
-
-        // invert the evaluations
-        // i.e. evaluations of `1 / (x - t_0)`
-        batch_inversion(&mut lde);
-
-        Divisor { lde, degree: 1 }
-    }
-
-    fn terminal_constraint_divisor(&self) -> Divisor<Self::Fp> {
-        let last_trace_x = self.trace_domain().group_gen_inv();
-        let lde_domain = self.lde_domain();
-        let n = lde_domain.size();
-        let mut lde = Vec::with_capacity_in(n, PageAlignedAllocator);
-        lde.resize(n, lde_domain.offset);
-
-        #[cfg(feature = "parallel")]
-        let chunk_size = core::cmp::max(n / rayon::current_num_threads(), 1024);
-        #[cfg(not(feature = "parallel"))]
-        let chunk_size = n;
-
-        // evaluates `(x - t_n-1)` over the lde domain
-        // NOTE: `t^(n-1) = t^(-1)`
-        ark_std::cfg_chunks_mut!(lde, chunk_size)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                let mut lde_x = lde_domain.group_gen.pow([(i * chunk_size) as u64]);
-                chunk.iter_mut().for_each(|coeff| {
-                    *coeff = *coeff * lde_x - last_trace_x;
-                    lde_x *= &lde_domain.group_gen
-                })
-            });
-
-        // invert the evaluations
-        // i.e. evaluations of `1 / (x - t_n-1)`
-        batch_inversion(&mut lde);
-
-        Divisor { lde, degree: 1 }
-    }
 
     fn get_challenges(&self, public_coin: &mut PublicCoin<impl Digest>) -> Challenges<Self::Fq> {
         let mut num_challenges = 0;
@@ -393,18 +287,5 @@ pub trait Air {
                 }
             }
         }
-    }
-}
-
-pub struct Divisor<F> {
-    pub lde: GpuVec<F>,
-    pub degree: usize,
-}
-
-impl<F: GpuField> Deref for Divisor<F> {
-    type Target = GpuVec<F>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.lde
     }
 }

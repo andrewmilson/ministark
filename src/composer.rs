@@ -209,7 +209,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
             composition_poly
         } else {
             Matrix::from_rows(
-                GpuVec::<A::Fq>::try_from(composition_poly)
+                GpuVec::try_from(composition_poly)
                     .unwrap()
                     .chunks(num_composition_trace_cols)
                     .map(|chunk| chunk.to_vec())
@@ -376,7 +376,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
         );
 
         let quotients = Matrix::join(vec![execution_trace_quotients, composition_trace_quotients]);
-        let mut combined_coeffs = GpuVec::<A::Fq>::try_from(quotients.sum_columns()).unwrap();
+        let mut combined_coeffs = GpuVec::try_from(quotients.sum_columns()).unwrap();
 
         // Adjust the degree
         // P(x) * (alpha + x * beta)
