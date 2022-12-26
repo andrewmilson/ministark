@@ -60,11 +60,9 @@ impl<F: GpuField> FftGpuStage<F> {
         let n = n as u32;
         let num_boxes = num_boxes as u32;
         let tg_fft_size = threadgroup_fft_size as u32;
-        let threads_per_threadgroup = core::cmp::min(tg_fft_size / 2, 1024);
         fft_constants.set_constant_value_at_index(void_ptr(&n), UInt, 0);
         fft_constants.set_constant_value_at_index(void_ptr(&num_boxes), UInt, 1);
         fft_constants.set_constant_value_at_index(void_ptr(&tg_fft_size), UInt, 2);
-        fft_constants.set_constant_value_at_index(void_ptr(&threads_per_threadgroup), UInt, 3);
         let func = library
             .get_function(&fft_kernel_name::<F>(variant), Some(fft_constants))
             .unwrap();
@@ -72,13 +70,12 @@ impl<F: GpuField> FftGpuStage<F> {
             .device()
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
+        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
         // TODO: figure out a solution to handle if this arises
+        assert!(threadgroup_fft_size / 2 <= max_threadgroup_threads as usize);
 
         // each thread operates on two values each round
-        // TODO:
-        let max_threadgroup_threads = pipeline.max_total_threads_per_threadgroup();
-        assert!(max_threadgroup_threads >= threads_per_threadgroup.into());
-        let threadgroup_dim = metal::MTLSize::new(threads_per_threadgroup.into(), 1, 1);
+        let threadgroup_dim = metal::MTLSize::new((tg_fft_size / 2).try_into().unwrap(), 1, 1);
         let grid_dim = metal::MTLSize::new((n / 2).try_into().unwrap(), 1, 1);
 
         FftGpuStage {

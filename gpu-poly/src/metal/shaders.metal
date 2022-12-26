@@ -31,9 +31,5 @@ constant unsigned NUM_BOXES [[ function_constant(1) ]];
 // Always a power of two.
 constant unsigned THREADGROUP_FFT_SIZE [[ function_constant(2) ]];
 
-// FFT size that each threadgroup computes.
-// Always a power of two.
-constant unsigned THREADS_PER_THREADGROUP [[ function_constant(3) ]];
-
 #include "fft_shaders.h.metal"
 #include "evaluation_shaders.h.metal"

@@ -158,7 +158,7 @@ pub fn threadgroup_fft_size<F: crate::GpuField>(
     }
 
     // 2. each thread operates on 2 values so can't exceed 2 * max_threads_per_tg
-    fft_size
+    core::cmp::min(fft_size, 2 * max_threads_per_threadgroup)
 }
 
 // Converts a reference to a void pointer
