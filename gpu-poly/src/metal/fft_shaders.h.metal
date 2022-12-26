@@ -65,18 +65,18 @@ FftMultiple(device CoeffFieldT *vals [[ buffer(0) ]],
         unsigned group_id [[ threadgroup_position_in_grid ]],
         unsigned local_tid [[ thread_index_in_threadgroup ]]) {
 #pragma unroll
-    for (unsigned iteration_num = 0; iteration_num < (N / (THREADGROUP_FFT_SIZE / 2) / NUM_BOXES); iteration_num++) {
-        unsigned global_tid = local_tid + iteration_num * (THREADGROUP_FFT_SIZE / 2);
+    for (unsigned iteration_num = 0; iteration_num < (N / THREADS_PER_THREADGROUP / NUM_BOXES); iteration_num++) {
+        unsigned global_tid = local_tid + iteration_num * THREADS_PER_THREADGROUP;
         shared_array[global_tid] = vals[global_tid + group_id * (N / NUM_BOXES)];
     }
 
-// #pragma unroll
+#pragma unroll
     for (unsigned boxes = NUM_BOXES; boxes < N; boxes *= 2) {
         unsigned input_step = (N / boxes) / 2;
 
 #pragma unroll
-        for (unsigned iteration_num = 0; iteration_num < N / THREADGROUP_FFT_SIZE / NUM_BOXES; iteration_num++) {
-            unsigned global_tid = local_tid + iteration_num * (THREADGROUP_FFT_SIZE / 2);
+        for (unsigned iteration_num = 0; iteration_num < N / THREADS_PER_THREADGROUP / NUM_BOXES / 2; iteration_num++) {
+            unsigned global_tid = local_tid + iteration_num * THREADS_PER_THREADGROUP;
             unsigned box_id = global_tid / input_step;
             unsigned target_index = box_id * input_step * 2 + (global_tid % input_step);
 
@@ -93,9 +93,9 @@ FftMultiple(device CoeffFieldT *vals [[ buffer(0) ]],
     }
 
 #pragma unroll
-    for (unsigned iteration_num = 0; iteration_num < (N / (THREADGROUP_FFT_SIZE / 2) / NUM_BOXES); iteration_num++) {
+    for (unsigned iteration_num = 0; iteration_num < (N / THREADS_PER_THREADGROUP / NUM_BOXES); iteration_num++) {
         // copy back to global from shared
-        unsigned global_tid = local_tid + iteration_num * (THREADGROUP_FFT_SIZE / 2);
+        unsigned global_tid = local_tid + iteration_num * THREADS_PER_THREADGROUP;
         vals[global_tid + group_id * (N / NUM_BOXES)] = shared_array[global_tid];
     }
 }
