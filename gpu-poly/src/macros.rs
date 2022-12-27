@@ -105,8 +105,12 @@ macro_rules! wrap_field {
                 }
             }
 
-            fn frobenius_map(&mut self, power: usize) {
-                self.0.frobenius_map(power)
+            fn frobenius_map(&self, power: usize) -> Self {
+                $outer(self.0.frobenius_map(power))
+            }
+
+            fn frobenius_map_in_place(&mut self, power: usize) {
+                self.0.frobenius_map_in_place(power);
             }
         }
 
