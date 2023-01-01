@@ -4,11 +4,11 @@ version = 3
 
 [[package]]
 name = "ahash"
-version = "0.7.6"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
+checksum = "bf6ccdb167abbf410dcb915cabd428929d7f6a04980b54a11f26a39f1c7f7107"
 dependencies = [
- "getrandom",
+ "cfg-if",
  "once_cell",
  "version_check",
 ]
@@ -30,13 +30,13 @@ dependencies = [
 
 [[package]]
 name = "ark-ff"
-version = "0.3.0"
-source = "git+https://github.com/arkworks-rs/algebra#1d5e9ed5f1b3d73d62e3b8712026a3c00b378864"
+version = "0.4.0-alpha.6"
+source = "git+https://github.com/arkworks-rs/algebra#7300a0dde8cc7f16869775571c163576727d20bd"
 dependencies = [
  "ark-ff-asm",
  "ark-ff-macros",
  "ark-serialize",
- "ark-std 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ark-std 0.4.0-alpha",
  "derivative",
  "digest",
  "itertools",
@@ -49,8 +49,8 @@ dependencies = [
 
 [[package]]
 name = "ark-ff-asm"
-version = "0.3.0"
-source = "git+https://github.com/arkworks-rs/algebra#1d5e9ed5f1b3d73d62e3b8712026a3c00b378864"
+version = "0.4.0-alpha.6"
+source = "git+https://github.com/arkworks-rs/algebra#7300a0dde8cc7f16869775571c163576727d20bd"
 dependencies = [
  "quote",
  "syn",
@@ -58,8 +58,8 @@ dependencies = [
 
 [[package]]
 name = "ark-ff-macros"
-version = "0.3.0"
-source = "git+https://github.com/arkworks-rs/algebra#1d5e9ed5f1b3d73d62e3b8712026a3c00b378864"
+version = "0.4.0-alpha.6"
+source = "git+https://github.com/arkworks-rs/algebra#7300a0dde8cc7f16869775571c163576727d20bd"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -78,45 +78,35 @@ dependencies = [
 
 [[package]]
 name = "ark-poly"
-version = "0.3.0"
-source = "git+https://github.com/andrewmilson/algebra?branch=vec-allocator#5faa1668d4ab928d1fc4454cb824fc4ed110c692"
+version = "0.4.0-alpha.6"
+source = "git+https://github.com/andrewmilson/algebra?branch=vec-allocator#c36601e1005326b448a0c62c7db91fc3c07cb09d"
 dependencies = [
  "ark-ff",
  "ark-serialize",
- "ark-std 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ark-std 0.4.0-alpha",
  "derivative",
- "hashbrown",
+ "hashbrown 0.13.1",
 ]
 
 [[package]]
 name = "ark-serialize"
-version = "0.3.0"
-source = "git+https://github.com/arkworks-rs/algebra#1d5e9ed5f1b3d73d62e3b8712026a3c00b378864"
+version = "0.4.0-alpha.6"
+source = "git+https://github.com/arkworks-rs/algebra#7300a0dde8cc7f16869775571c163576727d20bd"
 dependencies = [
  "ark-serialize-derive",
- "ark-std 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ark-std 0.4.0-alpha",
  "digest",
  "num-bigint",
 ]
 
 [[package]]
 name = "ark-serialize-derive"
-version = "0.3.0"
-source = "git+https://github.com/arkworks-rs/algebra#1d5e9ed5f1b3d73d62e3b8712026a3c00b378864"
+version = "0.4.0-alpha.6"
+source = "git+https://github.com/arkworks-rs/algebra#7300a0dde8cc7f16869775571c163576727d20bd"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "ark-std"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1df2c09229cbc5a028b1d70e00fdb2acee28b1055dfb5ca73eea49c5a25c4e7c"
-dependencies = [
- "num-traits",
- "rand",
 ]
 
 [[package]]
@@ -127,6 +117,16 @@ dependencies = [
  "num-traits",
  "rand",
  "rayon",
+]
+
+[[package]]
+name = "ark-std"
+version = "0.4.0-alpha"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc5b16d734e9b2e43886ff586755219df7fb9639cc04ab00c7e636708a5ba06a"
+dependencies = [
+ "num-traits",
+ "rand",
 ]
 
 [[package]]
@@ -484,7 +484,7 @@ dependencies = [
  "ark-ff-optimized",
  "ark-poly",
  "ark-serialize",
- "ark-std 0.3.0 (git+https://github.com/arkworks-rs/std)",
+ "ark-std 0.3.0",
  "criterion",
  "libc",
  "metal",
@@ -508,6 +508,12 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
+
+[[package]]
+name = "hashbrown"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33ff8ae62cd3a9102e5637afc8452c55acf3844001bd5374e0b0bd7b6616c038"
 dependencies = [
  "ahash",
 ]
@@ -552,7 +558,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1885e79c1fc4b10f0e172c475f458b7f7b93061064d98c3293e98c5ba0c8b399"
 dependencies = [
  "autocfg",
- "hashbrown",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -649,7 +655,7 @@ dependencies = [
  "ark-ff-optimized",
  "ark-poly",
  "ark-serialize",
- "ark-std 0.3.0 (git+https://github.com/arkworks-rs/std)",
+ "ark-std 0.3.0",
  "criterion",
  "digest",
  "gpu-poly",
@@ -727,9 +733,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.16.0"
+version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
+checksum = "6f61fba1741ea2b3d6a1e3178721804bb716a68a6aeba1149b5d52e3d464ea66"
 
 [[package]]
 name = "oorandom"
