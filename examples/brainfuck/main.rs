@@ -89,9 +89,9 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output
     );
 
     let prover = prover::BrainfuckProver::new(options);
-    let now = Instant::now();
-    let proof = prover.generate_proof(trace).unwrap();
+    let proof = pollster::block_on(prover.generate_proof(trace));
     println!("Proof generated in: {:.0?}", now.elapsed());
+    let proof = proof.unwrap();
     println!(
         "Proof security (conjectured): {}bit",
         proof.conjectured_security_level()

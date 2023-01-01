@@ -53,6 +53,7 @@ structopt = "0.3.26"
 sha3 = "0.10.6"
 num-bigint = "0.4.3"
 num-integer = "0.1.45"
+pollster = "0.2.4"
 
 # taken from https://github.com/recmo/uint
 # Compilation profile for any non-workspace member.

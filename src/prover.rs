@@ -30,7 +30,7 @@ pub trait Prover {
 
     fn options(&self) -> ProofOptions;
 
-    fn generate_proof(&self, trace: Self::Trace) -> Result<Proof<Self::Air>, ProvingError> {
+    async fn generate_proof(&self, trace: Self::Trace) -> Result<Proof<Self::Air>, ProvingError> {
         let options = self.options();
         let trace_info = trace.info();
         let pub_inputs = self.get_pub_inputs(&trace);

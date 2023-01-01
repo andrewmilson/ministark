@@ -5,7 +5,6 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use gpu_poly::allocator::PageAlignedAllocator;
-// use gpu_poly::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::Fp;
 use gpu_poly::fields::p18446744069414584321::Fp;
 use ministark::constraints::AlgebraicExpression;
 use ministark::constraints::ExecutionTraceColumn;
@@ -233,7 +232,7 @@ fn main() {
     println!("Trace generated in: {:?}", now.elapsed());
 
     let now = Instant::now();
-    let proof = prover.generate_proof(trace).unwrap();
+    let proof = pollster::block_on(prover.generate_proof(trace)).unwrap();
     println!("Proof generated in: {:?}", now.elapsed());
     let mut proof_bytes = Vec::new();
     proof.serialize_compressed(&mut proof_bytes).unwrap();

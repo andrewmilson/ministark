@@ -1,4 +1,4 @@
-#![allow(clippy::cast_abs_to_unsigned)]
+#![allow(clippy::cast_abs_to_unsigned, incomplete_features)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(
     allocator_api,
@@ -8,7 +8,7 @@
     iter_partition_in_place,
     slice_flatten,
     slice_as_chunks,
-    box_patterns
+    async_fn_in_trait
 )]
 
 #[macro_use]
@@ -23,7 +23,7 @@ pub mod fri;
 pub mod hints;
 pub mod matrix;
 pub mod merkle;
-mod prover;
+pub mod prover;
 pub mod random;
 pub mod trace;
 pub mod utils;
