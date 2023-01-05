@@ -4,7 +4,9 @@ use crate::utils::horner_evaluate;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
+use ark_ff::FftField;
 use ark_ff::Field;
+use ark_poly::domain::DomainCoeff;
 use ark_poly::domain::Radix2EvaluationDomain;
 #[cfg(not(feature = "gpu"))]
 use ark_poly::EvaluationDomain;
@@ -23,7 +25,7 @@ use rayon::prelude::*;
 /// Matrix is an array of columns.
 pub struct Matrix<F>(pub Vec<GpuVec<F>>);
 
-impl<F: GpuField> Matrix<F> {
+impl<F: Field> Matrix<F> {
     pub fn new(cols: Vec<GpuVec<F>>) -> Self {
         Matrix(cols)
     }
@@ -81,7 +83,11 @@ impl<F: GpuField> Matrix<F> {
     }
 
     #[cfg(feature = "gpu")]
-    fn into_polynomials_gpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+    fn into_polynomials_gpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
         let mut ifft = GpuIfft::from(domain);
 
         for column in &mut self.0 {
@@ -94,13 +100,21 @@ impl<F: GpuField> Matrix<F> {
     }
 
     #[cfg(not(feature = "gpu"))]
-    fn into_polynomials_cpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+    fn into_polynomials_cpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
         self.0.iter_mut().for_each(|col| domain.ifft_in_place(col));
         self
     }
 
     /// Interpolates the columns of the polynomials over the domain
-    pub fn into_polynomials(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+    pub fn into_polynomials(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
         // TODO: using the newtype pattern for type safety would be cool
         // i.e. take as input Matrix<Evaluations> and return Matrix<Polynomials>
         // https://doc.rust-lang.org/book/ch19-04-advanced-types.html
@@ -111,12 +125,20 @@ impl<F: GpuField> Matrix<F> {
     }
 
     /// Interpolates the columns of the matrix over the domain
-    pub fn interpolate(&self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+    pub fn interpolate(&self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
         self.clone().into_polynomials(domain)
     }
 
     #[cfg(not(feature = "gpu"))]
-    fn into_evaluations_cpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+    fn into_evaluations_cpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
         for column in &mut self.0 {
             domain.fft_in_place(column);
         }
@@ -124,7 +146,11 @@ impl<F: GpuField> Matrix<F> {
     }
 
     #[cfg(feature = "gpu")]
-    fn into_evaluations_gpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+    fn into_evaluations_gpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField,
+        F::FftField: FftField,
+    {
         let mut fft = GpuFft::from(domain);
 
         for column in &mut self.0 {
@@ -137,7 +163,11 @@ impl<F: GpuField> Matrix<F> {
     }
 
     /// Evaluates the columns of the matrix
-    pub fn into_evaluations(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+    pub fn into_evaluations(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
         // TODO: using the newtype pattern for type safety would be cool
         // i.e. take as input Matrix<Polynomials> and return Matrix<Evaluations>
         // https://doc.rust-lang.org/book/ch19-04-advanced-types.html
@@ -148,7 +178,11 @@ impl<F: GpuField> Matrix<F> {
     }
 
     /// Evaluates the columns of the matrix
-    pub fn evaluate(&self, domain: Radix2EvaluationDomain<F::FftField>) -> Self {
+    pub fn evaluate(&self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
         self.clone().into_evaluations(domain)
     }
 
@@ -258,7 +292,10 @@ impl<F: GpuField> Matrix<F> {
     }
 
     #[cfg(feature = "gpu")]
-    pub fn sum_columns_gpu(&self) -> Matrix<F> {
+    pub fn sum_columns_gpu(&self) -> Matrix<F>
+    where
+        F: GpuField,
+    {
         let n = self.num_rows();
         // TODO: add into_sum_columns and prevent having to allocate new memory
         let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
@@ -284,7 +321,10 @@ impl<F: GpuField> Matrix<F> {
     }
 
     /// Sums columns into a single column matrix
-    pub fn sum_columns(&self) -> Matrix<F> {
+    pub fn sum_columns(&self) -> Matrix<F>
+    where
+        F: GpuField,
+    {
         #[cfg(not(feature = "gpu"))]
         return self.sum_columns_cpu();
         #[cfg(feature = "gpu")]
@@ -292,7 +332,7 @@ impl<F: GpuField> Matrix<F> {
     }
 }
 
-impl<F: GpuField> Clone for Matrix<F> {
+impl<F: Field> Clone for Matrix<F> {
     fn clone(&self) -> Self {
         Self(
             self.0
@@ -312,13 +352,13 @@ impl<F: GpuField> IntoIterator for Matrix<F> {
     }
 }
 
-impl<F: GpuField> DerefMut for Matrix<F> {
+impl<F: Field> DerefMut for Matrix<F> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<F: GpuField> Deref for Matrix<F> {
+impl<F: Field> Deref for Matrix<F> {
     type Target = Vec<GpuVec<F>>;
 
     fn deref(&self) -> &Self::Target {
@@ -340,7 +380,7 @@ impl<F: GpuField, C: ExecutionTraceColumn> IndexMut<C> for Matrix<F> {
     }
 }
 
-impl<F: GpuField> TryFrom<Matrix<F>> for GpuVec<F> {
+impl<F: Field> TryFrom<Matrix<F>> for GpuVec<F> {
     type Error = String;
 
     fn try_from(value: Matrix<F>) -> Result<Self, Self::Error> {

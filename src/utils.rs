@@ -13,13 +13,13 @@ use rayon::prelude::*;
 #[cfg(feature = "std")]
 pub struct Timer<'a> {
     name: &'a str,
-    start: Instant,
+    start: std::time::Instant,
 }
 
 #[cfg(feature = "std")]
 impl<'a> Timer<'a> {
     pub fn new(name: &'a str) -> Timer<'a> {
-        let start = Instant::now();
+        let start = std::time::Instant::now();
         Timer { name, start }
     }
 }

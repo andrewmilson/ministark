@@ -10,7 +10,6 @@ use ark_std::rand::Rng;
 use core::ops::Deref;
 use digest::Digest;
 use digest::Output;
-use gpu_poly::GpuField;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -66,7 +65,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
         self.composition_trace_commitment = commitment.clone();
     }
 
-    pub fn get_ood_point<F: GpuField>(&mut self) -> F {
+    pub fn get_ood_point<F: ark_ff::Field>(&mut self) -> F {
         self.public_coin.draw()
     }
 

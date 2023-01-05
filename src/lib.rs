@@ -34,10 +34,18 @@ extern crate alloc;
 pub use air::Air;
 use alloc::vec::Vec;
 use ark_ff::BigInteger;
+use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::PrimeField;
+use ark_poly::domain::DomainCoeff;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use core::ops::Add;
+use core::ops::AddAssign;
+use core::ops::Mul;
+use core::ops::MulAssign;
+use core::ops::Sub;
+use core::ops::SubAssign;
 use fri::FriOptions;
 use fri::FriProof;
 use gpu_poly::GpuAdd;
@@ -120,7 +128,7 @@ pub struct Proof<A: Air> {
 
 impl<A: Air> Proof<A> {
     pub fn conjectured_security_level(&self) -> usize {
-        let prime_field_bits = <<A::Fq as Field>::BasePrimeField as PrimeField>::MODULUS.num_bits();
+        let prime_field_bits = <<A::Fp as Field>::BasePrimeField as PrimeField>::MODULUS.num_bits();
         let fq_bits = prime_field_bits as usize * A::Fq::extension_degree() as usize;
         let sha256_collision_resistance_security = 128;
         utils::conjectured_security_level(
@@ -134,24 +142,48 @@ impl<A: Air> Proof<A> {
     }
 }
 
-pub trait StarkExtensionOf<Fp: GpuFftField>:
+pub trait StarkExtensionOf<Fp: GpuFftField + FftField>:
     GpuField<FftField = Fp>
+    + Field<BasePrimeField = Fp>
+    + DomainCoeff<Fp>
     + GpuMul<Fp>
     + GpuAdd<Fp>
-    + for<'a> GpuMul<&'a Fp>
-    + for<'a> GpuAdd<&'a Fp>
     + From<Fp>
+    + MulAssign<Fp>
+    + AddAssign<Fp>
+    + SubAssign<Fp>
+    + for<'a> MulAssign<&'a Fp>
+    + for<'a> AddAssign<&'a Fp>
+    + for<'a> SubAssign<&'a Fp>
+    + Mul<Fp, Output = Self>
+    + Add<Fp, Output = Self>
+    + Sub<Fp, Output = Self>
+    + for<'a> Mul<&'a Fp, Output = Self>
+    + for<'a> Add<&'a Fp, Output = Self>
+    + for<'a> Sub<&'a Fp, Output = Self>
 {
 }
 
 impl<T, F> StarkExtensionOf<F> for T
 where
-    F: GpuFftField,
+    F: GpuFftField + FftField,
     T: GpuField<FftField = F>
+        + Field<BasePrimeField = F>
+        + DomainCoeff<F>
         + GpuMul<F>
         + GpuAdd<F>
-        + for<'a> GpuMul<&'a F>
-        + for<'a> GpuAdd<&'a F>
+        + MulAssign<F>
+        + AddAssign<F>
+        + SubAssign<F>
+        + for<'a> MulAssign<&'a F>
+        + for<'a> AddAssign<&'a F>
+        + for<'a> SubAssign<&'a F>
+        + Mul<F, Output = Self>
+        + Add<F, Output = Self>
+        + Sub<F, Output = Self>
+        + for<'a> Mul<&'a F, Output = Self>
+        + for<'a> Add<&'a F, Output = Self>
+        + for<'a> Sub<&'a F, Output = Self>
         + From<F>,
 {
 }

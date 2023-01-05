@@ -8,6 +8,7 @@ use crate::Proof;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::Trace;
+use ark_ff::PrimeField;
 use gpu_poly::GpuFftField;
 use sha2::Sha256;
 
@@ -19,7 +20,7 @@ pub enum ProvingError {
 }
 
 pub trait Prover {
-    type Fp: GpuFftField;
+    type Fp: GpuFftField + PrimeField;
     type Fq: StarkExtensionOf<Self::Fp>;
     type Air: Air<Fp = Self::Fp, Fq = Self::Fq>;
     type Trace: Trace<Fp = Self::Fp, Fq = Self::Fq>;
@@ -91,7 +92,11 @@ pub trait Prover {
         let deep_composition_lde = deep_composition_poly.into_evaluations(lde_xs);
 
         let mut fri_prover = FriProver::<Self::Fq, Sha256>::new(air.options().into_fri_options());
+        #[cfg(feature = "std")]
+        let now = std::time::Instant::now();
         fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
+        #[cfg(feature = "std")]
+        println!("yo {:?}", now.elapsed());
 
         channel.grind_fri_commitments();
 

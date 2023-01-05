@@ -2,13 +2,13 @@
 // Implements "&T op U", "T op &U" based on "T op U"
 macro_rules! forward_ref_binop {
     (
-        impl < Fp: GpuFftField,Fq: StarkExtensionOf < Fp > >
+        impl < Fp: GpuFftField + FftField,Fq: StarkExtensionOf < Fp > >
         $imp:ident,
         $method:ident for
         $t:ty,
         $u:ty
     ) => {
-        impl<'a, Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> $imp<$u> for &'a $t {
+        impl<'a, Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>> $imp<$u> for &'a $t {
             type Output = <$t as $imp<$u>>::Output;
 
             #[inline]
@@ -17,7 +17,7 @@ macro_rules! forward_ref_binop {
             }
         }
 
-        impl<'a, Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> $imp<&'a $u> for $t {
+        impl<'a, Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>> $imp<&'a $u> for $t {
             type Output = <&'a $t as $imp<&'a $u>>::Output;
 
             #[inline]
@@ -32,13 +32,13 @@ macro_rules! forward_ref_binop {
 // implements "T op= &U", based on "T op= U"
 macro_rules! forward_ref_op_assign {
     (
-        impl < Fp: GpuFftField,Fq: StarkExtensionOf < Fp > >
+        impl < Fp: GpuFftField + FftField,Fq: StarkExtensionOf < Fp > >
         $imp:ident,
         $method:ident for
         $t:ty,
         $u:ty
     ) => {
-        impl<'a, Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> $imp<&'a $u> for $t {
+        impl<'a, Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>> $imp<&'a $u> for $t {
             #[inline]
             fn $method(&mut self, other: &'a $u) {
                 $imp::$method(self, other.clone());

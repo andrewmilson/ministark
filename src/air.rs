@@ -21,7 +21,7 @@ use gpu_poly::GpuFftField;
 use rayon::prelude::*;
 
 pub trait Air {
-    type Fp: GpuFftField;
+    type Fp: GpuFftField<FftField = Self::Fp> + FftField;
     type Fq: StarkExtensionOf<Self::Fp>;
     // TODO: consider removing clone requirement
     type PublicInputs: CanonicalSerialize + CanonicalDeserialize + Clone;

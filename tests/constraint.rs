@@ -1,5 +1,6 @@
 #![feature(allocator_api)]
 use ark_ff::FftField;
+use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::UniformRand;
 use ark_ff::Zero;
@@ -28,7 +29,7 @@ use ministark::TraceInfo;
 
 struct TestAir<Fp, Fq = Fp>(TraceInfo, ProofOptions, PhantomData<(Fp, Fq)>);
 
-impl<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>> Air for TestAir<Fp, Fq> {
+impl<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>> Air for TestAir<Fp, Fq> {
     type Fp = Fp;
     type Fq = Fq;
     type PublicInputs = ();
@@ -342,7 +343,7 @@ fn evaluate_zerofier_constraint() {
 /// ├───────┼───────┤
 /// │ ...   │ ...   │ ...
 /// └───────┴───────┘
-fn gen_fib_matrix<F: GpuField>(n: usize) -> Matrix<F> {
+fn gen_fib_matrix<F: Field>(n: usize) -> Matrix<F> {
     let mut columns = vec![
         Vec::with_capacity_in(n, PageAlignedAllocator),
         Vec::with_capacity_in(n, PageAlignedAllocator),
@@ -374,7 +375,7 @@ fn gen_fib_matrix<F: GpuField>(n: usize) -> Matrix<F> {
 /// ├───────┤
 /// │ ...   │
 /// └───────┘
-fn gen_binary_valued_matrix<F: GpuField>(n: usize, v1: F, v2: F) -> Matrix<F> {
+fn gen_binary_valued_matrix<F: GpuField + Field>(n: usize, v1: F, v2: F) -> Matrix<F> {
     let mut rng = ark_std::test_rng();
     let mut col = Vec::with_capacity_in(n, PageAlignedAllocator);
     for _ in 0..n {
@@ -387,10 +388,13 @@ fn gen_binary_valued_matrix<F: GpuField>(n: usize, v1: F, v2: F) -> Matrix<F> {
     Matrix::new(vec![col])
 }
 
-fn assert_valid_over_transition_domain<F: GpuField>(
+fn assert_valid_over_transition_domain<F: GpuField + Field>(
     domain: Radix2EvaluationDomain<F::FftField>,
     poly_matrix: Matrix<F>,
-) {
+) where
+    F: From<F::FftField>,
+    F::FftField: FftField,
+{
     let mut x_values = domain.elements().map(|e| e.into()).collect::<Vec<F>>();
     // transition constraints apply to all rows except the last.
     x_values.pop();
@@ -404,7 +408,7 @@ fn assert_valid_over_transition_domain<F: GpuField>(
 }
 
 /// TODO: consider merging with ConstraintComposer::evaluate_constraint_cpu
-fn evaluate_symbolic<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+fn evaluate_symbolic<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     lde_domain: Radix2EvaluationDomain<Fp>,
     blowup_factor: usize,
     hints: &[Fq],

@@ -18,6 +18,8 @@ pub mod p18446744069414584321 {
     use super::*;
     use ark_ff_optimized::fp64;
     use core::marker::PhantomData;
+    use core::ops::Sub;
+    use core::ops::SubAssign;
     pub use fp64::Fp;
     pub use fp64::FpParams;
 
@@ -99,6 +101,34 @@ pub mod p18446744069414584321 {
 
         fn add(self, rhs: Fp) -> Self::Output {
             self + Fq3::from(rhs)
+        }
+    }
+
+    impl SubAssign<Fp> for Fq3 {
+        fn sub_assign(&mut self, rhs: Fp) {
+            *self -= Fq3::from(rhs);
+        }
+    }
+
+    impl SubAssign<&Fp> for Fq3 {
+        fn sub_assign(&mut self, rhs: &Fp) {
+            *self -= Fq3::from(*rhs);
+        }
+    }
+
+    impl Sub<&Fp> for Fq3 {
+        type Output = Fq3;
+
+        fn sub(self, rhs: &Fp) -> Self::Output {
+            self - Fq3::from(*rhs)
+        }
+    }
+
+    impl Sub<Fp> for Fq3 {
+        type Output = Fq3;
+
+        fn sub(self, rhs: Fp) -> Self::Output {
+            self - Fq3::from(rhs)
         }
     }
 

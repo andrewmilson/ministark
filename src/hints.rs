@@ -1,13 +1,13 @@
 use crate::constraints::Hint;
 use alloc::vec::Vec;
+use ark_ff::Field;
 use core::ops::Deref;
 use core::ops::Index;
-use gpu_poly::GpuField;
 
 #[derive(Default)]
-pub struct Hints<F: GpuField>(Vec<F>);
+pub struct Hints<F: Field>(Vec<F>);
 
-impl<F: GpuField> Hints<F> {
+impl<F: Field> Hints<F> {
     pub fn new(mut hints: Vec<(usize, F)>) -> Self {
         hints.sort();
         for [(a, _), (b, _)] in hints.array_windows() {
@@ -20,7 +20,7 @@ impl<F: GpuField> Hints<F> {
     }
 }
 
-impl<F: GpuField> Deref for Hints<F> {
+impl<F: Field> Deref for Hints<F> {
     type Target = Vec<F>;
 
     fn deref(&self) -> &Self::Target {
@@ -28,7 +28,7 @@ impl<F: GpuField> Deref for Hints<F> {
     }
 }
 
-impl<F: GpuField, H: Hint> Index<H> for Hints<F> {
+impl<F: Field, H: Hint> Index<H> for Hints<F> {
     type Output = F;
 
     fn index(&self, hint: H) -> &Self::Output {

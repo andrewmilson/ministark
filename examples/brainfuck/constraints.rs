@@ -11,6 +11,7 @@ use crate::tables::OutputExtensionColumn;
 use crate::tables::ProcessorBaseColumn;
 use crate::tables::ProcessorExtensionColumn;
 use crate::vm::OpCode;
+use ark_ff::FftField;
 use gpu_poly::GpuFftField;
 use ministark::constraints::AlgebraicExpression;
 use ministark::constraints::ExecutionTraceColumn;
@@ -21,7 +22,7 @@ use ministark::StarkExtensionOf;
 use std::borrow::Borrow;
 
 impl ProcessorBaseColumn {
-    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use ProcessorBaseColumn::*;
         vec![
@@ -34,7 +35,7 @@ impl ProcessorBaseColumn {
         ]
     }
 
-    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use ProcessorBaseColumn::*;
         let one = FieldConstant::Fp(Fp::one());
@@ -125,13 +126,13 @@ impl ProcessorBaseColumn {
 }
 
 impl ProcessorExtensionColumn {
-    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use ProcessorExtensionColumn::*;
         vec![InputEvaluation.curr(), OutputEvaluation.curr()]
     }
 
-    pub fn terminal_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn terminal_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Alpha;
         use Challenge::Beta;
@@ -222,7 +223,7 @@ impl ProcessorExtensionColumn {
         ]
     }
 
-    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Alpha;
         use Challenge::Beta;
@@ -275,13 +276,13 @@ impl ProcessorExtensionColumn {
 }
 
 impl MemoryBaseColumn {
-    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use MemoryBaseColumn::*;
         vec![Cycle.curr(), Mp.curr(), MemVal.curr()]
     }
 
-    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use MemoryBaseColumn::*;
         let one = FieldConstant::Fp(Fp::one());
@@ -308,7 +309,7 @@ impl MemoryBaseColumn {
 }
 
 impl MemoryExtensionColumn {
-    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Beta;
         use MemoryBaseColumn::*;
@@ -328,13 +329,13 @@ impl MemoryExtensionColumn {
 }
 
 impl InstructionBaseColumn {
-    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InstructionBaseColumn::*;
         vec![Ip.curr()]
     }
 
-    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InstructionBaseColumn::*;
         let one = FieldConstant::Fp(Fp::one());
@@ -360,7 +361,7 @@ impl InstructionBaseColumn {
 }
 
 impl InstructionExtensionColumn {
-    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::A;
         use Challenge::B;
@@ -375,13 +376,13 @@ impl InstructionExtensionColumn {
         ]
     }
 
-    pub fn terminal_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn terminal_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InstructionExtensionColumn::*;
         vec![ProgramEvaluation.curr() - EvaluationArgumentHint::Instruction.hint()]
     }
 
-    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Alpha;
         use Challenge::Eta;
@@ -421,14 +422,14 @@ impl InstructionExtensionColumn {
 }
 
 impl InputExtensionColumn {
-    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InputBaseColumn::*;
         use InputExtensionColumn::*;
         vec![Evaluation.curr() - Value.curr()]
     }
 
-    pub fn terminal_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn terminal_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use InputExtensionColumn::*;
         vec![
@@ -437,7 +438,7 @@ impl InputExtensionColumn {
         ]
     }
 
-    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Gamma;
         use InputBaseColumn::*;
@@ -447,14 +448,14 @@ impl InputExtensionColumn {
 }
 
 impl OutputExtensionColumn {
-    pub fn boundary_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use OutputBaseColumn::*;
         use OutputExtensionColumn::*;
         vec![Evaluation.curr() - Value.curr()]
     }
 
-    pub fn terminal_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn terminal_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use OutputExtensionColumn::*;
         vec![
@@ -464,7 +465,7 @@ impl OutputExtensionColumn {
         ]
     }
 
-    pub fn transition_constraints<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+    pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     ) -> Vec<AlgebraicExpression<Fp, Fq>> {
         use Challenge::Delta;
         use OutputBaseColumn::*;
@@ -473,7 +474,7 @@ impl OutputExtensionColumn {
     }
 }
 
-fn instr_zerofier<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+fn instr_zerofier<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     instr: impl Borrow<AlgebraicExpression<Fp, Fq>>,
 ) -> AlgebraicExpression<Fp, Fq> {
     OpCode::VALUES
@@ -484,7 +485,7 @@ fn instr_zerofier<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
 
 /// returns a polynomial in X that evaluates to 0 in all instructions except
 /// for one provided
-fn if_not_instr<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+fn if_not_instr<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     instr: OpCode,
     indeterminate: impl Borrow<AlgebraicExpression<Fp, Fq>>,
 ) -> AlgebraicExpression<Fp, Fq> {
@@ -500,7 +501,7 @@ fn if_not_instr<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
         .product()
 }
 
-fn if_instr<Fp: GpuFftField, Fq: StarkExtensionOf<Fp>>(
+fn if_instr<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     instr: OpCode,
     indeterminate: impl Borrow<AlgebraicExpression<Fp, Fq>>,
 ) -> AlgebraicExpression<Fp, Fq> {

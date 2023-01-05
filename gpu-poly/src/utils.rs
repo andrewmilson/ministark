@@ -119,7 +119,7 @@ pub fn buffer_mut_no_copy<T: Sized>(
 // adapted form arkworks
 /// Multiply the `i`-th element of `coeffs` with `g^i`.
 #[cfg(target_arch = "aarch64")]
-pub(crate) fn distribute_powers<F: crate::GpuField>(coeffs: &mut [F], g: F) {
+pub(crate) fn distribute_powers<F: crate::GpuField + ark_ff::Field>(coeffs: &mut [F], g: F) {
     let n = coeffs.len();
     #[cfg(not(feature = "parallel"))]
     let chunk_size = n;

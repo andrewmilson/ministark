@@ -12,9 +12,10 @@ readme = "README.md"
 members = ["gpu-poly"]
 
 [features]
-default = [ ]
-asm = [ "sha2/asm" ]
+default = []
 gpu = []
+std = []
+asm = [ "sha2/asm" ]
 parallel = [ "dep:rayon", "ark-std/parallel", "gpu-poly/parallel" ]
 
 [[bench]]

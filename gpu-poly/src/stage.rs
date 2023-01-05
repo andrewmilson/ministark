@@ -10,6 +10,7 @@ use crate::GpuMul;
 use crate::GpuVec;
 use alloc::string::String;
 use alloc::vec::Vec;
+use ark_ff::Field;
 use core::marker::PhantomData;
 use core::mem::size_of;
 
@@ -117,10 +118,7 @@ pub struct MulIntoStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> MulIntoStage<LhsF, RhsF>
-where
-    LhsF: GpuMul<RhsF>,
-{
+impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulIntoStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let constants = metal::FunctionConstantValues::new();
@@ -181,10 +179,7 @@ pub struct MulAssignStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> MulAssignStage<LhsF, RhsF>
-where
-    LhsF: GpuMul<RhsF>,
-{
+impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulAssignStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let constants = metal::FunctionConstantValues::new();
@@ -235,21 +230,24 @@ where
     }
 }
 
-pub struct ScaleAndNormalizeGpuStage<F> {
-    mul_assign_stage: MulAssignStage<F>,
-    _scale_factors: GpuVec<F>,
+pub struct ScaleAndNormalizeGpuStage<LhsF, RhsF = LhsF> {
+    mul_assign_stage: MulAssignStage<LhsF, RhsF>,
+    _scale_factors: GpuVec<RhsF>,
     scale_factors_buffer: metal::Buffer,
 }
 
-impl<F: GpuField> ScaleAndNormalizeGpuStage<F> {
+// TODO: replace `Field` with `One + PartialEq` to support multiple libraries
+impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField + Field + PartialEq + Copy>
+    ScaleAndNormalizeGpuStage<LhsF, RhsF>
+{
     pub fn new(
         library: &metal::LibraryRef,
         command_queue: &metal::CommandQueue,
         n: usize,
-        scale_factor: F,
-        norm_factor: F,
+        scale_factor: RhsF,
+        norm_factor: RhsF,
     ) -> Self {
-        let mul_assign_stage = MulAssignStage::new(library, n);
+        let mul_assign_stage = MulAssignStage::<LhsF, RhsF>::new(library, n);
         let mut _scale_factors = Vec::with_capacity_in(n, PageAlignedAllocator);
         _scale_factors.resize(n, norm_factor);
         if !scale_factor.is_one() {
@@ -336,10 +334,7 @@ pub struct MulPowStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> MulPowStage<LhsF, RhsF>
-where
-    LhsF: GpuMul<RhsF>,
-{
+impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulPowStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let constants = metal::FunctionConstantValues::new();
@@ -399,10 +394,7 @@ pub struct AddAssignStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> AddAssignStage<LhsF, RhsF>
-where
-    LhsF: GpuAdd<RhsF>,
-{
+impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddAssignStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         let constants = metal::FunctionConstantValues::new();
         let n = n as u32;
@@ -466,10 +458,7 @@ pub struct AddIntoStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> AddIntoStage<LhsF, RhsF>
-where
-    LhsF: GpuAdd<RhsF>,
-{
+impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddIntoStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         let constants = metal::FunctionConstantValues::new();
         let n = n as u32;
@@ -534,10 +523,7 @@ pub struct AddIntoConstStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> AddIntoConstStage<LhsF, RhsF>
-where
-    LhsF: GpuAdd<RhsF>,
-{
+impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddIntoConstStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
@@ -594,10 +580,7 @@ pub struct ConvertIntoStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> ConvertIntoStage<LhsF, RhsF>
-where
-    LhsF: GpuAdd<RhsF>,
-{
+impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> ConvertIntoStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
@@ -653,10 +636,7 @@ pub struct AddAssignConstStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> AddAssignConstStage<LhsF, RhsF>
-where
-    LhsF: GpuAdd<RhsF>,
-{
+impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddAssignConstStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
@@ -713,10 +693,7 @@ pub struct MulIntoConstStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> MulIntoConstStage<LhsF, RhsF>
-where
-    LhsF: GpuMul<RhsF>,
-{
+impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulIntoConstStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
@@ -774,10 +751,7 @@ pub struct MulAssignConstStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField, RhsF: GpuField> MulAssignConstStage<LhsF, RhsF>
-where
-    LhsF: GpuMul<RhsF>,
-{
+impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulAssignConstStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library

@@ -6,6 +6,7 @@ use crate::utils::interleave;
 use alloc::vec::Vec;
 use ark_ff::FftField;
 use ark_ff::Field;
+use ark_poly::domain::DomainCoeff;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
@@ -53,19 +54,25 @@ impl FriOptions {
         domain_size
     }
 
-    pub fn domain_offset<F: GpuField>(&self) -> F::FftField {
+    pub fn domain_offset<F: GpuField>(&self) -> F::FftField
+    where
+        F::FftField: FftField,
+    {
         F::FftField::GENERATOR
     }
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct FriProof<F: GpuField> {
+pub struct FriProof<F: Field> {
     layers: Vec<FriProofLayer<F>>,
     remainder: Vec<F>,
     remainder_commitment: Vec<u8>,
 }
 
-impl<F: GpuField> FriProof<F> {
+impl<F: GpuField + Field> FriProof<F>
+where
+    F::FftField: FftField,
+{
     pub fn new(
         layers: Vec<FriProofLayer<F>>,
         remainder_commitment: Vec<u8>,
@@ -90,13 +97,16 @@ struct FriLayer<F: GpuField, D: Digest> {
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct FriProofLayer<F: GpuField> {
+pub struct FriProofLayer<F: Field> {
     values: Vec<F>,
     proofs: Vec<MerkleProof>,
     commitment: Vec<u8>,
 }
 
-impl<F: GpuField> FriProofLayer<F> {
+impl<F: GpuField + Field> FriProofLayer<F>
+where
+    F::FftField: FftField,
+{
     pub fn new<const N: usize>(
         values: Vec<[F; N]>,
         proofs: Vec<MerkleProof>,
@@ -136,7 +146,11 @@ impl<F: GpuField> FriProofLayer<F> {
     }
 }
 
-impl<F: GpuField, D: Digest> FriProver<F, D> {
+impl<F: GpuField + Field, D: Digest> FriProver<F, D>
+where
+    F: DomainCoeff<F::FftField>,
+    F::FftField: FftField,
+{
     pub fn new(options: FriOptions) -> Self {
         FriProver {
             options,
@@ -264,7 +278,10 @@ pub enum VerificationError {
     },
 }
 
-pub struct FriVerifier<F: GpuField, D: Digest> {
+pub struct FriVerifier<F: GpuField + Field, D: Digest>
+where
+    F::FftField: FftField,
+{
     options: FriOptions,
     layer_commitments: Vec<Output<D>>,
     layer_alphas: Vec<F>,
@@ -272,7 +289,11 @@ pub struct FriVerifier<F: GpuField, D: Digest> {
     domain: Radix2EvaluationDomain<F::FftField>,
 }
 
-impl<F: GpuField, D: Digest> FriVerifier<F, D> {
+impl<F: GpuField + Field, D: Digest> FriVerifier<F, D>
+where
+    F: DomainCoeff<F::FftField>,
+    F::FftField: FftField,
+{
     pub fn new(
         public_coin: &mut PublicCoin<impl Digest>,
         options: FriOptions,
@@ -416,11 +437,15 @@ impl<F: GpuField, D: Digest> FriVerifier<F, D> {
     }
 }
 
-fn verify_remainder<F: GpuField, D: Digest, const N: usize>(
+fn verify_remainder<F: GpuField + Field, D: Digest, const N: usize>(
     commitment: Output<D>,
     mut remainder_evals: Vec<F>,
     max_degree: usize,
-) -> Result<(), VerificationError> {
+) -> Result<(), VerificationError>
+where
+    F: DomainCoeff<F::FftField>,
+    F::FftField: FftField,
+{
     if max_degree >= remainder_evals.len() {
         return Err(VerificationError::RemainderTooSmall);
     }
@@ -501,12 +526,16 @@ pub trait ProverChannel<F: GpuField> {
 //    ├────────┼────┼────┼────┼────┤
 //    │ drp[i] │ 82 │ 12 │ 57 │ 34 │
 //    └────────┴────┴────┴────┴────┘
-pub fn apply_drp<F: GpuField>(
+pub fn apply_drp<F: GpuField + Field>(
     evals: GpuVec<F>,
     domain_offset: F::FftField,
     alpha: F,
     folding_factor: usize,
-) -> GpuVec<F> {
+) -> GpuVec<F>
+where
+    F: DomainCoeff<F::FftField>,
+    F::FftField: FftField,
+{
     let n = evals.len();
     let domain = Radix2EvaluationDomain::new_coset(n, domain_offset).unwrap();
     let coeffs = ifft(evals, domain);
@@ -533,7 +562,14 @@ pub fn apply_drp<F: GpuField>(
     fft(drp_coeffs, drp_domain)
 }
 
-fn ifft<F: GpuField>(evals: GpuVec<F>, domain: Radix2EvaluationDomain<F::FftField>) -> GpuVec<F> {
+fn ifft<F: GpuField + Field>(
+    evals: GpuVec<F>,
+    domain: Radix2EvaluationDomain<F::FftField>,
+) -> GpuVec<F>
+where
+    F: DomainCoeff<F::FftField>,
+    F::FftField: FftField,
+{
     #[cfg(feature = "gpu")]
     if domain.size() >= GpuFft::<F>::MIN_SIZE {
         let mut coeffs = evals;
@@ -547,7 +583,14 @@ fn ifft<F: GpuField>(evals: GpuVec<F>, domain: Radix2EvaluationDomain<F::FftFiel
     coeffs.to_vec_in(PageAlignedAllocator)
 }
 
-fn fft<F: GpuField>(coeffs: GpuVec<F>, domain: Radix2EvaluationDomain<F::FftField>) -> GpuVec<F> {
+fn fft<F: GpuField + Field>(
+    coeffs: GpuVec<F>,
+    domain: Radix2EvaluationDomain<F::FftField>,
+) -> GpuVec<F>
+where
+    F: DomainCoeff<F::FftField>,
+    F::FftField: FftField,
+{
     #[cfg(feature = "gpu")]
     if domain.size() >= GpuFft::<F>::MIN_SIZE {
         let mut evals = coeffs;
@@ -572,7 +615,7 @@ fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {
 }
 
 // from winterfell
-fn get_query_values<F: GpuField, const N: usize>(
+fn get_query_values<F: Field, const N: usize>(
     chunks: &[[F; N]],
     positions: &[usize],
     folded_positions: &[usize],
@@ -591,10 +634,13 @@ fn get_query_values<F: GpuField, const N: usize>(
         .collect()
 }
 
-fn query_layer<F: GpuField, D: Digest, const N: usize>(
+fn query_layer<F: GpuField + Field, D: Digest, const N: usize>(
     layer: &FriLayer<F, D>,
     positions: &[usize],
-) -> FriProofLayer<F> {
+) -> FriProofLayer<F>
+where
+    F::FftField: FftField,
+{
     let proofs = positions
         .iter()
         .map(|pos| {

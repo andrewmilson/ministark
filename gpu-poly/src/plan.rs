@@ -10,6 +10,8 @@ use crate::GpuField;
 use crate::GpuVec;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
+use ark_ff::FftField;
+use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
@@ -26,14 +28,17 @@ enum FftDirection {
     Inverse,
 }
 
-pub struct FftEncoder<'a, F: GpuField> {
+pub struct FftEncoder<'a, F: GpuField + Field>
+where
+    F::FftField: FftField,
+{
     n: usize,
     command_queue: Rc<metal::CommandQueue>,
     // twiddles_buffer references this memory
     // field exists to keep the memory around
     _twiddles: GpuVec<F::FftField>,
     twiddles_buffer: metal::Buffer,
-    scale_and_normalize_stage: Option<ScaleAndNormalizeGpuStage<F>>,
+    scale_and_normalize_stage: Option<ScaleAndNormalizeGpuStage<F, F::FftField>>,
     butterfly_stages: Vec<FftGpuStage<F>>,
     bit_reverse_stage: BitReverseGpuStage<F>,
     command_buffer: &'a metal::CommandBufferRef,
@@ -43,7 +48,10 @@ pub struct FftEncoder<'a, F: GpuField> {
 // unsafe impl<'a, F: GpuField> Send for FftEncoder<'a, F> {}
 // unsafe impl<'a, F: GpuField> Sync for FftEncoder<'a, F> {}
 
-impl<'a, F: GpuField> FftEncoder<'a, F> {
+impl<'a, F: GpuField + Field> FftEncoder<'a, F>
+where
+    F::FftField: FftField,
+{
     fn encode_butterfly_stages(&self, input_buffer: &mut metal::Buffer) {
         for stage in &self.butterfly_stages {
             stage.encode(self.command_buffer, input_buffer, &self.twiddles_buffer);
@@ -68,50 +76,82 @@ impl<'a, F: GpuField> FftEncoder<'a, F> {
     }
 }
 
-pub struct GpuFft<'a, F: GpuField>(FftEncoder<'a, F>);
+pub struct GpuFft<'a, F: GpuField + Field>
+where
+    F::FftField: FftField,
+{
+    encoder: FftEncoder<'a, F>,
+}
 
-impl<'a, F: GpuField> GpuFft<'a, F> {
+impl<'a, F: GpuField + Field> GpuFft<'a, F>
+where
+    F::FftField: FftField,
+{
     pub const MIN_SIZE: usize = 2048;
 
+    fn new(encoder: FftEncoder<'a, F>) -> Self {
+        GpuFft { encoder }
+    }
+
     pub fn encode(&mut self, buffer: &mut GpuVec<F>) {
-        assert!(self.0.n >= buffer.len());
-        buffer.resize(self.0.n, F::zero());
-        let mut input_buffer = utils::buffer_mut_no_copy(self.0.command_queue.device(), buffer);
-        self.0.encode_scale_stage(&mut input_buffer);
-        self.0.encode_butterfly_stages(&mut input_buffer);
-        self.0.encode_bit_reverse_stage(&mut input_buffer);
+        let encoder = &self.encoder;
+        assert!(encoder.n >= buffer.len());
+        buffer.resize(encoder.n, F::zero());
+        let mut input_buffer = utils::buffer_mut_no_copy(encoder.command_queue.device(), buffer);
+        encoder.encode_scale_stage(&mut input_buffer);
+        encoder.encode_butterfly_stages(&mut input_buffer);
+        encoder.encode_bit_reverse_stage(&mut input_buffer);
     }
 
     pub fn execute(self) {
-        self.0.execute()
+        self.encoder.execute()
     }
 }
 
-impl<'a, F: GpuField> From<Radix2EvaluationDomain<F::FftField>> for GpuFft<'a, F> {
+impl<'a, F: GpuField + Field> From<Radix2EvaluationDomain<F::FftField>> for GpuFft<'a, F>
+where
+    F::FftField: FftField,
+{
     fn from(domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         PLANNER.plan_fft(domain)
     }
 }
 
-pub struct GpuIfft<'a, F: GpuField>(FftEncoder<'a, F>);
+pub struct GpuIfft<'a, F: GpuField + Field>
+where
+    F::FftField: FftField,
+{
+    encoder: FftEncoder<'a, F>,
+}
 
-impl<'a, F: GpuField> GpuIfft<'a, F> {
+impl<'a, F: GpuField + Field> GpuIfft<'a, F>
+where
+    F::FftField: FftField,
+{
     pub const MIN_SIZE: usize = 2048;
 
+    fn new(encoder: FftEncoder<'a, F>) -> Self {
+        GpuIfft { encoder }
+    }
+
     pub fn encode(&mut self, input: &mut GpuVec<F>) {
-        assert_eq!(self.0.n, input.len());
-        let mut input_buffer = utils::buffer_mut_no_copy(self.0.command_queue.device(), input);
-        self.0.encode_butterfly_stages(&mut input_buffer);
-        self.0.encode_bit_reverse_stage(&mut input_buffer);
-        self.0.encode_scale_stage(&mut input_buffer);
+        let encoder = &self.encoder;
+        assert_eq!(encoder.n, input.len());
+        let mut input_buffer = utils::buffer_mut_no_copy(encoder.command_queue.device(), input);
+        encoder.encode_butterfly_stages(&mut input_buffer);
+        encoder.encode_bit_reverse_stage(&mut input_buffer);
+        encoder.encode_scale_stage(&mut input_buffer);
     }
 
     pub fn execute(self) {
-        self.0.execute()
+        self.encoder.execute()
     }
 }
 
-impl<'a, F: GpuField> From<Radix2EvaluationDomain<F::FftField>> for GpuIfft<'a, F> {
+impl<'a, F: GpuField + Field> From<Radix2EvaluationDomain<F::FftField>> for GpuIfft<'a, F>
+where
+    F::FftField: FftField,
+{
     fn from(domain: Radix2EvaluationDomain<F::FftField>) -> Self {
         PLANNER.plan_ifft(domain)
     }
@@ -138,25 +178,37 @@ impl Planner {
         }
     }
 
-    pub fn plan_fft<F: GpuField>(&self, domain: Radix2EvaluationDomain<F::FftField>) -> GpuFft<F> {
-        assert!(domain.size() >= GpuFft::<F>::MIN_SIZE);
-        GpuFft(self.create_fft_encoder(FftDirection::Forward, domain))
-    }
-
-    pub fn plan_ifft<F: GpuField>(
+    pub fn plan_fft<F: GpuField + Field>(
         &self,
         domain: Radix2EvaluationDomain<F::FftField>,
-    ) -> GpuIfft<F> {
+    ) -> GpuFft<F>
+    where
+        F::FftField: FftField,
+    {
+        assert!(domain.size() >= GpuFft::<F>::MIN_SIZE);
+        GpuFft::new(self.create_fft_encoder(FftDirection::Forward, domain))
+    }
+
+    pub fn plan_ifft<F: GpuField + Field>(
+        &self,
+        domain: Radix2EvaluationDomain<F::FftField>,
+    ) -> GpuIfft<F>
+    where
+        F::FftField: FftField,
+    {
         assert!(domain.size() >= GpuIfft::<F>::MIN_SIZE);
-        GpuIfft(self.create_fft_encoder(FftDirection::Inverse, domain))
+        GpuIfft::new(self.create_fft_encoder(FftDirection::Inverse, domain))
     }
 
     // TODO: move to FftEncoder struct
-    fn create_fft_encoder<F: GpuField>(
+    fn create_fft_encoder<F: GpuField + Field>(
         &self,
         direction: FftDirection,
         domain: Radix2EvaluationDomain<F::FftField>,
-    ) -> FftEncoder<F> {
+    ) -> FftEncoder<F>
+    where
+        F::FftField: FftField,
+    {
         let n = domain.size();
         let device = self.command_queue.device();
 
@@ -184,8 +236,8 @@ impl Planner {
                     &self.library,
                     &self.command_queue,
                     n,
-                    domain.offset.into(),
-                    F::one(),
+                    domain.offset,
+                    F::FftField::one(),
                 ))
             }
         } else {
@@ -193,8 +245,8 @@ impl Planner {
                 &self.library,
                 &self.command_queue,
                 n,
-                domain.offset_inv.into(),
-                domain.size_inv.into(),
+                domain.offset_inv,
+                domain.size_inv,
             ))
         };
 

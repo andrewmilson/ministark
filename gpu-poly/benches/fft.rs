@@ -2,8 +2,10 @@
 #![feature(allocator_api)]
 
 use ark_ff::FftField;
+use ark_ff::Field;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
+use ark_poly::domain::DomainCoeff;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
@@ -14,7 +16,11 @@ use gpu_poly::prelude::*;
 
 const BENCHMARK_INPUT_SIZES: [usize; 4] = [2048, 4096, 32768, 262144];
 
-fn fft_bench<F: GpuField>(c: &mut Criterion, name: &str) {
+fn fft_bench<F: GpuField + Field>(c: &mut Criterion, name: &str)
+where
+    F: DomainCoeff<F::FftField>,
+    F::FftField: FftField,
+{
     let mut rng = ark_std::test_rng();
     let mut group = c.benchmark_group(name);
     group.sample_size(10);

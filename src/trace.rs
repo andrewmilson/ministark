@@ -4,15 +4,13 @@ use crate::merkle::MerkleTree;
 use crate::Air;
 use crate::Matrix;
 use alloc::vec::Vec;
-use ark_ff::FftField;
+use ark_ff::Field;
+use ark_ff::PrimeField;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use core::ops::Add;
-use core::ops::MulAssign;
 use core::ops::Range;
 use digest::Digest;
-use gpu_poly::GpuField;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct Queries<A: Air> {
@@ -134,10 +132,8 @@ pub trait Trace {
     const NUM_BASE_COLUMNS: usize;
     const NUM_EXTENSION_COLUMNS: usize = 0;
 
-    type Fp: GpuField<FftField = Self::Fp> + FftField + Into<Self::Fq>;
-    type Fq: GpuField<FftField = Self::Fp>
-        + for<'a> MulAssign<&'a Self::Fp>
-        + for<'a> Add<&'a Self::Fp, Output = Self::Fq>;
+    type Fp: PrimeField;
+    type Fq: Field<BasePrimeField = Self::Fp>;
 
     /// Returns the number of rows in this trace.
     fn len(&self) -> usize {

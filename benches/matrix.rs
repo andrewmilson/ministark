@@ -1,5 +1,6 @@
 #![feature(allocator_api)]
 
+use ark_ff::Field;
 use ark_ff_optimized::fp64::Fp;
 use criterion::criterion_group;
 use criterion::criterion_main;
@@ -14,7 +15,7 @@ use sha2::Sha256;
 const BENCHMARK_MATRIX_DIMENSIONS: [(usize, usize); 4] =
     [(2048, 1), (2048, 12), (65536, 1), (65536, 24)];
 
-fn matrix_row_commitment_bench<F: GpuField, D: Digest>(c: &mut Criterion, name: &str) {
+fn matrix_row_commitment_bench<F: GpuField + Field, D: Digest>(c: &mut Criterion, name: &str) {
     let mut rng = ark_std::test_rng();
     let mut group = c.benchmark_group(name);
     group.sample_size(10);
