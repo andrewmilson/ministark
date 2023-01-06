@@ -2,6 +2,9 @@
 
 use super::GpuField;
 use crate::allocator::PageAlignedAllocator;
+use crate::fields::p18446744069414584321;
+use crate::plan::PLANNER;
+use crate::prelude::buffer_mut_no_copy;
 use crate::utils::buffer_no_copy;
 use crate::utils::distribute_powers;
 use crate::utils::void_ptr;
@@ -11,8 +14,10 @@ use crate::GpuVec;
 use alloc::string::String;
 use alloc::vec::Vec;
 use ark_ff::Field;
+use ark_ff::Zero;
 use core::marker::PhantomData;
 use core::mem::size_of;
+use metal::NSUInteger;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Variant {
@@ -1197,6 +1202,99 @@ impl<F: GpuField> GenerateTwiddlesStage<F> {
         command_encoder.set_bytes(1, size_of::<F>().try_into().unwrap(), void_ptr(&value));
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
         command_encoder.memory_barrier_with_resources(&[dst_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct RpoStage {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _states: GpuVec<[p18446744069414584321::Fp; 4]>,
+    states_buffer: metal::Buffer,
+    pub _digests: GpuVec<[p18446744069414584321::Fp; 4]>,
+    digests_buffer: metal::Buffer,
+}
+
+impl RpoStage {
+    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
+        let func = library
+            .get_function("rpo_absorb_and_permute", None)
+            .unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let threadgroup_dim = metal::MTLSize::new(32, 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        let mut _digests = Vec::new_in(PageAlignedAllocator);
+        _digests.resize(n, [p18446744069414584321::Fp::zero(); 4]);
+        let digests_buffer = buffer_mut_no_copy(library.device(), &mut _digests);
+
+        let mut _states = Vec::new_in(PageAlignedAllocator);
+        _states.resize(n, [p18446744069414584321::Fp::zero(); 4]);
+        let states_buffer = buffer_mut_no_copy(library.device(), &mut _states);
+
+        RpoStage {
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            _digests,
+            digests_buffer,
+            _states,
+            states_buffer,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        col0: &GpuVec<p18446744069414584321::Fp>,
+        col1: &GpuVec<p18446744069414584321::Fp>,
+        col2: &GpuVec<p18446744069414584321::Fp>,
+        col3: &GpuVec<p18446744069414584321::Fp>,
+        col4: &GpuVec<p18446744069414584321::Fp>,
+        col5: &GpuVec<p18446744069414584321::Fp>,
+        col6: &GpuVec<p18446744069414584321::Fp>,
+        col7: &GpuVec<p18446744069414584321::Fp>,
+    ) {
+        let n = col0.len();
+        assert!(n >= 256);
+        assert!(n.is_power_of_two());
+        assert_eq!(n, col1.len());
+        assert_eq!(n, col2.len());
+        assert_eq!(n, col3.len());
+        assert_eq!(n, col4.len());
+        assert_eq!(n, col5.len());
+        assert_eq!(n, col6.len());
+        assert_eq!(n, col7.len());
+
+        #[cfg(feature = "std")]
+        println!("YO: {}", self.pipeline.max_total_threads_per_threadgroup());
+        // assert!(512 <= self.pipeline.max_total_threads_per_threadgroup());
+
+        let device = PLANNER.library.device();
+        let command_encoder = command_buffer.new_compute_command_encoder();
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        let state_width = 12;
+        let field_size = size_of::<p18446744069414584321::Fp>() as NSUInteger;
+        let hashers_per_tg = 32;
+        command_encoder
+            .set_threadgroup_memory_length(0, state_width * field_size * hashers_per_tg * 2);
+        command_encoder.set_buffer(0, Some(&buffer_no_copy(device, col0)), 0);
+        command_encoder.set_buffer(1, Some(&buffer_no_copy(device, col1)), 0);
+        command_encoder.set_buffer(2, Some(&buffer_no_copy(device, col2)), 0);
+        command_encoder.set_buffer(3, Some(&buffer_no_copy(device, col3)), 0);
+        command_encoder.set_buffer(4, Some(&buffer_no_copy(device, col4)), 0);
+        command_encoder.set_buffer(5, Some(&buffer_no_copy(device, col5)), 0);
+        command_encoder.set_buffer(6, Some(&buffer_no_copy(device, col6)), 0);
+        command_encoder.set_buffer(7, Some(&buffer_no_copy(device, col7)), 0);
+        command_encoder.set_buffer(8, Some(&self.states_buffer), 0);
+        command_encoder.set_buffer(9, Some(&self.digests_buffer), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[&self.states_buffer, &self.digests_buffer]);
         command_encoder.end_encoding()
     }
 }

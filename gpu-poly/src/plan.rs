@@ -1,8 +1,10 @@
 #![cfg(target_arch = "aarch64")]
 
 use crate::allocator::PageAlignedAllocator;
+use crate::fields::p18446744069414584321;
 use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
+use crate::stage::RpoStage;
 use crate::stage::ScaleAndNormalizeGpuStage;
 use crate::stage::Variant;
 use crate::utils;
@@ -16,9 +18,56 @@ use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
+use metal::CommandBufferRef;
 use once_cell::sync::Lazy;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/shaders.metallib");
+
+pub struct GpuRpo<'a> {
+    stage: RpoStage,
+    command_buffer: &'a CommandBufferRef,
+}
+
+impl<'a> GpuRpo<'a> {
+    pub const MIN_SIZE: usize = 256;
+
+    pub fn new(n: usize) -> Self {
+        GpuRpo {
+            stage: RpoStage::new(&PLANNER.library, n),
+            command_buffer: PLANNER.command_queue.new_command_buffer(),
+        }
+    }
+
+    pub fn update(
+        &mut self,
+        col0: &GpuVec<p18446744069414584321::Fp>,
+        col1: &GpuVec<p18446744069414584321::Fp>,
+        col2: &GpuVec<p18446744069414584321::Fp>,
+        col3: &GpuVec<p18446744069414584321::Fp>,
+        col4: &GpuVec<p18446744069414584321::Fp>,
+        col5: &GpuVec<p18446744069414584321::Fp>,
+        col6: &GpuVec<p18446744069414584321::Fp>,
+        col7: &GpuVec<p18446744069414584321::Fp>,
+    ) {
+        self.stage.encode(
+            self.command_buffer,
+            col0,
+            col1,
+            col2,
+            col3,
+            col4,
+            col5,
+            col6,
+            col7,
+        )
+    }
+
+    pub fn finish(self) -> GpuVec<[p18446744069414584321::Fp; 4]> {
+        self.command_buffer.commit();
+        self.command_buffer.wait_until_completed();
+        self.stage._digests
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 enum FftDirection {

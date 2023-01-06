@@ -1,5 +1,5 @@
 #![feature(test, allocator_api, const_try, int_roundings)]
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 #[macro_use]
 extern crate alloc;

@@ -22,6 +22,32 @@ pub mod p18446744069414584321 {
     use core::ops::SubAssign;
     pub use fp64::Fp;
     pub use fp64::FpParams;
+    #[cfg(feature = "winterfell")]
+    use winter_math::fields::f64::BaseElement;
+
+    #[cfg(feature = "winterfell")]
+    impl GpuField for BaseElement {
+        type FftField = Self;
+
+        fn field_name() -> String {
+            "p18446744069414584321_fp".to_string()
+        }
+    }
+
+    #[cfg(feature = "winterfell")]
+    impl GpuMul<BaseElement> for BaseElement {}
+
+    #[cfg(feature = "winterfell")]
+    impl GpuMul<&BaseElement> for BaseElement {}
+
+    #[cfg(feature = "winterfell")]
+    impl GpuAdd<BaseElement> for BaseElement {}
+
+    #[cfg(feature = "winterfell")]
+    impl GpuAdd<&BaseElement> for BaseElement {}
+
+    #[cfg(feature = "winterfell")]
+    impl GpuFftField for BaseElement {}
 
     impl GpuField for Fp {
         type FftField = Self;

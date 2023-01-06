@@ -17,11 +17,14 @@ ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
 once_cell = "1.15.0"
 rayon = { version = "1.5.3", optional = true }
 ark-std = { git = "https://github.com/arkworks-rs/std" }
+winter-math = { version = "0.4.2", optional = true }
 rand = "0.8.5"
 zeroize = { version = "1", default-features = false, features = ["zeroize_derive"] }
 
 [features]
 default = []
+std = []
+winterfell = [ "dep:winter-math" ]
 parallel = [ "dep:rayon", "ark-std/parallel" ]
 
 # Apple silicon depencencies
