@@ -33,4 +33,4 @@ constant unsigned THREADGROUP_FFT_SIZE [[ function_constant(2) ]];
 
 #include "fft_shaders.h.metal"
 #include "evaluation_shaders.h.metal"
-#include "rpo_shaders.h.metal"
+#include "hash_shaders.h.metal"

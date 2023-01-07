@@ -14,6 +14,7 @@ use crate::GpuVec;
 use alloc::string::String;
 use alloc::vec::Vec;
 use ark_ff::Field;
+use ark_ff::One;
 use ark_ff::Zero;
 use core::marker::PhantomData;
 use core::mem::size_of;
@@ -1206,38 +1207,63 @@ impl<F: GpuField> GenerateTwiddlesStage<F> {
     }
 }
 
-pub struct RpoStage {
+pub struct Rpo128Stage<F: GpuField> {
+    n: usize,
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
-    _states: GpuVec<[p18446744069414584321::Fp; 4]>,
+    _states: GpuVec<[F; 4]>,
     states_buffer: metal::Buffer,
-    pub _digests: GpuVec<[p18446744069414584321::Fp; 4]>,
+    pub _digests: GpuVec<[F; 4]>,
     digests_buffer: metal::Buffer,
 }
 
-impl RpoStage {
-    pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
-        let func = library
-            .get_function("rpo_absorb_and_permute", None)
-            .unwrap();
+impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
+    pub const STATE_WIDTH: usize = 12;
+    pub const CAPACITY: usize = 4;
+    pub const RATE: usize = Self::STATE_WIDTH - Self::CAPACITY;
+    pub const NUM_ROUNDS: usize = 7;
+
+    pub const HASHERS_PER_THREADGROUP: usize = 32;
+
+    pub fn new(library: &metal::LibraryRef, n: usize, requires_padding: bool) -> Self {
+        assert!(n.is_power_of_two());
+        assert!(n >= Self::HASHERS_PER_THREADGROUP);
+
+        let kernel_name = format!("rpo_absorb_columns_and_permute_{}", F::field_name());
+        let func = library.get_function(&kernel_name, None).unwrap();
         let pipeline = library
             .device()
             .new_compute_pipeline_state_with_function(&func)
             .unwrap();
 
-        let threadgroup_dim = metal::MTLSize::new(32, 1, 1);
+        let threadgroup_dim =
+            metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP.try_into().unwrap(), 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
         let mut _digests = Vec::new_in(PageAlignedAllocator);
-        _digests.resize(n, [p18446744069414584321::Fp::zero(); 4]);
+        _digests.resize(n, [F::zero(); 4]);
         let digests_buffer = buffer_mut_no_copy(library.device(), &mut _digests);
 
         let mut _states = Vec::new_in(PageAlignedAllocator);
-        _states.resize(n, [p18446744069414584321::Fp::zero(); 4]);
+        _states.resize(
+            n,
+            [
+                // apply RPO's padding rule
+                if requires_padding {
+                    F::zero()
+                } else {
+                    F::one()
+                },
+                F::zero(),
+                F::zero(),
+                F::zero(),
+            ],
+        );
         let states_buffer = buffer_mut_no_copy(library.device(), &mut _states);
 
-        RpoStage {
+        Rpo128Stage {
+            n,
             threadgroup_dim,
             pipeline,
             grid_dim,
@@ -1248,41 +1274,24 @@ impl RpoStage {
         }
     }
 
-    pub fn encode(
-        &self,
-        command_buffer: &metal::CommandBufferRef,
-        col0: &GpuVec<p18446744069414584321::Fp>,
-        col1: &GpuVec<p18446744069414584321::Fp>,
-        col2: &GpuVec<p18446744069414584321::Fp>,
-        col3: &GpuVec<p18446744069414584321::Fp>,
-        col4: &GpuVec<p18446744069414584321::Fp>,
-        col5: &GpuVec<p18446744069414584321::Fp>,
-        col6: &GpuVec<p18446744069414584321::Fp>,
-        col7: &GpuVec<p18446744069414584321::Fp>,
-    ) {
-        let n = col0.len();
-        assert!(n >= 256);
-        assert!(n.is_power_of_two());
-        assert_eq!(n, col1.len());
-        assert_eq!(n, col2.len());
-        assert_eq!(n, col3.len());
-        assert_eq!(n, col4.len());
-        assert_eq!(n, col5.len());
-        assert_eq!(n, col6.len());
-        assert_eq!(n, col7.len());
-
-        #[cfg(feature = "std")]
-        println!("YO: {}", self.pipeline.max_total_threads_per_threadgroup());
-        // assert!(512 <= self.pipeline.max_total_threads_per_threadgroup());
+    pub fn encode(&self, command_buffer: &metal::CommandBufferRef, columns: [&GpuVec<F>; 8]) {
+        let [col0, col1, col2, col3, col4, col5, col6, col7] = columns;
+        assert_eq!(self.n, col1.len());
+        assert_eq!(self.n, col2.len());
+        assert_eq!(self.n, col3.len());
+        assert_eq!(self.n, col4.len());
+        assert_eq!(self.n, col5.len());
+        assert_eq!(self.n, col6.len());
+        assert_eq!(self.n, col7.len());
 
         let device = PLANNER.library.device();
         let command_encoder = command_buffer.new_compute_command_encoder();
-        command_encoder.set_compute_pipeline_state(&self.pipeline);
-        let state_width = 12;
+        let state_width = Self::STATE_WIDTH as NSUInteger;
         let field_size = size_of::<p18446744069414584321::Fp>() as NSUInteger;
-        let hashers_per_tg = 32;
-        command_encoder
-            .set_threadgroup_memory_length(0, state_width * field_size * hashers_per_tg * 2);
+        let mem_per_hasher = state_width * field_size;
+        let hashers_per_tg = Self::HASHERS_PER_THREADGROUP as NSUInteger;
+        command_encoder.set_threadgroup_memory_length(0, mem_per_hasher * hashers_per_tg * 2);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
         command_encoder.set_buffer(0, Some(&buffer_no_copy(device, col0)), 0);
         command_encoder.set_buffer(1, Some(&buffer_no_copy(device, col1)), 0);
         command_encoder.set_buffer(2, Some(&buffer_no_copy(device, col2)), 0);

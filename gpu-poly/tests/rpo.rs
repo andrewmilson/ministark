@@ -1,9 +1,8 @@
 #![feature(allocator_api)]
 
 use ark_ff::One;
-use ark_ff::UniformRand;
 use gpu_poly::fields::p18446744069414584321::Fp;
-use gpu_poly::plan::GpuRpo;
+use gpu_poly::plan::GpuRpo128;
 use gpu_poly::prelude::*;
 use std::time::Instant;
 
@@ -19,25 +18,29 @@ fn gpu_rpo() {
     let col5 = col.to_vec_in(PageAlignedAllocator);
     let col6 = col.to_vec_in(PageAlignedAllocator);
     let col7 = col.to_vec_in(PageAlignedAllocator);
-    let mut rpo = GpuRpo::new(n);
+    let input_size = 104;
+    let requires_padding = input_size % 8 == 0;
+    let mut rpo = GpuRpo128::new(n, requires_padding);
 
     let now = Instant::now();
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
-    rpo.update(&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7);
+    for i in 0..input_size {
+        let col = match i % 8 {
+            0 => &col0,
+            1 => &col1,
+            2 => &col2,
+            3 => &col3,
+            4 => &col4,
+            5 => &col5,
+            6 => &col6,
+            7 => &col7,
+            _ => unreachable!(),
+        };
+
+        rpo.update(col);
+    }
     println!("Encode in {:?}", now.elapsed());
 
-    let hashes = rpo.finish();
+    let hashes = pollster::block_on(rpo.finish());
     println!("Hash in {:?}", now.elapsed());
     println!(
         "{}, {}, {}, {}",

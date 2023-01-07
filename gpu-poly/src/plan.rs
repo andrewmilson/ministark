@@ -1,10 +1,9 @@
 #![cfg(target_arch = "aarch64")]
 
 use crate::allocator::PageAlignedAllocator;
-use crate::fields::p18446744069414584321;
 use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
-use crate::stage::RpoStage;
+use crate::stage::Rpo128Stage;
 use crate::stage::ScaleAndNormalizeGpuStage;
 use crate::stage::Variant;
 use crate::utils;
@@ -23,48 +22,75 @@ use once_cell::sync::Lazy;
 
 const LIBRARY_DATA: &[u8] = include_bytes!("metal/shaders.metallib");
 
-pub struct GpuRpo<'a> {
-    stage: RpoStage,
-    command_buffer: &'a CommandBufferRef,
+pub struct GpuRpo128<'a, F: GpuField> {
+    n: usize,
+    _requires_padding: bool,
+    stage: Rpo128Stage<F>,
+    state: Vec<&'a GpuVec<F>>,
+    command_buffer: Option<&'a CommandBufferRef>,
 }
 
-impl<'a> GpuRpo<'a> {
+impl<'a, F: GpuField + Zero + Copy + One> GpuRpo128<'a, F> {
     pub const MIN_SIZE: usize = 256;
 
-    pub fn new(n: usize) -> Self {
-        GpuRpo {
-            stage: RpoStage::new(&PLANNER.library, n),
-            command_buffer: PLANNER.command_queue.new_command_buffer(),
+    pub fn new(n: usize, requires_padding: bool) -> Self {
+        GpuRpo128 {
+            n,
+            _requires_padding: requires_padding,
+            stage: Rpo128Stage::new(&PLANNER.library, n, requires_padding),
+            state: Vec::new(),
+            command_buffer: None,
         }
     }
 
-    pub fn update(
-        &mut self,
-        col0: &GpuVec<p18446744069414584321::Fp>,
-        col1: &GpuVec<p18446744069414584321::Fp>,
-        col2: &GpuVec<p18446744069414584321::Fp>,
-        col3: &GpuVec<p18446744069414584321::Fp>,
-        col4: &GpuVec<p18446744069414584321::Fp>,
-        col5: &GpuVec<p18446744069414584321::Fp>,
-        col6: &GpuVec<p18446744069414584321::Fp>,
-        col7: &GpuVec<p18446744069414584321::Fp>,
-    ) {
-        self.stage.encode(
-            self.command_buffer,
-            col0,
-            col1,
-            col2,
-            col3,
-            col4,
-            col5,
-            col6,
-            col7,
-        )
+    pub fn update(&mut self, col: &'a GpuVec<F>) {
+        self.state.push(col);
+        if self.state.len() % Rpo128Stage::<F>::RATE == 0 {
+            let command_buffer = PLANNER.command_queue.new_command_buffer();
+            let state = &core::mem::take(&mut self.state)[0..8];
+            self.stage.encode(command_buffer, state.try_into().unwrap());
+            command_buffer.commit();
+            self.command_buffer = Some(command_buffer);
+        }
     }
 
-    pub fn finish(self) -> GpuVec<[p18446744069414584321::Fp; 4]> {
-        self.command_buffer.commit();
-        self.command_buffer.wait_until_completed();
+    pub async fn finish(mut self) -> GpuVec<[F; 4]> {
+        // Wait for all update stages to finish. Stages run sequentially so waiting for
+        // the last stage to finish is sufficient
+        if let Some(cb) = self.command_buffer {
+            cb.wait_until_completed()
+        } else {
+            // TODO: error? "The zero-length input is not allowed."
+        }
+
+        // return if no padding is required
+        // TODO: check self.requires_padding == false
+        if self.state.is_empty() {
+            return self.stage._digests;
+        }
+
+        // padding rule: "a single 1 element followed by as many zeros as are necessary
+        // to make the input length a multiple of the rate." - https://eprint.iacr.org/2022/1577.pdf
+        // TODO: check self.requires_padding == true
+        let mut ones = Vec::with_capacity_in(self.n, PageAlignedAllocator);
+        ones.resize(self.n, F::one());
+
+        let mut zeros: GpuVec<F>;
+        if self.state.len() != Rpo128Stage::<F>::RATE {
+            // only access memory for zeros if needed
+            zeros = Vec::with_capacity_in(self.n, PageAlignedAllocator);
+            zeros.resize(self.n, F::zero());
+            self.state.push(&ones);
+            while self.state.len() != 8 {
+                self.state.push(&zeros);
+            }
+        }
+
+        let command_buffer = PLANNER.command_queue.new_command_buffer();
+        let state = &self.state[0..8];
+        self.stage.encode(command_buffer, state.try_into().unwrap());
+        command_buffer.commit();
+        command_buffer.wait_until_completed();
         self.stage._digests
     }
 }

@@ -491,6 +491,7 @@ dependencies = [
  "num-traits",
  "objc",
  "once_cell",
+ "pollster",
  "rand",
  "rayon",
  "serde",
