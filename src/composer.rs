@@ -95,7 +95,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         extension_trace_lde: Option<&Matrix<A::Fq>>,
     ) -> Matrix<A::Fq> {
         let lde_domain = self.air.lde_domain();
-        let step = self.air.lde_blowup_factor() as isize;
+        let step = self.air.ce_blowup_factor() as isize;
         let xs = lde_domain.elements();
         let n = lde_domain.size();
         let mut result = Vec::with_capacity_in(n, PageAlignedAllocator);
