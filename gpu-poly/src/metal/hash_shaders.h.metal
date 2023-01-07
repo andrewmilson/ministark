@@ -7,6 +7,25 @@ using namespace metal;
 
 namespace p18446744069414584321 {
 
+// Stores the first CAPACITY many items of the state.
+// This is the only state that needs to be persisted between
+// calls to Rpo128AbsorbColumnsAndPermute
+struct Rpo128PartialState {
+    Fp s0;
+    Fp s1;
+    Fp s2;
+    Fp s3;
+};
+
+// RPO 128 digest output
+struct Rpo128Digest {
+    Fp d0;
+    Fp d1;
+    Fp d2;
+    Fp d3;
+};
+
+// RPO parameters
 constant const unsigned STATE_WIDTH = 12;
 constant const unsigned CAPACITY = 4;
 constant const unsigned DIGEST_SIZE = 4;
@@ -28,6 +47,7 @@ constant const Fp MDS[STATE_WIDTH * STATE_WIDTH] = {
     Fp(98784247785), Fp(34359738360), Fp(111669149670), Fp(55834574835), Fp(42949672950), Fp(38654705655), Fp(30064771065), Fp(25769803770), Fp(94489280490), Fp(90194313195), Fp(34359738360), Fp(30064771065)
 };
 
+// RPO constants used in the first half of each round
 constant const Fp ROUND_CONSTANTS_0[STATE_WIDTH * NUM_ROUNDS] = {
     Fp(6936159699454947676), Fp(6871277616928621393), Fp(4226339945476756083), Fp(2261225084505152444), Fp(16808067423291017741), Fp(12862191241011323277), Fp(345720808813194915), Fp(10126368034161173654), Fp(840649715788759894), Fp(18155600607269645987), Fp(16577339120870559289), Fp(13749826054300849029),
     Fp(16047969944113931191), Fp(10474334246235299199), Fp(15773847146013662260), Fp(14401231158322525155), Fp(6009395255763488383), Fp(2108579439821148946), Fp(13820200715803196660), Fp(15968614366574245570), Fp(7529997729792773654), Fp(9429194013557833999), Fp(11639903126146281421), Fp(15759666882357935738),
@@ -38,6 +58,7 @@ constant const Fp ROUND_CONSTANTS_0[STATE_WIDTH * NUM_ROUNDS] = {
     Fp(10507930462458090835), Fp(10669463960502417047), Fp(16753662827442720769), Fp(12967456627495301601), Fp(2989815121821278695), Fp(5894674479204135685), Fp(14187454698288462352), Fp(14795723369628125345), Fp(17260571099239679821), Fp(16009836214833755168), Fp(2009092225887788829), Fp(10838446069154019765),
 };
 
+// RPO constants used in the last half of each round
 constant const Fp ROUND_CONSTANTS_1[STATE_WIDTH * NUM_ROUNDS] = {
     Fp(8939123259393952351), Fp(14708045228210488368), Fp(18125168669810517809), Fp(9309821433754818185), Fp(4714467145607136006), Fp(1302482025306688824), Fp(34829973686821040), Fp(5637233680011148778), Fp(227119480134509573), Fp(2530972937109017559), Fp(7210163798538732239), Fp(955913576003606833), 
     Fp(4449617297638325218), Fp(10843671682695268638), Fp(13198957499160452915), Fp(11541825028620451829), Fp(10963484480734735121), Fp(4752902142121643229), Fp(3015289210993491059), Fp(16344286514680205966), Fp(1811079964700766606), Fp(12735664961476037524), Fp(5775391330037813314), Fp(18223625362487900986), 
@@ -48,8 +69,10 @@ constant const Fp ROUND_CONSTANTS_1[STATE_WIDTH * NUM_ROUNDS] = {
     Fp(3549624494907837709), Fp(4253629935471652443), Fp(2859199883984623807), Fp(1087607721547343649), Fp(7907517619951970198), Fp(11306402795121903516), Fp(10168009948206732524), Fp(9177440083248248246), Fp(13169036816957726187), Fp(12924186209140199217), Fp(9673006056831483321), Fp(747828276541750689)
 };
 
-[[ host_name("rpo_absorb_columns_and_permute_p18446744069414584321_fp") ]] kernel void 
-RpoAbsorbColumnsAndPermute(constant Fp *col0 [[ buffer(0) ]],
+// Rescue Prime Optimized hash function for 128 bit security: https://eprint.iacr.org/2022/1577.pdf
+// Absorbs 8 columns of equal length. Hashes are generated row-wise.
+[[ host_name("rpo_128_absorb_columns_and_permute_p18446744069414584321_fp") ]] kernel void 
+Rpo128AbsorbColumnsAndPermute(constant Fp *col0 [[ buffer(0) ]],
         constant Fp *col1 [[ buffer(1) ]],
         constant Fp *col2 [[ buffer(2) ]],
         constant Fp *col3 [[ buffer(3) ]],
@@ -57,21 +80,15 @@ RpoAbsorbColumnsAndPermute(constant Fp *col0 [[ buffer(0) ]],
         constant Fp *col5 [[ buffer(5) ]],
         constant Fp *col6 [[ buffer(6) ]],
         constant Fp *col7 [[ buffer(7) ]],
-        device Fp *states [[ buffer(8) ]],
-        device Fp *digests [[ buffer(9) ]],
+        device Rpo128PartialState *states [[ buffer(8) ]],
+        device Rpo128Digest *digests [[ buffer(9) ]],
         threadgroup Fp *shared [[ threadgroup(0) ]],
         unsigned global_id [[ thread_position_in_grid ]],
-        unsigned local_id [[ thread_index_in_threadgroup ]]) { 
-    // we only need to store the first CAPACITY many items of the state in global memory
-    unsigned global_state_offset = global_id * CAPACITY;
-    
+        unsigned local_id [[ thread_index_in_threadgroup ]]) {     
     // fetch state
     unsigned local_state_offset = local_id * STATE_WIDTH * 2;
-    shared[local_state_offset + 0] = states[global_state_offset + 0];
-    shared[local_state_offset + 1] = states[global_state_offset + 1];
-    shared[local_state_offset + 2] = states[global_state_offset + 2];
-    shared[local_state_offset + 3] = states[global_state_offset + 3];
-    
+    // faster than loading individual elements
+    *((threadgroup Rpo128PartialState*) (shared + local_state_offset)) = states[global_id];
     // absorb the input into the state
     shared[local_state_offset + CAPACITY + 0] = col0[global_id];
     shared[local_state_offset + CAPACITY + 1] = col1[global_id];
@@ -109,17 +126,16 @@ RpoAbsorbColumnsAndPermute(constant Fp *col0 [[ buffer(0) ]],
         }
     }
 
-    states[global_state_offset + 0] = shared[local_state_offset + 0];
-    states[global_state_offset + 1] = shared[local_state_offset + 1];
-    states[global_state_offset + 2] = shared[local_state_offset + 2];
-    states[global_state_offset + 3] = shared[local_state_offset + 3];
-
-    digests[global_state_offset + 0] = shared[local_state_offset + CAPACITY + 0];
-    digests[global_state_offset + 1] = shared[local_state_offset + CAPACITY + 1];
-    digests[global_state_offset + 2] = shared[local_state_offset + CAPACITY + 2];
-    digests[global_state_offset + 3] = shared[local_state_offset + CAPACITY + 3];
+    // TODO: add flag to only write to one of these buffers
+    // redundant writes here are neglegable on performance <1%
+    digests[global_id] = *((threadgroup Rpo128Digest*) (shared + local_state_offset + CAPACITY));
+    states[global_id] = *((threadgroup Rpo128PartialState*) (shared + local_state_offset));
 }
 
+// Generates a merkle tree using Rescue Prime Optimized.
+[[ host_name("rpo_128_absorb_columns_and_permute_p18446744069414584321_fp") ]] kernel void 
+Rpo128GenMerkleTree(device Fp *data [[ buffer(0) ]]) {
+    // global const uchar* data, const ulong leaves, const ulong round, global int* mutated
 }
 
 #endif /* hash_shaders_h */

@@ -66,7 +66,7 @@ impl<'a, F: GpuField + Zero + Copy + One> GpuRpo128<'a, F> {
         // return if no padding is required
         // TODO: check self.requires_padding == false
         if self.state.is_empty() {
-            return self.stage._digests;
+            return self.stage.digests;
         }
 
         // padding rule: "a single 1 element followed by as many zeros as are necessary
@@ -91,7 +91,7 @@ impl<'a, F: GpuField + Zero + Copy + One> GpuRpo128<'a, F> {
         self.stage.encode(command_buffer, state.try_into().unwrap());
         command_buffer.commit();
         command_buffer.wait_until_completed();
-        self.stage._digests
+        self.stage.digests
     }
 }
 

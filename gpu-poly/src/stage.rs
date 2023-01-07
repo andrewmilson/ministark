@@ -1214,7 +1214,7 @@ pub struct Rpo128Stage<F: GpuField> {
     grid_dim: metal::MTLSize,
     _states: GpuVec<[F; 4]>,
     states_buffer: metal::Buffer,
-    pub _digests: GpuVec<[F; 4]>,
+    pub digests: GpuVec<[F; 4]>,
     digests_buffer: metal::Buffer,
 }
 
@@ -1230,7 +1230,7 @@ impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
         assert!(n.is_power_of_two());
         assert!(n >= Self::HASHERS_PER_THREADGROUP);
 
-        let kernel_name = format!("rpo_absorb_columns_and_permute_{}", F::field_name());
+        let kernel_name = format!("rpo_128_absorb_columns_and_permute_{}", F::field_name());
         let func = library.get_function(&kernel_name, None).unwrap();
         let pipeline = library
             .device()
@@ -1241,9 +1241,9 @@ impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
             metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP.try_into().unwrap(), 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
-        let mut _digests = Vec::new_in(PageAlignedAllocator);
-        _digests.resize(n, [F::zero(); 4]);
-        let digests_buffer = buffer_mut_no_copy(library.device(), &mut _digests);
+        let mut digests = Vec::new_in(PageAlignedAllocator);
+        digests.resize(n, [F::zero(); 4]);
+        let digests_buffer = buffer_mut_no_copy(library.device(), &mut digests);
 
         let mut _states = Vec::new_in(PageAlignedAllocator);
         _states.resize(
@@ -1267,7 +1267,7 @@ impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
             threadgroup_dim,
             pipeline,
             grid_dim,
-            _digests,
+            digests,
             digests_buffer,
             _states,
             states_buffer,
