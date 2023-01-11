@@ -1218,7 +1218,8 @@ pub struct Rpo128Stage<F: GpuField> {
     digests_buffer: metal::Buffer,
 }
 
-impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
+impl<F: GpuField + From<u32> + Copy> Rpo128Stage<F> {
+    // TODO: move rescue params
     pub const STATE_WIDTH: usize = 12;
     pub const CAPACITY: usize = 4;
     pub const RATE: usize = Self::STATE_WIDTH - Self::CAPACITY;
@@ -1241,8 +1242,10 @@ impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
             metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP.try_into().unwrap(), 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
+        let zero = F::from(0);
+        let one = F::from(1);
         let mut digests = Vec::new_in(PageAlignedAllocator);
-        digests.resize(n, [F::zero(); 4]);
+        digests.resize(n, [zero; 4]);
         let digests_buffer = buffer_mut_no_copy(library.device(), &mut digests);
 
         let mut _states = Vec::new_in(PageAlignedAllocator);
@@ -1250,14 +1253,10 @@ impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
             n,
             [
                 // apply RPO's padding rule
-                if requires_padding {
-                    F::zero()
-                } else {
-                    F::one()
-                },
-                F::zero(),
-                F::zero(),
-                F::zero(),
+                if requires_padding { one } else { zero },
+                zero,
+                zero,
+                zero,
             ],
         );
         let states_buffer = buffer_mut_no_copy(library.device(), &mut _states);
@@ -1286,8 +1285,11 @@ impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
 
         let device = PLANNER.library.device();
         let command_encoder = command_buffer.new_compute_command_encoder();
+        #[cfg(debug_assertions)]
+        command_encoder.set_label("rpo absorb and permute 8 columns");
         let state_width = Self::STATE_WIDTH as NSUInteger;
         let field_size = size_of::<p18446744069414584321::Fp>() as NSUInteger;
+        assert_eq!(field_size as usize, size_of::<F>());
         let mem_per_hasher = state_width * field_size;
         let hashers_per_tg = Self::HASHERS_PER_THREADGROUP as NSUInteger;
         command_encoder.set_threadgroup_memory_length(0, mem_per_hasher * hashers_per_tg * 2);
@@ -1304,6 +1306,126 @@ impl<F: GpuField + One + Zero + Copy> Rpo128Stage<F> {
         command_encoder.set_buffer(9, Some(&self.digests_buffer), 0);
         command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
         command_encoder.memory_barrier_with_resources(&[&self.states_buffer, &self.digests_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct Rpo128GenMerkleNodesFirstRowStage<F: GpuField> {
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> Rpo128GenMerkleNodesFirstRowStage<F> {
+    pub const HASHERS_PER_THREADGROUP: usize = 32;
+
+    pub fn new(library: &metal::LibraryRef, num_leaves: usize) -> Self {
+        use metal::MTLDataType::UInt;
+        assert!(num_leaves.is_power_of_two());
+        assert!((num_leaves / 2) >= Self::HASHERS_PER_THREADGROUP);
+
+        let constants = metal::FunctionConstantValues::new();
+        constants.set_constant_value_at_index(void_ptr(&(num_leaves as u32)), UInt, 0);
+        let kernel_name = format!("rpo_128_gen_merkle_nodes_first_row_{}", F::field_name());
+        let func = library.get_function(&kernel_name, Some(constants)).unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let threadgroup_dim =
+            metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP.try_into().unwrap(), 1, 1);
+        let grid_dim = metal::MTLSize::new((num_leaves / 2).try_into().unwrap(), 1, 1);
+
+        Rpo128GenMerkleNodesFirstRowStage {
+            pipeline,
+            threadgroup_dim,
+            grid_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        leaves: &metal::Buffer,
+        nodes: &metal::Buffer,
+    ) {
+        let command_encoder = command_buffer.new_compute_command_encoder();
+        // TODO: use param
+        let state_width = 12;
+        let field_size = size_of::<p18446744069414584321::Fp>() as NSUInteger;
+        assert_eq!(field_size as usize, size_of::<F>());
+        let mem_per_hasher = state_width * field_size;
+        let hashers_per_tg = Self::HASHERS_PER_THREADGROUP as NSUInteger;
+        command_encoder.set_threadgroup_memory_length(0, mem_per_hasher * hashers_per_tg * 2);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(leaves), 0);
+        command_encoder.set_buffer(1, Some(nodes), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[nodes]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct Rpo128GenMerkleNodesRowStage<F: GpuField> {
+    num_leaves: usize,
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    _phantom: PhantomData<F>,
+}
+
+impl<F: GpuField> Rpo128GenMerkleNodesRowStage<F> {
+    pub const HASHERS_PER_THREADGROUP: usize = 32;
+
+    pub fn new(library: &metal::LibraryRef, num_leaves: usize) -> Self {
+        use metal::MTLDataType::UInt;
+        assert!(num_leaves.is_power_of_two());
+
+        let constants = metal::FunctionConstantValues::new();
+        constants.set_constant_value_at_index(void_ptr(&(num_leaves as u32)), UInt, 0);
+        let kernel_name = format!("rpo_128_gen_merkle_nodes_row_{}", F::field_name());
+        let func = library.get_function(&kernel_name, Some(constants)).unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let threadgroup_dim =
+            metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP as NSUInteger, 1, 1);
+
+        Rpo128GenMerkleNodesRowStage {
+            num_leaves,
+            pipeline,
+            threadgroup_dim,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn encode(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        nodes: &metal::Buffer,
+        row: u32,
+    ) {
+        assert_ne!(1, row, "use Rpo128GenMerkleNodesFirstRowStage");
+        let command_encoder = command_buffer.new_compute_command_encoder();
+        #[cfg(debug_assertions)]
+        command_encoder.set_label(&format!("rpo merkle tree row={row}"));
+        // TODO: use param
+        let state_width = 12;
+        let field_size = size_of::<p18446744069414584321::Fp>() as NSUInteger;
+        assert_eq!(field_size as usize, size_of::<F>());
+        let mem_per_hasher = state_width * field_size;
+        let hashers_per_tg = Self::HASHERS_PER_THREADGROUP as NSUInteger;
+        command_encoder.set_threadgroup_memory_length(0, mem_per_hasher * hashers_per_tg * 2);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(nodes), 0);
+        command_encoder.set_bytes(1, size_of::<u32>() as NSUInteger, void_ptr(&row));
+        let grid_dim = metal::MTLSize::new((self.num_leaves >> row).try_into().unwrap(), 1, 1);
+        command_encoder.dispatch_threads(grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[nodes]);
         command_encoder.end_encoding()
     }
 }

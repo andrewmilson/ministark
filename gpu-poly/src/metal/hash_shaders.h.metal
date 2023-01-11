@@ -19,10 +19,16 @@ struct Rpo128PartialState {
 
 // RPO 128 digest output
 struct Rpo128Digest {
-    Fp d0;
-    Fp d1;
-    Fp d2;
-    Fp d3;
+    Fp e0;
+    Fp e1;
+    Fp e2;
+    Fp e3;
+};
+
+// Pair of RPO 128 digests
+struct Rpo128DigestPair {
+    Rpo128Digest d0;
+    Rpo128Digest d1;
 };
 
 // RPO parameters
@@ -69,6 +75,36 @@ constant const Fp ROUND_CONSTANTS_1[STATE_WIDTH * NUM_ROUNDS] = {
     Fp(3549624494907837709), Fp(4253629935471652443), Fp(2859199883984623807), Fp(1087607721547343649), Fp(7907517619951970198), Fp(11306402795121903516), Fp(10168009948206732524), Fp(9177440083248248246), Fp(13169036816957726187), Fp(12924186209140199217), Fp(9673006056831483321), Fp(747828276541750689)
 };
 
+inline void rpo_permute(threadgroup Fp* shared, unsigned local_state_offset) {
+#pragma unroll
+    for (unsigned i = 0; i < NUM_ROUNDS; i++) {
+#pragma unroll
+        for (unsigned m = 0; m < STATE_WIDTH; m++) {
+            Fp new_val = Fp(0);
+#pragma unroll
+            for (unsigned n = 0; n < STATE_WIDTH; n++) {
+                Fp old = shared[local_state_offset + n];
+                new_val = new_val + old * MDS[m * STATE_WIDTH + n];
+            }
+            new_val = new_val + ROUND_CONSTANTS_0[i * STATE_WIDTH + m];
+            shared[local_state_offset + STATE_WIDTH + m] = new_val.pow7();
+        }
+
+#pragma unroll
+        for (unsigned m = 0; m < STATE_WIDTH; m++) {
+            Fp new_val = Fp(0);
+#pragma unroll
+            for (unsigned n = 0; n < STATE_WIDTH; n++) {
+                Fp old = shared[local_state_offset + STATE_WIDTH + n];
+                new_val = new_val + old * MDS[m * STATE_WIDTH + n];
+            }
+            new_val = new_val + ROUND_CONSTANTS_1[i * STATE_WIDTH + m];
+            shared[local_state_offset + m] = new_val.pow10540996611094048183();
+        }
+    }
+}
+
+// TODO: make functions generic over the hash function
 // Rescue Prime Optimized hash function for 128 bit security: https://eprint.iacr.org/2022/1577.pdf
 // Absorbs 8 columns of equal length. Hashes are generated row-wise.
 [[ host_name("rpo_128_absorb_columns_and_permute_p18446744069414584321_fp") ]] kernel void 
@@ -99,32 +135,7 @@ Rpo128AbsorbColumnsAndPermute(constant Fp *col0 [[ buffer(0) ]],
     shared[local_state_offset + CAPACITY + 6] = col6[global_id];
     shared[local_state_offset + CAPACITY + 7] = col7[global_id];
 
-#pragma unroll
-    for (unsigned i = 0; i < NUM_ROUNDS; i++) {
-#pragma unroll
-        for (unsigned m = 0; m < STATE_WIDTH; m++) {
-            Fp new_val = Fp(0);
-#pragma unroll
-            for (unsigned n = 0; n < STATE_WIDTH; n++) {
-                Fp old = shared[local_state_offset + n];
-                new_val = new_val + old * MDS[m * STATE_WIDTH + n];
-            }
-            new_val = new_val + ROUND_CONSTANTS_0[i * STATE_WIDTH + m];
-            shared[local_state_offset + STATE_WIDTH + m] = new_val.pow7();
-        }
-
-#pragma unroll
-        for (unsigned m = 0; m < STATE_WIDTH; m++) {
-            Fp new_val = Fp(0);
-#pragma unroll
-            for (unsigned n = 0; n < STATE_WIDTH; n++) {
-                Fp old = shared[local_state_offset + STATE_WIDTH + n];
-                new_val = new_val + old * MDS[m * STATE_WIDTH + n];
-            }
-            new_val = new_val + ROUND_CONSTANTS_1[i * STATE_WIDTH + m];
-            shared[local_state_offset + m] = new_val.pow10540996611094048183();
-        }
-    }
+    rpo_permute(shared, local_state_offset);
 
     // TODO: add flag to only write to one of these buffers
     // redundant writes here are neglegable on performance <1%
@@ -132,10 +143,54 @@ Rpo128AbsorbColumnsAndPermute(constant Fp *col0 [[ buffer(0) ]],
     states[global_id] = *((threadgroup Rpo128PartialState*) (shared + local_state_offset));
 }
 
-// Generates a merkle tree using Rescue Prime Optimized.
-[[ host_name("rpo_128_absorb_columns_and_permute_p18446744069414584321_fp") ]] kernel void 
-Rpo128GenMerkleTree(device Fp *data [[ buffer(0) ]]) {
-    // global const uchar* data, const ulong leaves, const ulong round, global int* mutated
+// Generates the first row of merkle tree after the leaf nodes
+// using Rescue Prime Optimized hash function.
+[[ host_name("rpo_128_gen_merkle_nodes_first_row_p18446744069414584321_fp") ]] kernel void 
+Rpo128GenMerkleNodesFirstRow(constant Rpo128DigestPair *leaves [[ buffer(0) ]], 
+        device Rpo128Digest *nodes [[ buffer(1) ]],
+        threadgroup Fp *shared [[ threadgroup(0) ]],
+        unsigned global_id [[ thread_position_in_grid ]],
+        unsigned local_id [[ thread_index_in_threadgroup ]]) {
+    // fetch state
+    // *((threadgroup Rpo128PartialState*) (shared + local_state_offset)) = { .s0 = Fp(0); .s1 = Fp(0); .s2 = Fp(0); .s3 = Fp(0) };
+    unsigned local_state_offset = local_id * STATE_WIDTH * 2;
+    shared[local_state_offset + 0] = Fp(0);
+    shared[local_state_offset + 1] = Fp(0);
+    shared[local_state_offset + 2] = Fp(0);
+    shared[local_state_offset + 3] = Fp(0);
+    // absorb children as input
+    *((threadgroup Rpo128DigestPair*) (shared + local_state_offset + CAPACITY)) = leaves[global_id];
+
+    rpo_permute(shared, local_state_offset);
+
+    // write digest
+    nodes[N / 2 + global_id] = *((threadgroup Rpo128Digest*) (shared + local_state_offset + CAPACITY));
+}
+
+// Generates a row of merkle tree nodes using the Rescue Prime Optimized hash function.
+[[ host_name("rpo_128_gen_merkle_nodes_row_p18446744069414584321_fp") ]] kernel void 
+Rpo128GenMerkleNodesRow(device Rpo128Digest *nodes [[ buffer(0) ]],
+        constant unsigned &round [[ buffer(1) ]],
+        threadgroup Fp *shared [[ threadgroup(0) ]],
+        unsigned global_id [[ thread_position_in_grid ]],
+        unsigned local_id [[ thread_index_in_threadgroup ]]) {
+    // fetch state
+    // *((threadgroup Rpo128PartialState*) (shared + local_state_offset)) = { .s0 = Fp(0); .s1 = Fp(0); .s2 = Fp(0); .s3 = Fp(0) };
+    unsigned local_state_offset = local_id * STATE_WIDTH * 2;
+    shared[local_state_offset + 0] = Fp(0);
+    shared[local_state_offset + 1] = Fp(0);
+    shared[local_state_offset + 2] = Fp(0);
+    shared[local_state_offset + 3] = Fp(0);
+    // absorb children as input
+    // TODO: c++ cast for readability
+    *((threadgroup Rpo128DigestPair*) (shared + local_state_offset + CAPACITY)) = ((device Rpo128DigestPair*) nodes)[(N >> round) + global_id];
+
+    rpo_permute(shared, local_state_offset);
+
+    // write digest
+    nodes[(N >> round) + global_id] = *((threadgroup Rpo128Digest*) (shared + local_state_offset + CAPACITY));
+}
+
 }
 
 #endif /* hash_shaders_h */

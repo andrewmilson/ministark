@@ -2,6 +2,7 @@
 
 use ark_ff::One;
 use gpu_poly::fields::p18446744069414584321::Fp;
+use gpu_poly::plan::gen_rpo_merkle_tree;
 use gpu_poly::plan::GpuRpo128;
 use gpu_poly::prelude::*;
 use std::time::Instant;
@@ -18,8 +19,8 @@ fn gpu_rpo() {
     let col5 = col.to_vec_in(PageAlignedAllocator);
     let col6 = col.to_vec_in(PageAlignedAllocator);
     let col7 = col.to_vec_in(PageAlignedAllocator);
-    let input_size = 104;
-    let requires_padding = input_size % 8 == 0;
+    let input_size = 8;
+    let requires_padding = input_size % 8 != 0;
     let mut rpo = GpuRpo128::new(n, requires_padding);
 
     let now = Instant::now();
@@ -42,6 +43,18 @@ fn gpu_rpo() {
 
     let hashes = pollster::block_on(rpo.finish());
     println!("Hash in {:?}", now.elapsed());
+    println!("First: {:?}", Fp::one().0);
+    // println!("First: {:?}", hashes[0][0].0);
+
+    let now = Instant::now();
+    let merkle_tree = pollster::block_on(gen_rpo_merkle_tree(&hashes));
+    println!("Root: {:?}", merkle_tree[0]);
+    println!("Root1: {:?}", merkle_tree[1]);
+    println!("Root1: {:?}", merkle_tree[2]);
+    println!("Root1: {:?}", merkle_tree[3]);
+    println!("Root1: {:?}", merkle_tree[merkle_tree.len() / 2 + 1]);
+    println!("Merkle tree in {:?}", now.elapsed());
+
     println!(
         "{}, {}, {}, {}",
         hashes[1][0], hashes[1][1], hashes[1][2], hashes[1][3]

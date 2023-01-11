@@ -3,10 +3,14 @@
 use crate::allocator::PageAlignedAllocator;
 use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
+use crate::stage::Rpo128GenMerkleNodesFirstRowStage;
+use crate::stage::Rpo128GenMerkleNodesRowStage;
 use crate::stage::Rpo128Stage;
 use crate::stage::ScaleAndNormalizeGpuStage;
 use crate::stage::Variant;
 use crate::utils;
+use crate::utils::buffer_mut_no_copy;
+use crate::utils::buffer_no_copy;
 use crate::GpuField;
 use crate::GpuVec;
 use alloc::rc::Rc;
@@ -27,10 +31,12 @@ pub struct GpuRpo128<'a, F: GpuField> {
     _requires_padding: bool,
     stage: Rpo128Stage<F>,
     state: Vec<&'a GpuVec<F>>,
+    state_rows: Vec<GpuVec<[F; Rpo128Stage::RATE]>>,
+    state_pos: usize,
     command_buffer: Option<&'a CommandBufferRef>,
 }
 
-impl<'a, F: GpuField + Zero + Copy + One> GpuRpo128<'a, F> {
+impl<'a, F: GpuField + From<u32> + Copy> GpuRpo128<'a, F> {
     pub const MIN_SIZE: usize = 256;
 
     pub fn new(n: usize, requires_padding: bool) -> Self {
@@ -38,6 +44,8 @@ impl<'a, F: GpuField + Zero + Copy + One> GpuRpo128<'a, F> {
             n,
             _requires_padding: requires_padding,
             stage: Rpo128Stage::new(&PLANNER.library, n, requires_padding),
+            state_rows: Vec::new(),
+            state_pos: 0,
             state: Vec::new(),
             command_buffer: None,
         }
@@ -47,6 +55,8 @@ impl<'a, F: GpuField + Zero + Copy + One> GpuRpo128<'a, F> {
         self.state.push(col);
         if self.state.len() % Rpo128Stage::<F>::RATE == 0 {
             let command_buffer = PLANNER.command_queue.new_command_buffer();
+            #[cfg(debug_assertions)]
+            command_buffer.set_label("rpo update");
             let state = &core::mem::take(&mut self.state)[0..8];
             self.stage.encode(command_buffer, state.try_into().unwrap());
             command_buffer.commit();
@@ -73,13 +83,13 @@ impl<'a, F: GpuField + Zero + Copy + One> GpuRpo128<'a, F> {
         // to make the input length a multiple of the rate." - https://eprint.iacr.org/2022/1577.pdf
         // TODO: check self.requires_padding == true
         let mut ones = Vec::with_capacity_in(self.n, PageAlignedAllocator);
-        ones.resize(self.n, F::one());
+        ones.resize(self.n, F::from(1));
 
         let mut zeros: GpuVec<F>;
         if self.state.len() != Rpo128Stage::<F>::RATE {
             // only access memory for zeros if needed
             zeros = Vec::with_capacity_in(self.n, PageAlignedAllocator);
-            zeros.resize(self.n, F::zero());
+            zeros.resize(self.n, F::from(0));
             self.state.push(&ones);
             while self.state.len() != 8 {
                 self.state.push(&zeros);
@@ -93,6 +103,31 @@ impl<'a, F: GpuField + Zero + Copy + One> GpuRpo128<'a, F> {
         command_buffer.wait_until_completed();
         self.stage.digests
     }
+}
+
+pub async fn gen_rpo_merkle_tree<F: GpuField + From<u32> + Copy>(
+    leaves: &GpuVec<[F; 4]>,
+) -> GpuVec<[F; 4]> {
+    let num_leaves = leaves.len();
+    let leaves_buffer = buffer_no_copy(PLANNER.library.device(), leaves);
+    let mut nodes = Vec::new_in(PageAlignedAllocator);
+    nodes.resize(num_leaves, [F::from(0); 4]);
+    let nodes_buffer = buffer_mut_no_copy(PLANNER.library.device(), &mut nodes);
+
+    let first_row_stage = Rpo128GenMerkleNodesFirstRowStage::<F>::new(&PLANNER.library, num_leaves);
+    let nth_row_stage = Rpo128GenMerkleNodesRowStage::<F>::new(&PLANNER.library, num_leaves);
+
+    let command_buffer = PLANNER.command_queue.new_command_buffer();
+    #[cfg(debug_assertions)]
+    command_buffer.set_label("rpo merkle tree");
+    first_row_stage.encode(command_buffer, &leaves_buffer, &nodes_buffer);
+    for row in 2..=num_leaves.ilog2() {
+        nth_row_stage.encode(command_buffer, &nodes_buffer, row);
+    }
+    command_buffer.commit();
+    command_buffer.wait_until_completed();
+
+    nodes
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
