@@ -31,8 +31,6 @@ pub struct GpuRpo128<'a, F: GpuField> {
     _requires_padding: bool,
     stage: Rpo128Stage<F>,
     state: Vec<&'a GpuVec<F>>,
-    state_rows: Vec<GpuVec<[F; Rpo128Stage::RATE]>>,
-    state_pos: usize,
     command_buffer: Option<&'a CommandBufferRef>,
 }
 
@@ -44,8 +42,6 @@ impl<'a, F: GpuField + From<u32> + Copy> GpuRpo128<'a, F> {
             n,
             _requires_padding: requires_padding,
             stage: Rpo128Stage::new(&PLANNER.library, n, requires_padding),
-            state_rows: Vec::new(),
-            state_pos: 0,
             state: Vec::new(),
             command_buffer: None,
         }

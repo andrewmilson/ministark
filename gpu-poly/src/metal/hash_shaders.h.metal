@@ -104,6 +104,44 @@ inline void rpo_permute(threadgroup Fp* shared, unsigned local_state_offset) {
     }
 }
 
+// // Rescue Prime Optimized hash function for 128 bit security: https://eprint.iacr.org/2022/1577.pdf
+// [[ host_name("rpo_128_absorb_rows_and_permute_p18446744069414584321_fp") ]] kernel void 
+// Rpo128AbsorbRowsAndPermute(constant Fp *matrix [[ buffer(0) ]],
+//         device Rpo128PartialState *states [[ buffer(1) ]],
+//         device Rpo128Digest *digests [[ buffer(2) ]],
+//         constant unsigned &num_rows [[ buffer(3) ]],
+//         constant unsigned &row_offset [[ buffer(4) ]],
+//         constant unsigned &input_width [[ buffer(5) ]],
+//         threadgroup Fp *shared [[ threadgroup(0) ]],
+//         unsigned global_id [[ thread_position_in_grid ]],
+//         unsigned local_id [[ thread_index_in_threadgroup ]]) {   
+    
+
+
+//     // unsigned local_state_offset = local_id * STATE_WIDTH * 2;
+
+//     // // fetch state
+//     // unsigned local_state_offset = local_id * STATE_WIDTH * 2;
+//     // // faster than loading individual elements
+//     // *((threadgroup Rpo128PartialState*) (shared + local_state_offset)) = states[global_id];
+//     // // absorb the input into the state
+//     // shared[local_state_offset + CAPACITY + 0] = col0[global_id];
+//     // shared[local_state_offset + CAPACITY + 1] = col1[global_id];
+//     // shared[local_state_offset + CAPACITY + 2] = col2[global_id];
+//     // shared[local_state_offset + CAPACITY + 3] = col3[global_id];
+//     // shared[local_state_offset + CAPACITY + 4] = col4[global_id];
+//     // shared[local_state_offset + CAPACITY + 5] = col5[global_id];
+//     // shared[local_state_offset + CAPACITY + 6] = col6[global_id];
+//     // shared[local_state_offset + CAPACITY + 7] = col7[global_id];
+
+//     rpo_permute(shared, local_state_offset);
+
+//     // TODO: add flag to only write to one of these buffers
+//     // redundant writes here are neglegable on performance <1%
+//     digests[global_id] = *((threadgroup Rpo128Digest*) (shared + local_state_offset + CAPACITY));
+//     states[global_id] = *((threadgroup Rpo128PartialState*) (shared + local_state_offset));
+// }
+
 // TODO: make functions generic over the hash function
 // Rescue Prime Optimized hash function for 128 bit security: https://eprint.iacr.org/2022/1577.pdf
 // Absorbs 8 columns of equal length. Hashes are generated row-wise.
