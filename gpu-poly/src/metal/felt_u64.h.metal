@@ -22,6 +22,11 @@ namespace p18446744069414584321
             return Fp(sub(inner, rhs.inner));
         }
 
+        constexpr explicit operator unsigned long() const
+        {
+            return inner;
+        }
+
         Fp operator*(const Fp rhs) const
         {
             return Fp(mul(inner, rhs.inner));
@@ -159,8 +164,7 @@ namespace p18446744069414584321
 
         inline unsigned long mul(const unsigned long lhs, const unsigned long rhs) const
         {
-            // u128 x = u128(lhs) * u128(rhs);
-            unsigned long xl = lhs * rhs; // x.low;
+            unsigned long xl = lhs * rhs;
             unsigned long xh = metal::mulhi(lhs, rhs);
             unsigned long tmp = xl << 32;
             unsigned a_overflow = xl > (0xFFFFFFFFFFFFFFFF - tmp);

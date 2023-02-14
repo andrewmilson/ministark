@@ -49,17 +49,17 @@ pub trait Air {
     /// Must be a power of two.
     fn ce_blowup_factor(&self) -> usize {
         let trace_degree = self.trace_len() - 1;
-        let ret = utils::ceil_power_of_two(
-            self.constraints()
-                .iter()
-                .map(|constraint| {
-                    let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
-                    numerator_degree - denominator_degree
-                })
-                .max()
-                // TODO: ceil_power_of_two might not be correct here. check the math
-                .map_or(0, |degree| utils::ceil_power_of_two(degree) / trace_degree),
-        );
+        let ret = self
+            .constraints()
+            .iter()
+            .map(|constraint| {
+                let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
+                numerator_degree - denominator_degree
+            })
+            .max()
+            // TODO: ceil_power_of_two might not be correct here. check the math
+            .map_or(0, |degree| degree / trace_degree)
+            .next_power_of_two();
         ret
     }
 

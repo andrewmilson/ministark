@@ -41,6 +41,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     ) -> Matrix<A::Fq> {
         use crate::calculator::lde_calculator;
         use crate::constraints::EvaluationLde;
+        use std::println;
         let command_queue = &PLANNER.command_queue;
         let device = command_queue.device();
 
@@ -74,13 +75,17 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         );
 
         #[cfg(debug_assertions)]
-        expected_result.0[0]
-            .iter()
-            .zip(&result.0[0])
-            .enumerate()
-            .for_each(|(i, (expected, actual))| {
-                assert_eq!(expected, actual, "mismatch at {i}");
-            });
+        {
+            #[cfg(feature = "std")]
+            println!("{:?}", expected_result.0[0][0]);
+            expected_result.0[0]
+                .iter()
+                .zip(&result.0[0])
+                .enumerate()
+                .for_each(|(i, (expected, actual))| {
+                    assert_eq!(expected, actual, "mismatch at {i}");
+                });
+        }
 
         result
     }

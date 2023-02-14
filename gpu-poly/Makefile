@@ -1,4 +1,4 @@
-METAL_FLAGS = -fforce-enable-int128
+METAL_FLAGS=
 all: shaders
 debug: METAL_FLAGS += -fdebug-info-for-profiling
 debug: shaders

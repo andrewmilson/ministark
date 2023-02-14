@@ -22,6 +22,20 @@ use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+// pub trait StarkMatrix<F: GpuField + Field> {
+//     fn num_cols(&self) -> usize;
+
+//     fn num_rows(&self) -> usize;
+
+//     // TODO
+//     async fn interpolate_evaluate_commit<D: Digest>(
+//         &self,
+//         interp_domain: Radix2EvaluationDomain<F::FftField>,
+//         eval_domain: Radix2EvaluationDomain<F::FftField>,
+//     ) -> (Self, Self, MerkleTree<D>);
+//     async fn commit_to_rows(&self) -> MerkleTree<D>;
+// }
+
 /// Matrix is an array of columns.
 pub struct Matrix<F>(pub Vec<GpuVec<F>>);
 

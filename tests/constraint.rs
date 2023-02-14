@@ -102,7 +102,7 @@ fn symbolic_evaluation_with_challenges() {
     let n = 2048;
     let constraint = (0.curr() - 0.challenge()) * (0.curr() - 1.challenge());
     let (numerator_degree, denominator_degree) = constraint.degree(n);
-    let blowup = utils::ceil_power_of_two((numerator_degree - denominator_degree) / n);
+    let blowup = ((numerator_degree - denominator_degree) / n).next_power_of_two();
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
     let alpha = Fp::from(3);
@@ -209,7 +209,7 @@ fn evaluate_binary_constraint() {
     // constrains column 0 values to 0 or 1
     let constraint = 0.curr() * (0.curr() - FieldConstant::Fp(Fp::one()));
     let (numerator_degree, denominator_degree) = constraint.degree(n);
-    let blowup = utils::ceil_power_of_two((numerator_degree - denominator_degree) / n);
+    let blowup = ((numerator_degree - denominator_degree) / n).next_power_of_two();
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
     let matrix = gen_binary_valued_matrix(n, Fp::zero(), Fp::one());

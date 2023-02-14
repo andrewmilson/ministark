@@ -14,7 +14,7 @@ use gpu_poly::prelude::*;
 use objc::rc::autoreleasepool;
 
 #[test]
-fn fft() {
+fn fft_with_64_bit_field() {
     autoreleasepool(|| {
         let domains = [
             Radix2EvaluationDomain::new(2048).unwrap(),

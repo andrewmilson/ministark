@@ -53,15 +53,6 @@ pub fn interleave<T: Copy + Send + Sync + Default, const RADIX: usize>(
 //     println!()
 // }
 
-/// Rounds the input value up the the nearest power of two
-pub fn ceil_power_of_two(value: usize) -> usize {
-    if value.is_power_of_two() {
-        value
-    } else {
-        value.next_power_of_two()
-    }
-}
-
 // from arkworks
 /// This evaluates the vanishing polynomial for this domain at tau.
 pub fn evaluate_vanishing_polynomial<F: FftField, T: Field>(

@@ -14,8 +14,6 @@ use crate::GpuVec;
 use alloc::string::String;
 use alloc::vec::Vec;
 use ark_ff::Field;
-use ark_ff::One;
-use ark_ff::Zero;
 use core::marker::PhantomData;
 use core::mem::size_of;
 use metal::NSUInteger;
@@ -1207,7 +1205,7 @@ impl<F: GpuField> GenerateTwiddlesStage<F> {
     }
 }
 
-pub struct Rpo128Stage<F: GpuField> {
+pub struct Rpo256AbsorbColumnsStage<F: GpuField> {
     n: usize,
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
@@ -1218,20 +1216,11 @@ pub struct Rpo128Stage<F: GpuField> {
     digests_buffer: metal::Buffer,
 }
 
-impl<F: GpuField + From<u32> + Copy> Rpo128Stage<F> {
-    // TODO: move rescue params
-    pub const STATE_WIDTH: usize = 12;
-    pub const CAPACITY: usize = 4;
-    pub const RATE: usize = Self::STATE_WIDTH - Self::CAPACITY;
-    pub const NUM_ROUNDS: usize = 7;
-
-    pub const HASHERS_PER_THREADGROUP: usize = 32;
+impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbColumnsStage<F> {
+    const HASHERS_PER_THREADGROUP: usize = 64;
 
     pub fn new(library: &metal::LibraryRef, n: usize, requires_padding: bool) -> Self {
-        assert!(n.is_power_of_two());
-        assert!(n >= Self::HASHERS_PER_THREADGROUP);
-
-        let kernel_name = format!("rpo_128_absorb_columns_and_permute_{}", F::field_name());
+        let kernel_name = format!("rpo_256_absorb_columns_and_permute_{}", F::field_name());
         let func = library.get_function(&kernel_name, None).unwrap();
         let pipeline = library
             .device()
@@ -1261,7 +1250,7 @@ impl<F: GpuField + From<u32> + Copy> Rpo128Stage<F> {
         );
         let states_buffer = buffer_mut_no_copy(library.device(), &mut _states);
 
-        Rpo128Stage {
+        Rpo256AbsorbColumnsStage {
             n,
             threadgroup_dim,
             pipeline,
@@ -1284,12 +1273,12 @@ impl<F: GpuField + From<u32> + Copy> Rpo128Stage<F> {
         assert_eq!(self.n, col7.len());
 
         let device = PLANNER.library.device();
-        let command_encoder = command_buffer.new_compute_command_encoder();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
         #[cfg(debug_assertions)]
         command_encoder.set_label("rpo absorb and permute 8 columns");
-        let state_width = Self::STATE_WIDTH as NSUInteger;
-        let field_size = size_of::<p18446744069414584321::Fp>() as NSUInteger;
-        assert_eq!(field_size as usize, size_of::<F>());
+        let state_width = 16;
+        let field_size = size_of::<F>() as NSUInteger;
         let mem_per_hasher = state_width * field_size;
         let hashers_per_tg = Self::HASHERS_PER_THREADGROUP as NSUInteger;
         command_encoder.set_threadgroup_memory_length(0, mem_per_hasher * hashers_per_tg * 2);
@@ -1310,15 +1299,95 @@ impl<F: GpuField + From<u32> + Copy> Rpo128Stage<F> {
     }
 }
 
-pub struct Rpo128GenMerkleNodesFirstRowStage<F: GpuField> {
+pub struct Rpo256AbsorbRowsStage<F: GpuField> {
+    n: usize,
+    pipeline: metal::ComputePipelineState,
+    threadgroup_dim: metal::MTLSize,
+    grid_dim: metal::MTLSize,
+    _states: GpuVec<[F; 4]>,
+    states_buffer: metal::Buffer,
+    pub digests: GpuVec<[F; 4]>,
+    digests_buffer: metal::Buffer,
+}
+
+impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbRowsStage<F> {
+    const HASHERS_PER_THREADGROUP: usize = 128;
+
+    pub fn new(library: &metal::LibraryRef, n: usize, requires_padding: bool) -> Self {
+        let kernel_name = format!("rpo_256_absorb_rows_and_permute_{}", F::field_name());
+        let func = library.get_function(&kernel_name, None).unwrap();
+        let pipeline = library
+            .device()
+            .new_compute_pipeline_state_with_function(&func)
+            .unwrap();
+
+        let threadgroup_dim =
+            metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP.try_into().unwrap(), 1, 1);
+        let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
+
+        let zero = F::from(0);
+        let one = F::from(1);
+        let mut digests = Vec::new_in(PageAlignedAllocator);
+        digests.resize(n, [zero; 4]);
+        let digests_buffer = buffer_mut_no_copy(library.device(), &mut digests);
+
+        let mut _states = Vec::new_in(PageAlignedAllocator);
+        _states.resize(
+            n,
+            [
+                // apply RPO's padding rule
+                if requires_padding { one } else { zero },
+                zero,
+                zero,
+                zero,
+            ],
+        );
+        let states_buffer = buffer_mut_no_copy(library.device(), &mut _states);
+
+        Rpo256AbsorbRowsStage {
+            n,
+            threadgroup_dim,
+            pipeline,
+            grid_dim,
+            digests,
+            digests_buffer,
+            _states,
+            states_buffer,
+        }
+    }
+
+    pub fn encode(&self, command_buffer: &metal::CommandBufferRef, rows: &GpuVec<[F; 8]>) {
+        assert_eq!(self.n, rows.len());
+
+        let device = PLANNER.library.device();
+        let command_encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
+        #[cfg(debug_assertions)]
+        command_encoder.set_label("rpo absorb and permute 8 column rows");
+        let state_width = 16;
+        let field_size = size_of::<F>() as NSUInteger;
+        let mem_per_hasher = state_width * field_size;
+        let hashers_per_tg = Self::HASHERS_PER_THREADGROUP as NSUInteger;
+        command_encoder.set_threadgroup_memory_length(0, mem_per_hasher * hashers_per_tg * 2);
+        command_encoder.set_compute_pipeline_state(&self.pipeline);
+        command_encoder.set_buffer(0, Some(&buffer_no_copy(device, rows)), 0);
+        command_encoder.set_buffer(1, Some(&self.states_buffer), 0);
+        command_encoder.set_buffer(2, Some(&self.digests_buffer), 0);
+        command_encoder.dispatch_threads(self.grid_dim, self.threadgroup_dim);
+        command_encoder.memory_barrier_with_resources(&[&self.states_buffer, &self.digests_buffer]);
+        command_encoder.end_encoding()
+    }
+}
+
+pub struct Rpo256GenMerkleNodesFirstRowStage<F: GpuField> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
     _phantom: PhantomData<F>,
 }
 
-impl<F: GpuField> Rpo128GenMerkleNodesFirstRowStage<F> {
-    pub const HASHERS_PER_THREADGROUP: usize = 32;
+impl<F: GpuField> Rpo256GenMerkleNodesFirstRowStage<F> {
+    pub const HASHERS_PER_THREADGROUP: usize = 64;
 
     pub fn new(library: &metal::LibraryRef, num_leaves: usize) -> Self {
         use metal::MTLDataType::UInt;
@@ -1338,7 +1407,7 @@ impl<F: GpuField> Rpo128GenMerkleNodesFirstRowStage<F> {
             metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP.try_into().unwrap(), 1, 1);
         let grid_dim = metal::MTLSize::new((num_leaves / 2).try_into().unwrap(), 1, 1);
 
-        Rpo128GenMerkleNodesFirstRowStage {
+        Rpo256GenMerkleNodesFirstRowStage {
             pipeline,
             threadgroup_dim,
             grid_dim,
@@ -1369,14 +1438,14 @@ impl<F: GpuField> Rpo128GenMerkleNodesFirstRowStage<F> {
     }
 }
 
-pub struct Rpo128GenMerkleNodesRowStage<F: GpuField> {
+pub struct Rpo256GenMerkleNodesRowStage<F: GpuField> {
     num_leaves: usize,
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     _phantom: PhantomData<F>,
 }
 
-impl<F: GpuField> Rpo128GenMerkleNodesRowStage<F> {
+impl<F: GpuField> Rpo256GenMerkleNodesRowStage<F> {
     pub const HASHERS_PER_THREADGROUP: usize = 32;
 
     pub fn new(library: &metal::LibraryRef, num_leaves: usize) -> Self {
@@ -1395,7 +1464,7 @@ impl<F: GpuField> Rpo128GenMerkleNodesRowStage<F> {
         let threadgroup_dim =
             metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP as NSUInteger, 1, 1);
 
-        Rpo128GenMerkleNodesRowStage {
+        Rpo256GenMerkleNodesRowStage {
             num_leaves,
             pipeline,
             threadgroup_dim,
@@ -1409,7 +1478,7 @@ impl<F: GpuField> Rpo128GenMerkleNodesRowStage<F> {
         nodes: &metal::Buffer,
         row: u32,
     ) {
-        assert_ne!(1, row, "use Rpo128GenMerkleNodesFirstRowStage");
+        assert_ne!(1, row, "use Rpo256GenMerkleNodesFirstRowStage");
         let command_encoder = command_buffer.new_compute_command_encoder();
         #[cfg(debug_assertions)]
         command_encoder.set_label(&format!("rpo merkle tree row={row}"));

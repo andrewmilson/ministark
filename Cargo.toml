@@ -33,11 +33,12 @@ harness = false
 sha2 = "0.10.6"
 digest = "0.10.5"
 rand_chacha = "0.3.1"
-ark-std = { git = "https://github.com/arkworks-rs/std" }
-ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
+# ark-sponge = { git = "https://github.com/arkworks-rs/sponge.git" }
+ark-std = "0.4.0"
+ark-ff = "0.4.0"
 ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator" }
-ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
-ark-ff-optimized = { git = "https://github.com/andrewmilson/optimized-fields" }
+ark-serialize = "0.4.0"
+ark-ff-optimized = "0.4.0"
 gpu-poly = { path = "./gpu-poly" }
 rand = "0.8.5"
 snafu = { version = "0.7.4", default-features = false }
