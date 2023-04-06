@@ -1257,18 +1257,18 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "winter-math"
-version = "0.4.2"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "824b459961e5d679a1eb62ec1a71c85ac25c5d3bfd126874fcd32b591202d896"
+checksum = "fd1b0699114f1fb5da6e0304b2d610e4a489f6637b933d69f0466d48b1d40610"
 dependencies = [
  "winter-utils",
 ]
 
 [[package]]
 name = "winter-utils"
-version = "0.4.2"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f0dbf7ca6aa5893b59928718bf1e7dbe7279bb277b5aa4c4898ddf5004f9417"
+checksum = "b258b57f9e8e0d6ffbd3066b2744208242691850f496e36e13448fbbe1048c7c"
 
 [[package]]
 name = "zeroize"
