@@ -41,7 +41,6 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     ) -> Matrix<A::Fq> {
         use crate::calculator::lde_calculator;
         use crate::constraints::EvaluationLde;
-        use std::println;
         let command_queue = &PLANNER.command_queue;
         let device = command_queue.device();
 
@@ -75,17 +74,13 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         );
 
         #[cfg(debug_assertions)]
-        {
-            #[cfg(feature = "std")]
-            println!("{:?}", expected_result.0[0][0]);
-            expected_result.0[0]
-                .iter()
-                .zip(&result.0[0])
-                .enumerate()
-                .for_each(|(i, (expected, actual))| {
-                    assert_eq!(expected, actual, "mismatch at {i}");
-                });
-        }
+        expected_result.0[0]
+            .iter()
+            .zip(&result.0[0])
+            .enumerate()
+            .for_each(|(i, (expected, actual))| {
+                assert_eq!(expected, actual, "mismatch at {i}");
+            });
 
         result
     }
@@ -103,7 +98,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let step = self.air.ce_blowup_factor() as isize;
         let xs = ce_domain.elements();
         let n = ce_domain.size();
-        let mut result = Vec::with_capacity_in(n, PageAlignedAllocator);
+        let mut result = Vec::with_capacity_in(n, GpuAllocator);
         result.resize(n, A::Fq::zero());
 
         let trace_info = self.air.trace_info();
@@ -339,7 +334,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
             ark_std::cfg_into_iter!(composition_trace_polys.0)
                 .zip(composition_trace_alphas)
                 .map(|(coeffs, alpha)| {
-                    let mut res = Vec::new_in(PageAlignedAllocator);
+                    let mut res = Vec::new_in(GpuAllocator);
                     res.resize(trace_domain.size(), A::Fq::zero());
                     divide_out_point_into(&mut res, &coeffs, &z_n, &alpha);
                     res
@@ -359,7 +354,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
             ark_std::cfg_into_iter!(trace_arguments)
                 .zip(execution_trace_alphas)
                 .map(|((col, offset), alpha)| {
-                    let mut res = Vec::new_in(PageAlignedAllocator);
+                    let mut res = Vec::new_in(GpuAllocator);
                     res.resize(trace_domain.size(), A::Fq::zero());
                     let x = z * if offset >= 0 { g } else { g_inv }.pow([offset.abs() as u64]);
                     if base_columns_range.contains(&col) {

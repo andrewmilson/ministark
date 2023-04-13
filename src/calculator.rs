@@ -11,8 +11,6 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use ark_ff::One;
 use ark_poly::EvaluationDomain;
-use gpu_poly::prelude::PageAlignedAllocator;
-use gpu_poly::prelude::PLANNER;
 use gpu_poly::prelude::*;
 use gpu_poly::stage::AddAssignConstStage;
 use gpu_poly::stage::AddIntoConstStage;
@@ -94,7 +92,7 @@ pub fn lde_calculator<A: Air>(
         X => {
             // there is only one X (since we are reusing shared nodes) so generate an LDE
             // for it TODO: parallelize
-            let mut x_lde = Vec::with_capacity_in(ce_domain.size(), PageAlignedAllocator);
+            let mut x_lde = Vec::with_capacity_in(ce_domain.size(), GpuAllocator);
             for x in ce_domain.elements() {
                 x_lde.push(x);
             }
@@ -729,14 +727,14 @@ impl<Fp: GpuField, Fq: GpuField> LdeCache<Fp, Fq> {
                 let n = self.lde_size;
                 let buffer = match ty {
                     FieldType::Fp => {
-                        let mut buffer = GpuVec::<Fp>::with_capacity_in(n, PageAlignedAllocator);
+                        let mut buffer = GpuVec::<Fp>::with_capacity_in(n, GpuAllocator);
                         // ok because all buffers are treated as uninitialized
                         unsafe { buffer.set_len(n) }
                         let gpu_buffer = buffer_no_copy(device, &buffer);
                         EvaluationLde::Fp(buffer, gpu_buffer)
                     }
                     FieldType::Fq => {
-                        let mut buffer = GpuVec::<Fq>::with_capacity_in(n, PageAlignedAllocator);
+                        let mut buffer = GpuVec::<Fq>::with_capacity_in(n, GpuAllocator);
                         // ok because all buffers are treated as uninitialized
                         unsafe { buffer.set_len(n) }
                         let gpu_buffer = buffer_no_copy(device, &buffer);

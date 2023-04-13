@@ -12,15 +12,14 @@ use ark_poly::Radix2EvaluationDomain;
 use ark_std::rand::seq::SliceRandom;
 use ark_std::rand::Rng;
 use core::marker::PhantomData;
-use gpu_poly::allocator::PageAlignedAllocator;
 use gpu_poly::fields::p18446744069414584321::Fp;
+use gpu_poly::prelude::GpuAllocator;
 use gpu_poly::GpuFftField;
 use gpu_poly::GpuField;
 use ministark::constraints::AlgebraicExpression;
 use ministark::constraints::ExecutionTraceColumn;
 use ministark::constraints::FieldConstant;
 use ministark::constraints::VerifierChallenge;
-use ministark::utils;
 use ministark::Air;
 use ministark::Matrix;
 use ministark::ProofOptions;
@@ -247,10 +246,10 @@ fn evaluate_permutation_constraint() {
         })
         .collect::<Vec<Fp>>();
     let matrix = Matrix::new(vec![
-        original_col.to_vec_in(PageAlignedAllocator),
-        shuffled_col.to_vec_in(PageAlignedAllocator),
-        original_product.to_vec_in(PageAlignedAllocator),
-        shuffled_product.to_vec_in(PageAlignedAllocator),
+        original_col.to_vec_in(GpuAllocator),
+        shuffled_col.to_vec_in(GpuAllocator),
+        original_product.to_vec_in(GpuAllocator),
+        shuffled_product.to_vec_in(GpuAllocator),
     ]);
     let alpha = 0; // first verifier challenge
     let original_col = 0;
@@ -305,7 +304,7 @@ fn evaluate_zerofier_constraint() {
     let blowup = 16;
     let trace_domain = Radix2EvaluationDomain::<Fp>::new(n).unwrap();
     let lde_domain = Radix2EvaluationDomain::<Fp>::new_coset(n * blowup, Fp::GENERATOR).unwrap();
-    let curr_instr_column = vec![instr; n].to_vec_in(PageAlignedAllocator);
+    let curr_instr_column = vec![instr; n].to_vec_in(GpuAllocator);
     let permutation_column = (0..n)
         .scan(Fp::one(), |acc, i| {
             let ret = *acc;
@@ -313,7 +312,7 @@ fn evaluate_zerofier_constraint() {
             Some(ret)
         })
         .collect::<Vec<Fp>>()
-        .to_vec_in(PageAlignedAllocator);
+        .to_vec_in(GpuAllocator);
     let matrix = Matrix::new(vec![curr_instr_column, permutation_column]);
     let poly_matrix = matrix.interpolate(trace_domain);
     let lde_matrix = poly_matrix.evaluate(lde_domain);
@@ -345,8 +344,8 @@ fn evaluate_zerofier_constraint() {
 /// └───────┴───────┘
 fn gen_fib_matrix<F: Field>(n: usize) -> Matrix<F> {
     let mut columns = vec![
-        Vec::with_capacity_in(n, PageAlignedAllocator),
-        Vec::with_capacity_in(n, PageAlignedAllocator),
+        Vec::with_capacity_in(n, GpuAllocator),
+        Vec::with_capacity_in(n, GpuAllocator),
     ];
     columns[0].push(F::one());
     columns[1].push(F::one());
@@ -377,7 +376,7 @@ fn gen_fib_matrix<F: Field>(n: usize) -> Matrix<F> {
 /// └───────┘
 fn gen_binary_valued_matrix<F: GpuField + Field>(n: usize, v1: F, v2: F) -> Matrix<F> {
     let mut rng = ark_std::test_rng();
-    let mut col = Vec::with_capacity_in(n, PageAlignedAllocator);
+    let mut col = Vec::with_capacity_in(n, GpuAllocator);
     for _ in 0..n {
         if rng.gen() {
             col.push(v1)
@@ -419,7 +418,7 @@ fn evaluate_symbolic<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     let blowup_factor = blowup_factor as isize;
     let xs = lde_domain.elements();
     let n = lde_domain.size();
-    let mut result = Vec::with_capacity_in(n, PageAlignedAllocator);
+    let mut result = Vec::with_capacity_in(n, GpuAllocator);
     result.resize(n, Fq::zero());
 
     for (i, (v, x)) in result.iter_mut().zip(xs).enumerate() {

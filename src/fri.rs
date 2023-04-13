@@ -553,7 +553,7 @@ where
                 .sum()
         })
         .collect::<Vec<F>>()
-        .to_vec_in(PageAlignedAllocator);
+        .to_vec_in(GpuAllocator);
 
     let drp_offset = domain_offset.pow([folding_factor as u64]);
     let drp_domain = Radix2EvaluationDomain::new_coset(n / folding_factor, drp_offset).unwrap();
@@ -580,7 +580,7 @@ where
     }
 
     let coeffs = domain.ifft(&evals);
-    coeffs.to_vec_in(PageAlignedAllocator)
+    coeffs.to_vec_in(GpuAllocator)
 }
 
 fn fft<F: GpuField + Field>(
@@ -601,7 +601,7 @@ where
     }
 
     let evals = domain.fft(&coeffs);
-    evals.to_vec_in(PageAlignedAllocator)
+    evals.to_vec_in(GpuAllocator)
 }
 
 fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {

@@ -71,7 +71,7 @@ pub fn bit_reverse<T: Send>(v: &mut [T]) {
 
 // Copies a cpu buffer to a gpu buffer
 // Never use on unified memory architechture devices (M1, M2 etc.)
-#[cfg(target_arch = "aarch64")]
+#[cfg(apple_silicon)]
 pub fn copy_to_private_buffer<T: Sized>(
     command_queue: &metal::CommandQueue,
     v: &crate::GpuVec<T>,
@@ -90,8 +90,12 @@ pub fn copy_to_private_buffer<T: Sized>(
 }
 
 /// WARNING: keep the original data around or it will be freed.
-#[cfg(target_arch = "aarch64")]
-pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &crate::GpuVec<T>) -> metal::Buffer {
+#[cfg(apple_silicon)]
+pub fn buffer_no_copy<T: Sized, A: core::alloc::Allocator>(
+    device: &metal::DeviceRef,
+    v: &alloc::vec::Vec<T, A>,
+) -> metal::Buffer {
+    assert!(is_page_aligned(&v));
     let byte_len = v.capacity() * core::mem::size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
         v.as_ptr() as *mut core::ffi::c_void,
@@ -102,11 +106,12 @@ pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &crate::GpuVec<T>)
 }
 
 /// WARNING: keep the original data around or it will be freed.
-#[cfg(target_arch = "aarch64")]
-pub fn buffer_mut_no_copy<T: Sized>(
+#[cfg(apple_silicon)]
+pub fn buffer_mut_no_copy<T: Sized, A: core::alloc::Allocator>(
     device: &metal::DeviceRef,
-    v: &mut crate::GpuVec<T>,
+    v: &mut alloc::vec::Vec<T, A>,
 ) -> metal::Buffer {
+    assert!(is_page_aligned(v));
     let byte_len = v.capacity() * size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
         v.as_mut_ptr() as *mut core::ffi::c_void,
@@ -118,7 +123,7 @@ pub fn buffer_mut_no_copy<T: Sized>(
 
 // adapted form arkworks
 /// Multiply the `i`-th element of `coeffs` with `g^i`.
-#[cfg(target_arch = "aarch64")]
+#[cfg(apple_silicon)]
 pub(crate) fn distribute_powers<F: crate::GpuField + ark_ff::Field>(coeffs: &mut [F], g: F) {
     let n = coeffs.len();
     #[cfg(not(feature = "parallel"))]
@@ -141,7 +146,7 @@ pub(crate) fn distribute_powers<F: crate::GpuField + ark_ff::Field>(coeffs: &mut
 const MIN_THREADGROUP_FFT_SIZE: usize = 1024;
 
 /// Returns the max FFT size each threadgroup can compute
-#[cfg(target_arch = "aarch64")]
+#[cfg(apple_silicon)]
 pub fn threadgroup_fft_size<F: crate::GpuField>(
     max_threadgroup_mem_length: usize,
     max_threads_per_threadgroup: usize,
@@ -164,6 +169,41 @@ pub fn threadgroup_fft_size<F: crate::GpuField>(
 // Converts a reference to a void pointer
 pub(crate) fn void_ptr<T>(v: &T) -> *const core::ffi::c_void {
     v as *const T as *const core::ffi::c_void
+}
+
+#[repr(C, align(16384))]
+#[cfg(apple_silicon)]
+struct Page([u8; 16384]);
+
+/// Checks a slice is page aligned on
+#[cfg(apple_silicon)]
+pub fn is_page_aligned<T>(v: &[T]) -> bool {
+    v.as_ptr().align_offset(core::mem::align_of::<Page>()) == 0
+}
+
+/// Returns a page aligned vector of the specified length with un-initialized
+/// memory. This is for Apple Silicon targets only. Apple silicon supports
+/// shared memory between CPU and GPU. The data resides in system memory and is
+/// visible and modifiable by both the CPU and the GPU if it's page aligned.
+///
+/// # Safety
+/// Using values from the returned vector before initializing them will lead to
+/// undefined behavior.
+// #[cfg(apple_silicon)]
+#[allow(clippy::uninit_vec)]
+#[cfg(apple_silicon)]
+pub unsafe fn page_aligned_uninit_vector<T>(length: usize) -> alloc::vec::Vec<T> {
+    #[repr(C, align(16384))]
+    struct Page([u8; 16384]);
+    let item_size = size_of::<T>();
+    let page_size = size_of::<Page>();
+    assert_eq!(page_size % item_size, 0, "item size must divide page size");
+    let num_pages = item_size * length / page_size + 1;
+    let mut aligned: alloc::vec::Vec<Page> = alloc::vec::Vec::with_capacity(num_pages);
+    let ptr = aligned.as_mut_ptr();
+    let capacity = num_pages * page_size / item_size;
+    core::mem::forget(aligned);
+    alloc::vec::Vec::from_raw_parts(ptr as *mut T, length, capacity)
 }
 
 #[cfg(test)]

@@ -3,9 +3,6 @@ name = "gpu-poly"
 version = "0.1.0"
 edition = "2021"
 
-[profile.test]
-opt-level = 3
-
 [dependencies]
 libc = "0.2"
 num-traits = "0.2.14"
@@ -28,11 +25,11 @@ winterfell = [ "dep:winter-math" ]
 parallel = [ "dep:rayon", "ark-std/parallel" ]
 
 # Apple silicon depencencies
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(all(target_arch = "aarch64", target_os = "macos"))'.dependencies]
 metal = { git = "https://github.com/gfx-rs/metal-rs" }
 
 # Apple silicon dev-depencencies
-[target.'cfg(target_os = "macos")'.dev-dependencies]
+[target.'cfg(all(target_arch = "aarch64", target_os = "macos"))'.dev-dependencies]
 objc = "0.2.7"
 
 [dev-dependencies]

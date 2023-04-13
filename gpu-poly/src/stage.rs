@@ -1,12 +1,12 @@
-#![cfg(target_arch = "aarch64")]
-
+#![cfg(apple_silicon)]
 use super::GpuField;
-use crate::allocator::PageAlignedAllocator;
 use crate::fields::p18446744069414584321;
+use crate::gpu_vec::GpuAllocator;
 use crate::plan::PLANNER;
 use crate::prelude::buffer_mut_no_copy;
 use crate::utils::buffer_no_copy;
 use crate::utils::distribute_powers;
+use crate::utils::page_aligned_uninit_vector;
 use crate::utils::void_ptr;
 use crate::GpuAdd;
 use crate::GpuMul;
@@ -14,6 +14,7 @@ use crate::GpuVec;
 use alloc::string::String;
 use alloc::vec::Vec;
 use ark_ff::Field;
+use core::alloc::Allocator;
 use core::marker::PhantomData;
 use core::mem::size_of;
 use metal::NSUInteger;
@@ -252,7 +253,7 @@ impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField + Field + PartialEq + Copy>
         norm_factor: RhsF,
     ) -> Self {
         let mul_assign_stage = MulAssignStage::<LhsF, RhsF>::new(library, n);
-        let mut _scale_factors = Vec::with_capacity_in(n, PageAlignedAllocator);
+        let mut _scale_factors = Vec::with_capacity_in(n, GpuAllocator);
         _scale_factors.resize(n, norm_factor);
         if !scale_factor.is_one() {
             distribute_powers(&mut _scale_factors, scale_factor);
@@ -1210,9 +1211,9 @@ pub struct Rpo256AbsorbColumnsStage<F: GpuField> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
-    _states: GpuVec<[F; 4]>,
+    _states: Vec<[F; 4]>,
     states_buffer: metal::Buffer,
-    pub digests: GpuVec<[F; 4]>,
+    pub digests: Vec<[F; 4]>,
     digests_buffer: metal::Buffer,
 }
 
@@ -1231,23 +1232,21 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbColumnsStage<F> {
             metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP.try_into().unwrap(), 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
-        let zero = F::from(0);
-        let one = F::from(1);
-        let mut digests = Vec::new_in(PageAlignedAllocator);
-        digests.resize(n, [zero; 4]);
+        // TODO: creating page aligned vectors in this fashion is rather brittle.
+        // If the vector is resized there is no garuntee that the new memory will be
+        // page aligned. Rust's Allocator api would be great but it's not currently
+        // available on Rust Stable.
+        let mut digests = unsafe { page_aligned_uninit_vector(n) };
         let digests_buffer = buffer_mut_no_copy(library.device(), &mut digests);
 
-        let mut _states = Vec::new_in(PageAlignedAllocator);
-        _states.resize(
-            n,
-            [
-                // apply RPO's padding rule
-                if requires_padding { one } else { zero },
-                zero,
-                zero,
-                zero,
-            ],
-        );
+        let mut _states = unsafe { page_aligned_uninit_vector(n) };
+        _states.fill([
+            // apply RPO's padding rule
+            F::from(if requires_padding { 1 } else { 0 }),
+            F::from(0),
+            F::from(0),
+            F::from(0),
+        ]);
         let states_buffer = buffer_mut_no_copy(library.device(), &mut _states);
 
         Rpo256AbsorbColumnsStage {
@@ -1327,11 +1326,11 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbRowsStage<F> {
 
         let zero = F::from(0);
         let one = F::from(1);
-        let mut digests = Vec::new_in(PageAlignedAllocator);
+        let mut digests = Vec::new_in(GpuAllocator);
         digests.resize(n, [zero; 4]);
         let digests_buffer = buffer_mut_no_copy(library.device(), &mut digests);
 
-        let mut _states = Vec::new_in(PageAlignedAllocator);
+        let mut _states = Vec::new_in(GpuAllocator);
         _states.resize(
             n,
             [
@@ -1356,7 +1355,11 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbRowsStage<F> {
         }
     }
 
-    pub fn encode(&self, command_buffer: &metal::CommandBufferRef, rows: &GpuVec<[F; 8]>) {
+    pub fn encode<A: Allocator>(
+        &self,
+        command_buffer: &metal::CommandBufferRef,
+        rows: &Vec<[F; 8], A>,
+    ) {
         assert_eq!(self.n, rows.len());
 
         let device = PLANNER.library.device();

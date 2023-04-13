@@ -3,7 +3,6 @@ use crate::composer::DeepCompositionCoeffs;
 use crate::constraints::AlgebraicExpression;
 use crate::hints::Hints;
 use crate::random::PublicCoin;
-use crate::utils;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::TraceInfo;
@@ -17,8 +16,6 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use gpu_poly::GpuFftField;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 pub trait Air {
     type Fp: GpuFftField<FftField = Self::Fp> + FftField;

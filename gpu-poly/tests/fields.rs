@@ -1,8 +1,8 @@
-#![cfg(target_arch = "aarch64")]
+#![cfg(apple_silicon)]
 #![feature(allocator_api)]
 
 use ark_ff::UniformRand;
-use gpu_poly::prelude::PageAlignedAllocator;
+use gpu_poly::prelude::GpuAllocator;
 use gpu_poly::prelude::PLANNER;
 use gpu_poly::stage::MulPowStage;
 use gpu_poly::utils::buffer_mut_no_copy;
@@ -23,11 +23,11 @@ pub mod p18446744069414584321 {
             let mut a = (0..n)
                 .map(|_| Fp::rand(&mut rng))
                 .collect::<Vec<Fp>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let b = (0..n)
                 .map(|_| Fp::rand(&mut rng))
                 .collect::<Vec<Fp>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let expected = a
                 .iter()
                 .copied()
@@ -37,7 +37,7 @@ pub mod p18446744069414584321 {
                     a
                 })
                 .collect::<Vec<Fp>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let command_queue = &PLANNER.command_queue;
             let mut a_buffer = buffer_mut_no_copy(command_queue.device(), &mut a);
             let b_buffer = buffer_no_copy(command_queue.device(), &b);
@@ -62,11 +62,11 @@ pub mod p18446744069414584321 {
             let mut a = (0..n)
                 .map(|_| Fq3::rand(&mut rng))
                 .collect::<Vec<Fq3>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let b = (0..n)
                 .map(|_| Fp::rand(&mut rng))
                 .collect::<Vec<Fp>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let expected = a
                 .iter()
                 .copied()
@@ -76,7 +76,7 @@ pub mod p18446744069414584321 {
                     a
                 })
                 .collect::<Vec<Fq3>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let command_queue = &PLANNER.command_queue;
             let mut a_buffer = buffer_mut_no_copy(command_queue.device(), &mut a);
             let b_buffer = buffer_no_copy(command_queue.device(), &b);
@@ -104,11 +104,11 @@ pub mod p18446744069414584321 {
             let mut a = (0..n)
                 .map(|_| Fq3::rand(&mut rng))
                 .collect::<Vec<Fq3>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let b = (0..n)
                 .map(|_| Fq3::rand(&mut rng))
                 .collect::<Vec<Fq3>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let expected = a
                 .iter()
                 .copied()
@@ -118,7 +118,7 @@ pub mod p18446744069414584321 {
                     a
                 })
                 .collect::<Vec<Fq3>>()
-                .to_vec_in(PageAlignedAllocator);
+                .to_vec_in(GpuAllocator);
             let command_queue = &PLANNER.command_queue;
             let mut a_buffer = buffer_mut_no_copy(command_queue.device(), &mut a);
             let b_buffer = buffer_no_copy(command_queue.device(), &b);

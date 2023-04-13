@@ -1,4 +1,4 @@
-#![cfg(target_arch = "aarch64")]
+#![cfg(apple_silicon)]
 #![feature(allocator_api)]
 
 use core::iter::zip;
@@ -27,7 +27,7 @@ fn fft_with_64_bit_field() {
         for (i, domain) in domains.into_iter().enumerate() {
             let poly = DensePolynomial::<Fp>::rand(domain.size() - 1, &mut ark_std::test_rng());
             let cpu_evals = domain.fft(&poly.coeffs);
-            let mut gpu_evals = poly.coeffs.to_vec_in(PageAlignedAllocator);
+            let mut gpu_evals = poly.coeffs.to_vec_in(GpuAllocator);
             let mut fft = GpuFft::from(domain);
             fft.encode(&mut gpu_evals);
             fft.execute();
@@ -53,7 +53,7 @@ fn fft_with_extension_field() {
         for (i, domain) in domains.into_iter().enumerate() {
             let poly = DensePolynomial::<Fq3>::rand(domain.size() - 1, &mut ark_std::test_rng());
             let cpu_evals = domain.fft(&poly.coeffs);
-            let mut gpu_evals = poly.coeffs.to_vec_in(PageAlignedAllocator);
+            let mut gpu_evals = poly.coeffs.to_vec_in(GpuAllocator);
             let mut fft = GpuFft::from(domain);
             fft.encode(&mut gpu_evals);
             fft.execute();
@@ -78,7 +78,7 @@ fn fft_with_256_bit_field() {
         for (i, domain) in domains.into_iter().enumerate() {
             let poly = DensePolynomial::<Fp252>::rand(domain.size() - 1, &mut ark_std::test_rng());
             let cpu_evals = domain.fft(&poly.coeffs);
-            let mut gpu_evals = poly.coeffs.to_vec_in(PageAlignedAllocator);
+            let mut gpu_evals = poly.coeffs.to_vec_in(GpuAllocator);
             let mut fft = GpuFft::from(domain);
             fft.encode(&mut gpu_evals);
             fft.execute();
@@ -104,7 +104,7 @@ fn ifft() {
             let poly = DensePolynomial::rand(domain.size() - 1, &mut ark_std::test_rng());
             let evals = poly.evaluate_over_domain_by_ref(domain).evals;
 
-            let mut coeffs = evals.to_vec_in(PageAlignedAllocator);
+            let mut coeffs = evals.to_vec_in(GpuAllocator);
             let mut ifft = GpuIfft::from(domain);
             ifft.encode(&mut coeffs);
             ifft.execute();
@@ -131,7 +131,7 @@ fn ifft() {
 //             let poly = DensePolynomial::<Fq3>::rand(domain.size() - 1, &mut
 // ark_std::test_rng());             let evals =
 // poly.evaluate_over_domain_by_ref(domain).evals;
-//             let mut coeffs = evals.to_vec_in(PageAlignedAllocator);
+//             let mut coeffs = evals.to_vec_in(GpuAllocator);
 //             let mut ifft = GpuIfft::from(domain);
 //             ifft.encode(&mut coeffs);
 //             ifft.execute();

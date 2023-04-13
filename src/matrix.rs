@@ -48,7 +48,7 @@ impl<F: Field> Matrix<F> {
         let num_rows = rows.len();
         let num_cols = rows.first().map(|first| first.len()).unwrap_or(0);
         let mut cols = (0..num_cols)
-            .map(|_| Vec::with_capacity_in(num_rows, PageAlignedAllocator))
+            .map(|_| Vec::with_capacity_in(num_rows, GpuAllocator))
             .collect::<Vec<GpuVec<F>>>();
         // TODO: parallelise
         for row in rows {
@@ -278,7 +278,7 @@ impl<F: Field> Matrix<F> {
     #[cfg(not(feature = "gpu"))]
     pub fn sum_columns_cpu(&self) -> Matrix<F> {
         let n = self.num_rows();
-        let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
+        let mut accumulator = Vec::with_capacity_in(n, GpuAllocator);
         accumulator.resize(n, F::zero());
 
         if self.num_cols() != 0 {
@@ -312,7 +312,7 @@ impl<F: Field> Matrix<F> {
     {
         let n = self.num_rows();
         // TODO: add into_sum_columns and prevent having to allocate new memory
-        let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
+        let mut accumulator = Vec::with_capacity_in(n, GpuAllocator);
         accumulator.resize(n, F::zero());
 
         if self.num_cols() != 0 {
@@ -351,7 +351,7 @@ impl<F: Field> Clone for Matrix<F> {
         Self(
             self.0
                 .iter()
-                .map(|col| col.to_vec_in(PageAlignedAllocator))
+                .map(|col| col.to_vec_in(GpuAllocator))
                 .collect(),
         )
     }

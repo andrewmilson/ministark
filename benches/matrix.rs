@@ -7,7 +7,7 @@ use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use digest::Digest;
-use gpu_poly::allocator::PageAlignedAllocator;
+use gpu_poly::prelude::GpuAllocator;
 use gpu_poly::GpuField;
 use ministark::Matrix;
 use sha2::Sha256;
@@ -23,7 +23,7 @@ fn matrix_row_commitment_bench<F: GpuField + Field, D: Digest>(c: &mut Criterion
     for (m, n) in BENCHMARK_MATRIX_DIMENSIONS {
         let mut columns = Vec::new();
         for _ in 0..n {
-            let mut row = Vec::with_capacity_in(m, PageAlignedAllocator);
+            let mut row = Vec::with_capacity_in(m, GpuAllocator);
             (0..m).for_each(|_| row.push(F::rand(&mut rng)));
             columns.push(row);
         }

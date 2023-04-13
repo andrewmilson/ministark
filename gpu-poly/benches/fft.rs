@@ -1,4 +1,4 @@
-#![cfg(target_arch = "aarch64")]
+#![cfg(apple_silicon)]
 #![feature(allocator_api)]
 
 use ark_ff::FftField;
@@ -31,7 +31,7 @@ where
         let coset = domain.get_coset(F::FftField::GENERATOR).unwrap();
 
         group.bench_with_input(BenchmarkId::new("GpuFft", n), &n, |b, _| {
-            let mut coeffs = vals.to_vec_in(PageAlignedAllocator);
+            let mut coeffs = vals.to_vec_in(GpuAllocator);
             b.iter(|| {
                 let mut fft = GpuFft::from(domain);
                 fft.encode(&mut coeffs);
@@ -40,7 +40,7 @@ where
         });
 
         group.bench_with_input(BenchmarkId::new("GpuFft (coset)", n), &n, |b, _| {
-            let mut coeffs = vals.to_vec_in(PageAlignedAllocator);
+            let mut coeffs = vals.to_vec_in(GpuAllocator);
             b.iter(|| {
                 let mut fft = GpuFft::from(coset);
                 fft.encode(&mut coeffs);
@@ -49,7 +49,7 @@ where
         });
 
         group.bench_with_input(BenchmarkId::new("GpuIfft", n), &n, |b, _| {
-            let mut evals = vals.to_vec_in(PageAlignedAllocator);
+            let mut evals = vals.to_vec_in(GpuAllocator);
             b.iter(|| {
                 let mut fft = GpuIfft::from(domain);
                 fft.encode(&mut evals);
@@ -58,7 +58,7 @@ where
         });
 
         group.bench_with_input(BenchmarkId::new("GpuIfft (coset)", n), &n, |b, _| {
-            let mut evals = vals.to_vec_in(PageAlignedAllocator);
+            let mut evals = vals.to_vec_in(GpuAllocator);
             b.iter(|| {
                 let mut fft = GpuIfft::from(coset);
                 fft.encode(&mut evals);

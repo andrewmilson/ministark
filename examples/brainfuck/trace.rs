@@ -17,9 +17,9 @@ use ark_ff::PrimeField;
 use ark_ff::UniformRand;
 use ark_ff::Zero;
 use ark_std::rand;
-use gpu_poly::allocator::PageAlignedAllocator;
 use gpu_poly::fields::p18446744069414584321::Fp;
 use gpu_poly::fields::p18446744069414584321::Fq3;
+use gpu_poly::prelude::GpuAllocator;
 use gpu_poly::GpuVec;
 use ministark::challenges::Challenges;
 use ministark::constraints::VerifierChallenge;
@@ -306,7 +306,7 @@ fn gen_output_ext_matrix(challenges: &Challenges<Fq3>, base_matrix: &Matrix<Fp>)
 
 pub fn into_columns<F: Field, const N: usize>(rows: Vec<[F; N]>) -> Vec<GpuVec<F>> {
     let mut cols = (0..N)
-        .map(|_| Vec::new_in(PageAlignedAllocator))
+        .map(|_| Vec::new_in(GpuAllocator))
         .collect::<Vec<_>>();
     for row in rows {
         for (col, val) in cols.iter_mut().zip(row) {

@@ -1,6 +1,5 @@
-#![cfg(target_arch = "aarch64")]
-
-use crate::allocator::PageAlignedAllocator;
+#![cfg(apple_silicon)]
+use crate::gpu_vec::GpuAllocator;
 use crate::stage::BitReverseGpuStage;
 use crate::stage::FftGpuStage;
 use crate::stage::Rpo256AbsorbColumnsStage;
@@ -12,6 +11,8 @@ use crate::stage::Variant;
 use crate::utils;
 use crate::utils::buffer_mut_no_copy;
 use crate::utils::buffer_no_copy;
+use crate::utils::is_page_aligned;
+use crate::utils::page_aligned_uninit_vector;
 use crate::GpuField;
 use crate::GpuVec;
 use alloc::rc::Rc;
@@ -22,6 +23,7 @@ use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
+use core::alloc::Allocator;
 use metal::CommandBufferRef;
 use once_cell::sync::Lazy;
 
@@ -61,7 +63,7 @@ impl<'a, F: GpuField + From<u32> + Copy> GpuRpo256ColumnMajor<'a, F> {
         }
     }
 
-    pub async fn finish(mut self) -> GpuVec<[F; 4]> {
+    pub async fn finish(mut self) -> Vec<[F; 4]> {
         // Wait for all update stages to finish. Stages run sequentially so waiting for
         // the last stage to finish is sufficient
         if let Some(cb) = self.command_buffer {
@@ -79,13 +81,13 @@ impl<'a, F: GpuField + From<u32> + Copy> GpuRpo256ColumnMajor<'a, F> {
         // padding rule: "a single 1 element followed by as many zeros as are necessary
         // to make the input length a multiple of the rate." - https://eprint.iacr.org/2022/1577.pdf
         // TODO: check self.requires_padding == true
-        let mut ones = Vec::with_capacity_in(self.n, PageAlignedAllocator);
+        let mut ones = Vec::with_capacity_in(self.n, GpuAllocator);
         ones.resize(self.n, F::from(1));
 
         let mut zeros: GpuVec<F>;
         if self.state.len() != Self::RATE {
             // only access memory for zeros if needed
-            zeros = Vec::with_capacity_in(self.n, PageAlignedAllocator);
+            zeros = Vec::with_capacity_in(self.n, GpuAllocator);
             zeros.resize(self.n, F::from(0));
             self.state.push(&ones);
             while self.state.len() != 8 {
@@ -119,7 +121,8 @@ impl<'a, F: GpuField + From<u32> + Copy> GpuRpo256RowMajor<'a, F> {
         }
     }
 
-    pub fn update(&mut self, rows: &'a GpuVec<[F; 8]>) {
+    pub fn update<A: Allocator>(&mut self, rows: &'a Vec<[F; 8], A>) {
+        assert!(is_page_aligned(rows));
         let command_buffer = PLANNER.command_queue.new_command_buffer();
         #[cfg(debug_assertions)]
         command_buffer.set_label("rpo update rows");
@@ -142,12 +145,14 @@ impl<'a, F: GpuField + From<u32> + Copy> GpuRpo256RowMajor<'a, F> {
 }
 
 pub async fn gen_rpo_merkle_tree<F: GpuField + From<u32> + Copy>(
-    leaves: &GpuVec<[F; 4]>,
-) -> GpuVec<[F; 4]> {
+    leaves: &Vec<[F; 4], impl Allocator>,
+) -> Vec<[F; 4]> {
+    assert!(is_page_aligned(leaves));
     let num_leaves = leaves.len();
     let leaves_buffer = buffer_no_copy(PLANNER.library.device(), leaves);
-    let mut nodes = Vec::new_in(PageAlignedAllocator);
-    nodes.resize(num_leaves, [F::from(0); 4]);
+    let mut nodes = unsafe { page_aligned_uninit_vector(num_leaves) };
+    // TODO: might be unnecessary. only zero first item?
+    nodes.fill([F::from(0); 4]);
     let nodes_buffer = buffer_mut_no_copy(PLANNER.library.device(), &mut nodes);
 
     let first_row_stage = Rpo256GenMerkleNodesFirstRowStage::<F>::new(&PLANNER.library, num_leaves);
@@ -240,6 +245,7 @@ where
     }
 
     pub fn encode(&mut self, buffer: &mut GpuVec<F>) {
+        assert!(is_page_aligned(&buffer));
         let encoder = &self.encoder;
         assert!(encoder.n >= buffer.len());
         buffer.resize(encoder.n, F::zero());
@@ -364,7 +370,7 @@ impl Planner {
         };
 
         // generate twiddles buffer
-        let mut _twiddles = Vec::with_capacity_in(n / 2, PageAlignedAllocator);
+        let mut _twiddles = Vec::with_capacity_in(n / 2, GpuAllocator);
         _twiddles.resize(n / 2, F::FftField::zero());
         utils::fill_twiddles(&mut _twiddles, root);
         utils::bit_reverse(&mut _twiddles);
