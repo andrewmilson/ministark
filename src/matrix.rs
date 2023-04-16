@@ -1,6 +1,8 @@
 use crate::constraints::ExecutionTraceColumn;
 use crate::merkle::MerkleTree;
 use crate::utils::horner_evaluate;
+use crate::utils::GpuAllocator;
+use crate::utils::GpuVec;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -8,7 +10,6 @@ use ark_ff::FftField;
 use ark_ff::Field;
 use ark_poly::domain::DomainCoeff;
 use ark_poly::domain::Radix2EvaluationDomain;
-#[cfg(not(feature = "gpu"))]
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use core::cmp::Ordering;
@@ -168,6 +169,7 @@ impl<F: Field> Matrix<F> {
         let mut fft = GpuFft::from(domain);
 
         for column in &mut self.0 {
+            column.resize(domain.size(), F::zero());
             fft.encode(column);
         }
 
@@ -317,8 +319,8 @@ impl<F: Field> Matrix<F> {
 
         if self.num_cols() != 0 {
             // TODO: could improve
-            let library = &PLANNER.library;
-            let command_queue = &PLANNER.command_queue;
+            let library = &get_planner().library;
+            let command_queue = &get_planner().command_queue;
             let device = command_queue.device();
             let command_buffer = command_queue.new_command_buffer();
             let mut accumulator_buffer = buffer_mut_no_copy(device, &mut accumulator);

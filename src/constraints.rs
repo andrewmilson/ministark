@@ -212,13 +212,13 @@ pub enum FieldType {
 #[derive(Debug)]
 #[cfg(feature = "gpu")]
 pub enum EvaluationLde<Fp, Fq> {
-    Fp(gpu_poly::GpuVec<Fp>, metal::Buffer),
-    Fq(gpu_poly::GpuVec<Fq>, metal::Buffer),
+    Fp(crate::utils::GpuVec<Fp>, gpu_poly::metal::Buffer),
+    Fq(crate::utils::GpuVec<Fq>, gpu_poly::metal::Buffer),
 }
 
 #[cfg(feature = "gpu")]
 impl<Fp: gpu_poly::GpuField, Fq: gpu_poly::GpuField> EvaluationLde<Fp, Fq> {
-    pub fn get_gpu_buffer(&self) -> &metal::BufferRef {
+    pub fn get_gpu_buffer(&self) -> &gpu_poly::metal::BufferRef {
         match self {
             EvaluationLde::Fp(_, buff) => buff,
             EvaluationLde::Fq(_, buff) => buff,

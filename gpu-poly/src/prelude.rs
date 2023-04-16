@@ -1,10 +1,9 @@
-pub use crate::gpu_vec::GpuAllocator;
 #[cfg(apple_silicon)]
+pub use crate::plan::get_planner;
+#[cfg(all(apple_silicon, feature = "arkworks"))]
 pub use crate::plan::GpuFft;
-#[cfg(apple_silicon)]
+#[cfg(all(apple_silicon, feature = "arkworks"))]
 pub use crate::plan::GpuIfft;
-#[cfg(apple_silicon)]
-pub use crate::plan::PLANNER;
 #[cfg(apple_silicon)]
 pub use crate::stage::AddAssignStage;
 #[cfg(apple_silicon)]
@@ -15,5 +14,6 @@ pub use crate::stage::MulPowStage;
 pub use crate::utils::buffer_mut_no_copy;
 #[cfg(apple_silicon)]
 pub use crate::utils::buffer_no_copy;
+#[cfg(apple_silicon)]
+pub use crate::utils::page_aligned_uninit_vector;
 pub use crate::GpuField;
-pub use crate::GpuVec;

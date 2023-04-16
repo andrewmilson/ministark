@@ -6,12 +6,15 @@ use crate::merkle::MerkleTree;
 use crate::utils;
 use crate::utils::divide_out_point_into;
 use crate::utils::horner_evaluate;
+use crate::utils::GpuAllocator;
+use crate::utils::GpuVec;
 use crate::Air;
 use crate::Matrix;
 use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
+#[cfg(feature = "gpu")]
 use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -41,7 +44,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     ) -> Matrix<A::Fq> {
         use crate::calculator::lde_calculator;
         use crate::constraints::EvaluationLde;
-        let command_queue = &PLANNER.command_queue;
+        let command_queue = &get_planner().command_queue;
         let device = command_queue.device();
 
         #[cfg(debug_assertions)]

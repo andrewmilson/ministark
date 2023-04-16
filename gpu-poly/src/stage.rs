@@ -1,44 +1,40 @@
 #![cfg(apple_silicon)]
 use super::GpuField;
-use crate::fields::p18446744069414584321;
-use crate::gpu_vec::GpuAllocator;
-use crate::plan::PLANNER;
+use crate::plan::get_planner;
 use crate::prelude::buffer_mut_no_copy;
 use crate::utils::buffer_no_copy;
+#[cfg(feature = "arkworks")]
 use crate::utils::distribute_powers;
 use crate::utils::page_aligned_uninit_vector;
 use crate::utils::void_ptr;
 use crate::GpuAdd;
 use crate::GpuMul;
-use crate::GpuVec;
 use alloc::string::String;
 use alloc::vec::Vec;
-use ark_ff::Field;
-use core::alloc::Allocator;
 use core::marker::PhantomData;
 use core::mem::size_of;
 use metal::NSUInteger;
 
 #[derive(Clone, Copy, Debug)]
-pub enum Variant {
+pub enum FftVariant {
     Multiple,
     Single,
 }
 
 /// GPU FFT kernel name as declared at the bottom of `fft.metal`
-fn fft_kernel_name<F: GpuField>(variant: Variant) -> String {
+fn fft_kernel_name<F: GpuField>(variant: FftVariant) -> String {
     format!(
         "fft_{}_{}",
         match variant {
-            Variant::Multiple => "multiple",
-            Variant::Single => "single",
+            FftVariant::Multiple => "multiple",
+            FftVariant::Single => "single",
         },
         F::field_name()
     )
 }
 
 pub struct FftGpuStage<E> {
-    variant: Variant,
+    variant: FftVariant,
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
@@ -51,7 +47,7 @@ impl<F: GpuField> FftGpuStage<F> {
         library: &metal::LibraryRef,
         n: usize,
         num_boxes: usize,
-        variant: Variant,
+        variant: FftVariant,
         threadgroup_fft_size: usize,
     ) -> FftGpuStage<F> {
         use metal::MTLDataType::UInt;
@@ -102,7 +98,7 @@ impl<F: GpuField> FftGpuStage<F> {
     ) {
         let command_encoder = command_buffer.new_compute_command_encoder();
         command_encoder.set_compute_pipeline_state(&self.pipeline);
-        if let Variant::Multiple = self.variant {
+        if let FftVariant::Multiple = self.variant {
             let field_size = size_of::<F>();
             let num_bytes = (self.threadgroup_fft_size * field_size).try_into().unwrap();
             command_encoder.set_threadgroup_memory_length(0, num_bytes);
@@ -235,14 +231,16 @@ impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulAssignStage<LhsF, RhsF> {
     }
 }
 
+#[cfg(feature = "arkworks")]
 pub struct ScaleAndNormalizeGpuStage<LhsF, RhsF = LhsF> {
     mul_assign_stage: MulAssignStage<LhsF, RhsF>,
-    _scale_factors: GpuVec<RhsF>,
+    _scale_factors: Vec<RhsF>,
     scale_factors_buffer: metal::Buffer,
 }
 
 // TODO: replace `Field` with `One + PartialEq` to support multiple libraries
-impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField + Field + PartialEq + Copy>
+#[cfg(feature = "arkworks")]
+impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField + ark_ff::Field + PartialEq + Copy>
     ScaleAndNormalizeGpuStage<LhsF, RhsF>
 {
     pub fn new(
@@ -253,8 +251,8 @@ impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField + Field + PartialEq + Copy>
         norm_factor: RhsF,
     ) -> Self {
         let mul_assign_stage = MulAssignStage::<LhsF, RhsF>::new(library, n);
-        let mut _scale_factors = Vec::with_capacity_in(n, GpuAllocator);
-        _scale_factors.resize(n, norm_factor);
+        let mut _scale_factors = unsafe { page_aligned_uninit_vector(n) };
+        _scale_factors.fill(norm_factor);
         if !scale_factor.is_one() {
             distribute_powers(&mut _scale_factors, scale_factor);
         }
@@ -1261,7 +1259,7 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbColumnsStage<F> {
         }
     }
 
-    pub fn encode(&self, command_buffer: &metal::CommandBufferRef, columns: [&GpuVec<F>; 8]) {
+    pub fn encode(&self, command_buffer: &metal::CommandBufferRef, columns: [&[F]; 8]) {
         let [col0, col1, col2, col3, col4, col5, col6, col7] = columns;
         assert_eq!(self.n, col1.len());
         assert_eq!(self.n, col2.len());
@@ -1271,7 +1269,8 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbColumnsStage<F> {
         assert_eq!(self.n, col6.len());
         assert_eq!(self.n, col7.len());
 
-        let device = PLANNER.library.device();
+        let planner = get_planner();
+        let device = planner.library.device();
         let command_encoder = command_buffer
             .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
         #[cfg(debug_assertions)]
@@ -1303,9 +1302,9 @@ pub struct Rpo256AbsorbRowsStage<F: GpuField> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
     grid_dim: metal::MTLSize,
-    _states: GpuVec<[F; 4]>,
+    _states: Vec<[F; 4]>,
     states_buffer: metal::Buffer,
-    pub digests: GpuVec<[F; 4]>,
+    pub digests: Vec<[F; 4]>,
     digests_buffer: metal::Buffer,
 }
 
@@ -1324,23 +1323,17 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbRowsStage<F> {
             metal::MTLSize::new(Self::HASHERS_PER_THREADGROUP.try_into().unwrap(), 1, 1);
         let grid_dim = metal::MTLSize::new(n.try_into().unwrap(), 1, 1);
 
-        let zero = F::from(0);
-        let one = F::from(1);
-        let mut digests = Vec::new_in(GpuAllocator);
-        digests.resize(n, [zero; 4]);
+        let mut digests = unsafe { page_aligned_uninit_vector(n) };
         let digests_buffer = buffer_mut_no_copy(library.device(), &mut digests);
 
-        let mut _states = Vec::new_in(GpuAllocator);
-        _states.resize(
-            n,
-            [
-                // apply RPO's padding rule
-                if requires_padding { one } else { zero },
-                zero,
-                zero,
-                zero,
-            ],
-        );
+        let mut _states = unsafe { page_aligned_uninit_vector(n) };
+        _states.fill([
+            // apply RPO's padding rule
+            F::from(if requires_padding { 1 } else { 0 }),
+            F::from(0),
+            F::from(0),
+            F::from(0),
+        ]);
         let states_buffer = buffer_mut_no_copy(library.device(), &mut _states);
 
         Rpo256AbsorbRowsStage {
@@ -1355,14 +1348,10 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbRowsStage<F> {
         }
     }
 
-    pub fn encode<A: Allocator>(
-        &self,
-        command_buffer: &metal::CommandBufferRef,
-        rows: &Vec<[F; 8], A>,
-    ) {
+    pub fn encode(&self, command_buffer: &metal::CommandBufferRef, rows: &[[F; 8]]) {
         assert_eq!(self.n, rows.len());
-
-        let device = PLANNER.library.device();
+        let planner = get_planner();
+        let device = planner.library.device();
         let command_encoder = command_buffer
             .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent);
         #[cfg(debug_assertions)]
@@ -1427,7 +1416,7 @@ impl<F: GpuField> Rpo256GenMerkleNodesFirstRowStage<F> {
         let command_encoder = command_buffer.new_compute_command_encoder();
         // TODO: use param
         let state_width = 12;
-        let field_size = size_of::<p18446744069414584321::Fp>() as NSUInteger;
+        let field_size: NSUInteger = 8;
         assert_eq!(field_size as usize, size_of::<F>());
         let mem_per_hasher = state_width * field_size;
         let hashers_per_tg = Self::HASHERS_PER_THREADGROUP as NSUInteger;
@@ -1487,7 +1476,7 @@ impl<F: GpuField> Rpo256GenMerkleNodesRowStage<F> {
         command_encoder.set_label(&format!("rpo merkle tree row={row}"));
         // TODO: use param
         let state_width = 12;
-        let field_size = size_of::<p18446744069414584321::Fp>() as NSUInteger;
+        let field_size: NSUInteger = 8;
         assert_eq!(field_size as usize, size_of::<F>());
         let mem_per_hasher = state_width * field_size;
         let hashers_per_tg = Self::HASHERS_PER_THREADGROUP as NSUInteger;

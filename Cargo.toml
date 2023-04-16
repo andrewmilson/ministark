@@ -30,32 +30,26 @@ path = "benches/matrix.rs"
 harness = false
 
 [dependencies]
-sha2 = "0.10.6"
-digest = "0.10.5"
-rand_chacha = "0.3.1"
-# ark-sponge = { git = "https://github.com/arkworks-rs/sponge.git" }
-ark-std = "0.4.0"
-ark-ff = "0.4.0"
+sha2 = "0.10"
+digest = "0.10"
+rand_chacha = "0.3"
+ark-std = "0.4"
+ark-ff = "0.4"
 ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator" }
-ark-serialize = "0.4.0"
-ark-ff-optimized = "0.4.0"
-gpu-poly = { path = "./gpu-poly" }
-rand = "0.8.5"
-snafu = { version = "0.7.4", default-features = false }
-rayon = { version = "1.5.3", optional = true }
-
-# Apple silicon depencencies
-# TODO: remove. this should be abstracted away
-[target.'cfg(target_os = "macos")'.dependencies]
-metal = { git = "https://github.com/gfx-rs/metal-rs" }
+ark-serialize = "0.4"
+ark-ff-optimized = "0.4"
+gpu-poly = { path = "./gpu-poly", features = [ "arkworks" ] }
+rand = "0.8"
+snafu = { version = "0.7", default-features = false }
+rayon = { version = "1.5", optional = true }
 
 [dev-dependencies]
-criterion = "0.4.0"
-structopt = "0.3.26"
-sha3 = "0.10.6"
-num-bigint = "0.4.3"
-num-integer = "0.1.45"
-pollster = "0.2.4"
+criterion = "0.4"
+structopt = "0.3"
+sha3 = "0.10"
+num-bigint = "0.4"
+num-integer = "0.1"
+pollster = "0.2"
 
 # taken from https://github.com/recmo/uint
 # Compilation profile for any non-workspace member.

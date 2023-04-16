@@ -4,6 +4,8 @@ use crate::constraints::AlgebraicExpression;
 use crate::constraints::EvaluationLde;
 use crate::constraints::FieldConstant;
 use crate::constraints::FieldType;
+use crate::utils::GpuAllocator;
+use crate::utils::GpuVec;
 use crate::Air;
 use crate::Matrix;
 use alloc::collections::BTreeMap;
@@ -36,8 +38,8 @@ pub fn lde_calculator<A: Air>(
 ) -> Matrix<A::Fq> {
     use AlgebraicExpression::*;
     let mut expr = expr.reuse_shared_nodes();
-    let library = &PLANNER.library;
-    let command_queue = &PLANNER.command_queue;
+    let library = &get_planner().library;
+    let command_queue = &get_planner().command_queue;
     let device = command_queue.device();
     // constraint evaluation (ce)
     let ce_domain = air.ce_domain();
@@ -706,7 +708,7 @@ impl<Fp: GpuField, Fq: GpuField> LdeCache<Fp, Fq> {
     }
 
     fn get_buffer(&mut self, ty: FieldType) -> Rc<EvaluationLde<Fp, Fq>> {
-        let command_queue = &PLANNER.command_queue;
+        let command_queue = &get_planner().command_queue;
         let device = command_queue.device();
         // TODO: make O(1)
         self.buffers

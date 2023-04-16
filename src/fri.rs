@@ -3,6 +3,8 @@ use crate::merkle::MerkleTree;
 use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
 use crate::utils::interleave;
+use crate::utils::GpuAllocator;
+use crate::utils::GpuVec;
 use alloc::vec::Vec;
 use ark_ff::FftField;
 use ark_ff::Field;

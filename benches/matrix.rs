@@ -7,8 +7,8 @@ use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use digest::Digest;
-use gpu_poly::prelude::GpuAllocator;
 use gpu_poly::GpuField;
+use ministark::utils::GpuAllocator;
 use ministark::Matrix;
 use sha2::Sha256;
 

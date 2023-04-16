@@ -1,25 +1,33 @@
 #![feature(allocator_api, array_windows)]
 
 use ark_ff::One;
-use gpu_poly::fields::p18446744069414584321::Fp;
+use gpu_poly::fields::p18446744069414584321::ark::Fp;
 use gpu_poly::plan::gen_rpo_merkle_tree;
 use gpu_poly::plan::GpuRpo256ColumnMajor;
 use gpu_poly::plan::GpuRpo256RowMajor;
 use gpu_poly::prelude::*;
+use gpu_poly::utils::page_aligned_uninit_vector;
 use std::time::Instant;
 
 #[test]
 fn gpu_rpo_from_columns() {
     let n = 8388608;
-    let col = vec![Fp::one(); n];
-    let col0 = col.to_vec_in(GpuAllocator);
-    let col1 = col.to_vec_in(GpuAllocator);
-    let col2 = col.to_vec_in(GpuAllocator);
-    let col3 = col.to_vec_in(GpuAllocator);
-    let col4 = col.to_vec_in(GpuAllocator);
-    let col5 = col.to_vec_in(GpuAllocator);
-    let col6 = col.to_vec_in(GpuAllocator);
-    let col7 = col.to_vec_in(GpuAllocator);
+    let mut col0 = unsafe { page_aligned_uninit_vector(n) };
+    let mut col1 = unsafe { page_aligned_uninit_vector(n) };
+    let mut col2 = unsafe { page_aligned_uninit_vector(n) };
+    let mut col3 = unsafe { page_aligned_uninit_vector(n) };
+    let mut col4 = unsafe { page_aligned_uninit_vector(n) };
+    let mut col5 = unsafe { page_aligned_uninit_vector(n) };
+    let mut col6 = unsafe { page_aligned_uninit_vector(n) };
+    let mut col7 = unsafe { page_aligned_uninit_vector(n) };
+    col0.fill(Fp::one());
+    col1.fill(Fp::one());
+    col2.fill(Fp::one());
+    col3.fill(Fp::one());
+    col4.fill(Fp::one());
+    col5.fill(Fp::one());
+    col6.fill(Fp::one());
+    col7.fill(Fp::one());
     let input_size = 8;
     let requires_padding = input_size % 8 != 0;
     let mut rpo = GpuRpo256ColumnMajor::new(n, requires_padding);
@@ -62,7 +70,8 @@ fn gpu_rpo_from_columns() {
 #[test]
 fn gpu_rpo_from_rows() {
     let n = 8388608;
-    let rows = vec![[Fp::one(); 8]; n].to_vec_in(GpuAllocator);
+    let mut rows: Vec<[Fp; 8]> = unsafe { page_aligned_uninit_vector(n) };
+    rows.fill([Fp::one(); 8]);
     let requires_padding = false;
     let mut rpo = GpuRpo256RowMajor::new(n, requires_padding);
 

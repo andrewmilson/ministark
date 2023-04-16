@@ -1,4 +1,3 @@
-use ark_ff::FftField;
 use core::mem::size_of;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -11,7 +10,8 @@ fn bit_reverse_index(n: usize, i: usize) -> usize {
 /// Fills a slice with twiddle factors
 /// TODO: Generate of the GPU <https://kieber-emmons.medium.com/9e60b974d62> or cache
 /// inverse twiddles are normalized by `1 / n`.
-pub fn fill_twiddles<F: FftField>(dst: &mut [F], root: F) {
+#[cfg(feature = "arkworks")]
+pub fn fill_twiddles<F: ark_ff::FftField>(dst: &mut [F], root: F) {
     #[cfg(not(feature = "parallel"))]
     let chunk_size = dst.len();
     #[cfg(feature = "parallel")]
@@ -74,15 +74,18 @@ pub fn bit_reverse<T: Send>(v: &mut [T]) {
 #[cfg(apple_silicon)]
 pub fn copy_to_private_buffer<T: Sized>(
     command_queue: &metal::CommandQueue,
-    v: &crate::GpuVec<T>,
+    v: &[T],
 ) -> metal::Buffer {
     let device = command_queue.device();
-    let shared_buffer = buffer_no_copy(device, v);
-    let size = shared_buffer.length();
+    let byte_len = (v.len() * size_of::<T>()) as metal::NSUInteger;
+    let ptr = v.as_ptr() as *mut core::ffi::c_void;
+    let cpu_buffer =
+        device.new_buffer_with_data(ptr, byte_len, metal::MTLResourceOptions::StorageModeManaged);
+    let size = cpu_buffer.length();
     let private_buffer = device.new_buffer(size, metal::MTLResourceOptions::StorageModePrivate);
     let command_buffer = command_queue.new_command_buffer();
     let blit_command_encoder = command_buffer.new_blit_command_encoder();
-    blit_command_encoder.copy_from_buffer(&shared_buffer, 0, &private_buffer, 0, size);
+    blit_command_encoder.copy_from_buffer(&cpu_buffer, 0, &private_buffer, 0, size);
     blit_command_encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -90,13 +93,11 @@ pub fn copy_to_private_buffer<T: Sized>(
 }
 
 /// WARNING: keep the original data around or it will be freed.
+// TODO: see buffer_mut_no_copy comments
 #[cfg(apple_silicon)]
-pub fn buffer_no_copy<T: Sized, A: core::alloc::Allocator>(
-    device: &metal::DeviceRef,
-    v: &alloc::vec::Vec<T, A>,
-) -> metal::Buffer {
+pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &[T]) -> metal::Buffer {
     assert!(is_page_aligned(&v));
-    let byte_len = v.capacity() * core::mem::size_of::<T>();
+    let byte_len = v.len() * core::mem::size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
         v.as_ptr() as *mut core::ffi::c_void,
         byte_len.try_into().unwrap(),
@@ -106,13 +107,16 @@ pub fn buffer_no_copy<T: Sized, A: core::alloc::Allocator>(
 }
 
 /// WARNING: keep the original data around or it will be freed.
+// TODO: This method previously passed a vec instead of a slice to make sure capacity was aligned to
+// the page size (as per doc requirements). Seems to work in practice (on M1 at least) if only the
+// pointer is aligned. Passing a slice if handy because passing a vec with any allocator requires
+// nightly allocator_api feature. https://developer.apple.com/documentation/metal/mtldevice/1433382-makebuffer
 #[cfg(apple_silicon)]
-pub fn buffer_mut_no_copy<T: Sized, A: core::alloc::Allocator>(
-    device: &metal::DeviceRef,
-    v: &mut alloc::vec::Vec<T, A>,
-) -> metal::Buffer {
+pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut [T]) -> metal::Buffer {
     assert!(is_page_aligned(v));
-    let byte_len = v.capacity() * size_of::<T>();
+    // TODO: once allocator_api stabilized check capacity is aligned to page size
+    // this current implementation may be brittle.
+    let byte_len = v.len() * size_of::<T>();
     device.new_buffer_with_bytes_no_copy(
         v.as_mut_ptr() as *mut core::ffi::c_void,
         byte_len.try_into().unwrap(),
@@ -123,7 +127,7 @@ pub fn buffer_mut_no_copy<T: Sized, A: core::alloc::Allocator>(
 
 // adapted form arkworks
 /// Multiply the `i`-th element of `coeffs` with `g^i`.
-#[cfg(apple_silicon)]
+#[cfg(all(apple_silicon, feature = "arkworks"))]
 pub(crate) fn distribute_powers<F: crate::GpuField + ark_ff::Field>(coeffs: &mut [F], g: F) {
     let n = coeffs.len();
     #[cfg(not(feature = "parallel"))]
@@ -197,7 +201,7 @@ pub unsafe fn page_aligned_uninit_vector<T>(length: usize) -> alloc::vec::Vec<T>
     struct Page([u8; 16384]);
     let item_size = size_of::<T>();
     let page_size = size_of::<Page>();
-    assert_eq!(page_size % item_size, 0, "item size must divide page size");
+    // assert_eq!(page_size % item_size, 0, "item size must divide page size");
     let num_pages = item_size * length / page_size + 1;
     let mut aligned: alloc::vec::Vec<Page> = alloc::vec::Vec::with_capacity(num_pages);
     let ptr = aligned.as_mut_ptr();

@@ -10,8 +10,8 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
-use gpu_poly::fields::p18446744069414584321::Fp as Fp64;
-use gpu_poly::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::Fp as Fp252;
+use gpu_poly::fields::p18446744069414584321::ark::Fp as Fp64;
+use gpu_poly::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp as Fp252;
 use gpu_poly::prelude::*;
 
 const BENCHMARK_INPUT_SIZES: [usize; 4] = [2048, 4096, 32768, 262144];
@@ -31,7 +31,8 @@ where
         let coset = domain.get_coset(F::FftField::GENERATOR).unwrap();
 
         group.bench_with_input(BenchmarkId::new("GpuFft", n), &n, |b, _| {
-            let mut coeffs = vals.to_vec_in(GpuAllocator);
+            let mut coeffs = unsafe { page_aligned_uninit_vector(n) };
+            coeffs.copy_from_slice(&vals);
             b.iter(|| {
                 let mut fft = GpuFft::from(domain);
                 fft.encode(&mut coeffs);
@@ -40,7 +41,8 @@ where
         });
 
         group.bench_with_input(BenchmarkId::new("GpuFft (coset)", n), &n, |b, _| {
-            let mut coeffs = vals.to_vec_in(GpuAllocator);
+            let mut coeffs = unsafe { page_aligned_uninit_vector(n) };
+            coeffs.copy_from_slice(&vals);
             b.iter(|| {
                 let mut fft = GpuFft::from(coset);
                 fft.encode(&mut coeffs);
@@ -49,7 +51,8 @@ where
         });
 
         group.bench_with_input(BenchmarkId::new("GpuIfft", n), &n, |b, _| {
-            let mut evals = vals.to_vec_in(GpuAllocator);
+            let mut evals = unsafe { page_aligned_uninit_vector(n) };
+            evals.copy_from_slice(&vals);
             b.iter(|| {
                 let mut fft = GpuIfft::from(domain);
                 fft.encode(&mut evals);
@@ -58,7 +61,9 @@ where
         });
 
         group.bench_with_input(BenchmarkId::new("GpuIfft (coset)", n), &n, |b, _| {
-            let mut evals = vals.to_vec_in(GpuAllocator);
+            // let mut evals = vals.to_vec_in(GpuAllocator);
+            let mut evals = unsafe { page_aligned_uninit_vector(n) };
+            evals.copy_from_slice(&vals);
             b.iter(|| {
                 let mut fft = GpuIfft::from(coset);
                 fft.encode(&mut evals);
