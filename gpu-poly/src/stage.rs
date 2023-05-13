@@ -23,7 +23,7 @@ pub enum FftVariant {
 
 /// GPU FFT kernel name as declared at the bottom of `fft.metal`
 fn fft_kernel_name<F: GpuField>(variant: FftVariant) -> String {
-    format!(
+    alloc::format!(
         "fft_{}_{}",
         match variant {
             FftVariant::Multiple => "multiple",
@@ -125,7 +125,7 @@ impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulIntoStage<LhsF, RhsF> {
         let constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         constants.set_constant_value_at_index(void_ptr(&n), metal::MTLDataType::UInt, 0);
-        let kernel_name = format!(
+        let kernel_name = alloc::format!(
             "mul_into_LHS_{}_RHS_{}",
             LhsF::field_name(),
             RhsF::field_name()
@@ -186,7 +186,7 @@ impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulAssignStage<LhsF, RhsF> {
         let constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         constants.set_constant_value_at_index(void_ptr(&n), metal::MTLDataType::UInt, 0);
-        let kernel_name = format!(
+        let kernel_name = alloc::format!(
             "mul_assign_LHS_{}_RHS_{}",
             LhsF::field_name(),
             RhsF::field_name()
@@ -295,7 +295,7 @@ impl<F: GpuField> BitReverseGpuStage<F> {
         let num_boxes = 5u32;
         fft_constants.set_constant_value_at_index(void_ptr(&n), UInt, 0);
         fft_constants.set_constant_value_at_index(void_ptr(&num_boxes), UInt, 1);
-        let kernel_name = format!("bit_reverse_{}", F::field_name());
+        let kernel_name = alloc::format!("bit_reverse_{}", F::field_name());
         let func = library
             .get_function(&kernel_name, Some(fft_constants))
             .unwrap();
@@ -343,7 +343,7 @@ impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulPowStage<LhsF, RhsF> {
         let constants = metal::FunctionConstantValues::new();
         let n = n as u32;
         constants.set_constant_value_at_index(void_ptr(&n), metal::MTLDataType::UInt, 0);
-        let kernel_name = format!(
+        let kernel_name = alloc::format!(
             "mul_pow_LHS_{}_RHS_{}",
             LhsF::field_name(),
             RhsF::field_name()
@@ -405,7 +405,7 @@ impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddAssignStage<LhsF, RhsF> {
         // Create the compute pipeline
         let func = library
             .get_function(
-                &format!(
+                &alloc::format!(
                     "add_assign_LHS_{}_RHS_{}",
                     LhsF::field_name(),
                     RhsF::field_name()
@@ -469,7 +469,7 @@ impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddIntoStage<LhsF, RhsF> {
         // Create the compute pipeline
         let func = library
             .get_function(
-                &format!(
+                &alloc::format!(
                     "add_into_LHS_{}_RHS_{}",
                     LhsF::field_name(),
                     RhsF::field_name()
@@ -531,7 +531,7 @@ impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddIntoConstStage<LhsF, RhsF
         // Create the compute pipeline
         let func = library
             .get_function(
-                &format!(
+                &alloc::format!(
                     "add_into_const_LHS_{}_RHS_{}",
                     LhsF::field_name(),
                     RhsF::field_name()
@@ -588,7 +588,7 @@ impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> ConvertIntoStage<LhsF, RhsF>
         // Create the compute pipeline
         let func = library
             .get_function(
-                &format!(
+                &alloc::format!(
                     "convert_into_LHS_{}_RHS_{}",
                     LhsF::field_name(),
                     RhsF::field_name()
@@ -644,7 +644,7 @@ impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddAssignConstStage<LhsF, Rh
         // Create the compute pipeline
         let func = library
             .get_function(
-                &format!(
+                &alloc::format!(
                     "add_assign_const_LHS_{}_RHS_{}",
                     LhsF::field_name(),
                     RhsF::field_name()
@@ -701,7 +701,7 @@ impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulIntoConstStage<LhsF, RhsF
         // Create the compute pipeline
         let func = library
             .get_function(
-                &format!(
+                &alloc::format!(
                     "mul_into_const_LHS_{}_RHS_{}",
                     LhsF::field_name(),
                     RhsF::field_name()
@@ -759,7 +759,7 @@ impl<LhsF: GpuField + GpuMul<RhsF>, RhsF: GpuField> MulAssignConstStage<LhsF, Rh
         // Create the compute pipeline
         let func = library
             .get_function(
-                &format!(
+                &alloc::format!(
                     "mul_assign_const_LHS_{}_RHS_{}",
                     LhsF::field_name(),
                     RhsF::field_name()
@@ -814,7 +814,10 @@ impl<F: GpuField> InverseInPlaceStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("inverse_in_place_{}", F::field_name()), None)
+            .get_function(
+                &alloc::format!("inverse_in_place_{}", F::field_name()),
+                None,
+            )
             .unwrap();
         let pipeline = library
             .device()
@@ -858,7 +861,7 @@ impl<F: GpuField> NegInPlaceStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("neg_in_place_{}", F::field_name()), None)
+            .get_function(&alloc::format!("neg_in_place_{}", F::field_name()), None)
             .unwrap();
         let pipeline = library
             .device()
@@ -902,7 +905,7 @@ impl<F: GpuField> NegIntoStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("neg_into_{}", F::field_name()), None)
+            .get_function(&alloc::format!("neg_into_{}", F::field_name()), None)
             .unwrap();
         let pipeline = library
             .device()
@@ -952,7 +955,7 @@ impl<F: GpuField> InverseIntoStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("inverse_into_{}", F::field_name()), None)
+            .get_function(&alloc::format!("inverse_into_{}", F::field_name()), None)
             .unwrap();
         let pipeline = library
             .device()
@@ -1002,7 +1005,7 @@ impl<F: GpuField> ExpIntoStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("exp_into_{}", F::field_name()), None)
+            .get_function(&alloc::format!("exp_into_{}", F::field_name()), None)
             .unwrap();
         let pipeline = library
             .device()
@@ -1059,7 +1062,7 @@ impl<F: GpuField> ExpInPlaceStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("exp_in_place_{}", F::field_name()), None)
+            .get_function(&alloc::format!("exp_in_place_{}", F::field_name()), None)
             .unwrap();
         let pipeline = library
             .device()
@@ -1114,7 +1117,7 @@ impl<F: GpuField> FillBuffStage<F> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library
-            .get_function(&format!("fill_buff_{}", F::field_name()), None)
+            .get_function(&alloc::format!("fill_buff_{}", F::field_name()), None)
             .unwrap();
         let pipeline = library
             .device()
@@ -1168,7 +1171,7 @@ impl<F: GpuField> GenerateTwiddlesStage<F> {
         );
         let func = library
             .get_function(
-                &format!("generate_twiddles_{}", F::field_name()),
+                &alloc::format!("generate_twiddles_{}", F::field_name()),
                 Some(constants),
             )
             .unwrap();
@@ -1219,7 +1222,7 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbColumnsStage<F> {
     const HASHERS_PER_THREADGROUP: usize = 64;
 
     pub fn new(library: &metal::LibraryRef, n: usize, requires_padding: bool) -> Self {
-        let kernel_name = format!("rpo_256_absorb_columns_and_permute_{}", F::field_name());
+        let kernel_name = alloc::format!("rpo_256_absorb_columns_and_permute_{}", F::field_name());
         let func = library.get_function(&kernel_name, None).unwrap();
         let pipeline = library
             .device()
@@ -1312,7 +1315,7 @@ impl<F: GpuField + From<u32> + Copy> Rpo256AbsorbRowsStage<F> {
     const HASHERS_PER_THREADGROUP: usize = 128;
 
     pub fn new(library: &metal::LibraryRef, n: usize, requires_padding: bool) -> Self {
-        let kernel_name = format!("rpo_256_absorb_rows_and_permute_{}", F::field_name());
+        let kernel_name = alloc::format!("rpo_256_absorb_rows_and_permute_{}", F::field_name());
         let func = library.get_function(&kernel_name, None).unwrap();
         let pipeline = library
             .device()
@@ -1388,7 +1391,7 @@ impl<F: GpuField> Rpo256GenMerkleNodesFirstRowStage<F> {
 
         let constants = metal::FunctionConstantValues::new();
         constants.set_constant_value_at_index(void_ptr(&(num_leaves as u32)), UInt, 0);
-        let kernel_name = format!("rpo_128_gen_merkle_nodes_first_row_{}", F::field_name());
+        let kernel_name = alloc::format!("rpo_128_gen_merkle_nodes_first_row_{}", F::field_name());
         let func = library.get_function(&kernel_name, Some(constants)).unwrap();
         let pipeline = library
             .device()
@@ -1446,7 +1449,7 @@ impl<F: GpuField> Rpo256GenMerkleNodesRowStage<F> {
 
         let constants = metal::FunctionConstantValues::new();
         constants.set_constant_value_at_index(void_ptr(&(num_leaves as u32)), UInt, 0);
-        let kernel_name = format!("rpo_128_gen_merkle_nodes_row_{}", F::field_name());
+        let kernel_name = alloc::format!("rpo_128_gen_merkle_nodes_row_{}", F::field_name());
         let func = library.get_function(&kernel_name, Some(constants)).unwrap();
         let pipeline = library
             .device()
@@ -1473,7 +1476,7 @@ impl<F: GpuField> Rpo256GenMerkleNodesRowStage<F> {
         assert_ne!(1, row, "use Rpo256GenMerkleNodesFirstRowStage");
         let command_encoder = command_buffer.new_compute_command_encoder();
         #[cfg(debug_assertions)]
-        command_encoder.set_label(&format!("rpo merkle tree row={row}"));
+        command_encoder.set_label(&alloc::format!("rpo merkle tree row={row}"));
         // TODO: use param
         let state_width = 12;
         let field_size: NSUInteger = 8;

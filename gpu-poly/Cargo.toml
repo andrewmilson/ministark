@@ -32,8 +32,8 @@ criterion = "0.4"
 pollster = "0.2"
 rand = "0.8"
 
-# [[target.'cfg(target_arch = "aarch64")'.bench]]
 [[bench]]
 name = "fft"
 path = "benches/fft.rs"
+required-features = [ "arkworks" ]
 harness = false

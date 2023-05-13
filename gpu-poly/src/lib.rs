@@ -3,7 +3,6 @@
 #[cfg(not(any(feature = "arkworks", feature = "winterfell")))]
 compile_error!("Either feature \"arkworks\" or \"winterfell\" must be enabled for this crate.");
 
-#[macro_use]
 extern crate alloc;
 
 #[macro_use]
@@ -14,6 +13,7 @@ pub mod prelude;
 pub mod stage;
 pub mod utils;
 
+#[cfg(apple_silicon)]
 pub use metal;
 
 /// A trait to be implemented if the field can be used for FFTs on the GPU.

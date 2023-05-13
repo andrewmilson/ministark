@@ -1,4 +1,3 @@
-use core::mem::size_of;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -77,7 +76,7 @@ pub fn copy_to_private_buffer<T: Sized>(
     v: &[T],
 ) -> metal::Buffer {
     let device = command_queue.device();
-    let byte_len = (v.len() * size_of::<T>()) as metal::NSUInteger;
+    let byte_len = core::mem::size_of_val(v) as metal::NSUInteger;
     let ptr = v.as_ptr() as *mut core::ffi::c_void;
     let cpu_buffer =
         device.new_buffer_with_data(ptr, byte_len, metal::MTLResourceOptions::StorageModeManaged);
@@ -96,8 +95,8 @@ pub fn copy_to_private_buffer<T: Sized>(
 // TODO: see buffer_mut_no_copy comments
 #[cfg(apple_silicon)]
 pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &[T]) -> metal::Buffer {
-    assert!(is_page_aligned(&v));
-    let byte_len = v.len() * core::mem::size_of::<T>();
+    assert!(is_page_aligned(v));
+    let byte_len = core::mem::size_of_val(v);
     device.new_buffer_with_bytes_no_copy(
         v.as_ptr() as *mut core::ffi::c_void,
         byte_len.try_into().unwrap(),
@@ -116,7 +115,7 @@ pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut [T]) -> m
     assert!(is_page_aligned(v));
     // TODO: once allocator_api stabilized check capacity is aligned to page size
     // this current implementation may be brittle.
-    let byte_len = v.len() * size_of::<T>();
+    let byte_len = core::mem::size_of_val(v);
     device.new_buffer_with_bytes_no_copy(
         v.as_mut_ptr() as *mut core::ffi::c_void,
         byte_len.try_into().unwrap(),
@@ -147,15 +146,15 @@ pub(crate) fn distribute_powers<F: crate::GpuField + ark_ff::Field>(coeffs: &mut
         });
 }
 
-const MIN_THREADGROUP_FFT_SIZE: usize = 1024;
-
 /// Returns the max FFT size each threadgroup can compute
 #[cfg(apple_silicon)]
 pub fn threadgroup_fft_size<F: crate::GpuField>(
     max_threadgroup_mem_length: usize,
     max_threads_per_threadgroup: usize,
 ) -> usize {
-    let field_size = size_of::<F>();
+    const MIN_THREADGROUP_FFT_SIZE: usize = 1024;
+
+    let field_size = core::mem::size_of::<F>();
     assert!(field_size * MIN_THREADGROUP_FFT_SIZE <= max_threadgroup_mem_length);
     assert!(max_threads_per_threadgroup.is_power_of_two());
     assert!(max_threads_per_threadgroup >= MIN_THREADGROUP_FFT_SIZE / 2);
@@ -171,6 +170,7 @@ pub fn threadgroup_fft_size<F: crate::GpuField>(
 }
 
 // Converts a reference to a void pointer
+#[cfg(apple_silicon)]
 pub(crate) fn void_ptr<T>(v: &T) -> *const core::ffi::c_void {
     v as *const T as *const core::ffi::c_void
 }
@@ -199,8 +199,8 @@ pub fn is_page_aligned<T>(v: &[T]) -> bool {
 pub unsafe fn page_aligned_uninit_vector<T>(length: usize) -> alloc::vec::Vec<T> {
     #[repr(C, align(16384))]
     struct Page([u8; 16384]);
-    let item_size = size_of::<T>();
-    let page_size = size_of::<Page>();
+    let item_size = core::mem::size_of::<T>();
+    let page_size = core::mem::size_of::<Page>();
     // assert_eq!(page_size % item_size, 0, "item size must divide page size");
     let num_pages = item_size * length / page_size + 1;
     let mut aligned: alloc::vec::Vec<Page> = alloc::vec::Vec::with_capacity(num_pages);
@@ -216,12 +216,12 @@ mod tests {
 
     #[test]
     fn bit_reverse_works() {
-        let mut buf = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+        let mut buf = alloc::vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
         bit_reverse(&mut buf);
 
         assert_eq!(
-            vec![0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15],
+            alloc::vec![0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15],
             buf
         );
     }
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn bit_reversal_fails_for_non_power_of_two() {
-        let mut buf = vec![0; 6];
+        let mut buf = alloc::vec![0; 6];
 
         bit_reverse(&mut buf);
     }

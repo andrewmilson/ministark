@@ -1,11 +1,12 @@
+#![cfg(apple_silicon)]
 #![feature(allocator_api, array_windows)]
+// TODO: test GPU RPO against CPU rpo. these aren't tests.
 
 use ark_ff::One;
 use gpu_poly::fields::p18446744069414584321::ark::Fp;
 use gpu_poly::plan::gen_rpo_merkle_tree;
 use gpu_poly::plan::GpuRpo256ColumnMajor;
 use gpu_poly::plan::GpuRpo256RowMajor;
-use gpu_poly::prelude::*;
 use gpu_poly::utils::page_aligned_uninit_vector;
 use std::time::Instant;
 

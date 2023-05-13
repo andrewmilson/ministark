@@ -252,7 +252,7 @@ where
     }
 
     pub fn encode(&mut self, buffer: &mut [F]) {
-        assert!(is_page_aligned(&buffer));
+        assert!(is_page_aligned(buffer));
         let encoder = &self.encoder;
         assert_eq!(encoder.n, buffer.len());
         let mut input_buffer =
