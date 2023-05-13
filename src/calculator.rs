@@ -4,6 +4,8 @@ use crate::constraints::AlgebraicExpression;
 use crate::constraints::EvaluationLde;
 use crate::constraints::FieldConstant;
 use crate::constraints::FieldType;
+use crate::utils::GpuAllocator;
+use crate::utils::GpuVec;
 use crate::Air;
 use crate::Matrix;
 use alloc::collections::BTreeMap;
@@ -11,8 +13,6 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use ark_ff::One;
 use ark_poly::EvaluationDomain;
-use gpu_poly::prelude::PageAlignedAllocator;
-use gpu_poly::prelude::PLANNER;
 use gpu_poly::prelude::*;
 use gpu_poly::stage::AddAssignConstStage;
 use gpu_poly::stage::AddIntoConstStage;
@@ -38,8 +38,8 @@ pub fn lde_calculator<A: Air>(
 ) -> Matrix<A::Fq> {
     use AlgebraicExpression::*;
     let mut expr = expr.reuse_shared_nodes();
-    let library = &PLANNER.library;
-    let command_queue = &PLANNER.command_queue;
+    let library = &get_planner().library;
+    let command_queue = &get_planner().command_queue;
     let device = command_queue.device();
     // constraint evaluation (ce)
     let ce_domain = air.ce_domain();
@@ -94,7 +94,7 @@ pub fn lde_calculator<A: Air>(
         X => {
             // there is only one X (since we are reusing shared nodes) so generate an LDE
             // for it TODO: parallelize
-            let mut x_lde = Vec::with_capacity_in(ce_domain.size(), PageAlignedAllocator);
+            let mut x_lde = Vec::with_capacity_in(ce_domain.size(), GpuAllocator);
             for x in ce_domain.elements() {
                 x_lde.push(x);
             }
@@ -708,7 +708,7 @@ impl<Fp: GpuField, Fq: GpuField> LdeCache<Fp, Fq> {
     }
 
     fn get_buffer(&mut self, ty: FieldType) -> Rc<EvaluationLde<Fp, Fq>> {
-        let command_queue = &PLANNER.command_queue;
+        let command_queue = &get_planner().command_queue;
         let device = command_queue.device();
         // TODO: make O(1)
         self.buffers
@@ -729,14 +729,14 @@ impl<Fp: GpuField, Fq: GpuField> LdeCache<Fp, Fq> {
                 let n = self.lde_size;
                 let buffer = match ty {
                     FieldType::Fp => {
-                        let mut buffer = GpuVec::<Fp>::with_capacity_in(n, PageAlignedAllocator);
+                        let mut buffer = GpuVec::<Fp>::with_capacity_in(n, GpuAllocator);
                         // ok because all buffers are treated as uninitialized
                         unsafe { buffer.set_len(n) }
                         let gpu_buffer = buffer_no_copy(device, &buffer);
                         EvaluationLde::Fp(buffer, gpu_buffer)
                     }
                     FieldType::Fq => {
-                        let mut buffer = GpuVec::<Fq>::with_capacity_in(n, PageAlignedAllocator);
+                        let mut buffer = GpuVec::<Fq>::with_capacity_in(n, GpuAllocator);
                         // ok because all buffers are treated as uninitialized
                         unsafe { buffer.set_len(n) }
                         let gpu_buffer = buffer_no_copy(device, &buffer);

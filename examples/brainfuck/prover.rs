@@ -1,8 +1,8 @@
 use crate::air::BrainfuckAir;
 use crate::air::ExecutionInfo;
 use crate::trace::BrainfuckTrace;
-use gpu_poly::fields::p18446744069414584321::Fp;
-use gpu_poly::fields::p18446744069414584321::Fq3;
+use gpu_poly::fields::p18446744069414584321::ark::Fp;
+use gpu_poly::fields::p18446744069414584321::ark::Fq3;
 use ministark::ProofOptions;
 use ministark::Prover;
 

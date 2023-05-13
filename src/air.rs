@@ -3,7 +3,6 @@ use crate::composer::DeepCompositionCoeffs;
 use crate::constraints::AlgebraicExpression;
 use crate::hints::Hints;
 use crate::random::PublicCoin;
-use crate::utils;
 use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::TraceInfo;
@@ -17,8 +16,6 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use gpu_poly::GpuFftField;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 pub trait Air {
     type Fp: GpuFftField<FftField = Self::Fp> + FftField;
@@ -49,17 +46,17 @@ pub trait Air {
     /// Must be a power of two.
     fn ce_blowup_factor(&self) -> usize {
         let trace_degree = self.trace_len() - 1;
-        let ret = utils::ceil_power_of_two(
-            self.constraints()
-                .iter()
-                .map(|constraint| {
-                    let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
-                    numerator_degree - denominator_degree
-                })
-                .max()
-                // TODO: ceil_power_of_two might not be correct here. check the math
-                .map_or(0, |degree| utils::ceil_power_of_two(degree) / trace_degree),
-        );
+        let ret = self
+            .constraints()
+            .iter()
+            .map(|constraint| {
+                let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
+                numerator_degree - denominator_degree
+            })
+            .max()
+            // TODO: ceil_power_of_two might not be correct here. check the math
+            .map_or(0, |degree| degree / trace_degree)
+            .next_power_of_two();
         ret
     }
 

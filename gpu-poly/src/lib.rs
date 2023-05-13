@@ -1,20 +1,20 @@
-#![feature(test, allocator_api, const_try, int_roundings)]
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
-#[macro_use]
+#[cfg(not(any(feature = "arkworks", feature = "winterfell")))]
+compile_error!("Either feature \"arkworks\" or \"winterfell\" must be enabled for this crate.");
+
 extern crate alloc;
-use alloc::string::String;
-use alloc::vec::Vec;
-use allocator::PageAlignedAllocator;
 
 #[macro_use]
 pub mod macros;
-pub mod allocator;
 pub mod fields;
 pub mod plan;
 pub mod prelude;
 pub mod stage;
 pub mod utils;
+
+#[cfg(apple_silicon)]
+pub use metal;
 
 /// A trait to be implemented if the field can be used for FFTs on the GPU.
 pub trait GpuFftField: GpuField<FftField = Self> {}
@@ -30,9 +30,5 @@ pub trait GpuField: GpuMul<Self> + GpuAdd<Self> + GpuMul<Self::FftField> + Sized
     type FftField: GpuFftField;
 
     // Used to select which GPU kernel to call.
-    fn field_name() -> String;
+    fn field_name() -> alloc::string::String;
 }
-
-/// Shared vec between GPU and CPU.
-/// Requirement is that the vec's memory is page aligned.
-pub type GpuVec<T> = Vec<T, PageAlignedAllocator>;

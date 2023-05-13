@@ -4,11 +4,11 @@ use ark_ff::One;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
-use gpu_poly::allocator::PageAlignedAllocator;
-use gpu_poly::fields::p18446744069414584321::Fp;
+use gpu_poly::fields::p18446744069414584321::ark::Fp;
 use ministark::constraints::AlgebraicExpression;
 use ministark::constraints::ExecutionTraceColumn;
 use ministark::constraints::FieldConstant;
+use ministark::utils::GpuAllocator;
 use ministark::Air;
 use ministark::Matrix;
 use ministark::ProofOptions;
@@ -181,14 +181,14 @@ fn gen_trace(n: usize) -> FibTrace {
 
     let num_rows = n / 8;
 
-    let mut col0 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
-    let mut col1 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
-    let mut col2 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
-    let mut col3 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
-    let mut col4 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
-    let mut col5 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
-    let mut col6 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
-    let mut col7 = Vec::with_capacity_in(num_rows, PageAlignedAllocator);
+    let mut col0 = Vec::with_capacity_in(num_rows, GpuAllocator);
+    let mut col1 = Vec::with_capacity_in(num_rows, GpuAllocator);
+    let mut col2 = Vec::with_capacity_in(num_rows, GpuAllocator);
+    let mut col3 = Vec::with_capacity_in(num_rows, GpuAllocator);
+    let mut col4 = Vec::with_capacity_in(num_rows, GpuAllocator);
+    let mut col5 = Vec::with_capacity_in(num_rows, GpuAllocator);
+    let mut col6 = Vec::with_capacity_in(num_rows, GpuAllocator);
+    let mut col7 = Vec::with_capacity_in(num_rows, GpuAllocator);
 
     let mut v0 = Fp::one();
     let mut v1 = v0 + v0;

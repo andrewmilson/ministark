@@ -6,12 +6,15 @@ use crate::merkle::MerkleTree;
 use crate::utils;
 use crate::utils::divide_out_point_into;
 use crate::utils::horner_evaluate;
+use crate::utils::GpuAllocator;
+use crate::utils::GpuVec;
 use crate::Air;
 use crate::Matrix;
 use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
+#[cfg(feature = "gpu")]
 use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -41,7 +44,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
     ) -> Matrix<A::Fq> {
         use crate::calculator::lde_calculator;
         use crate::constraints::EvaluationLde;
-        let command_queue = &PLANNER.command_queue;
+        let command_queue = &get_planner().command_queue;
         let device = command_queue.device();
 
         #[cfg(debug_assertions)]
@@ -98,7 +101,7 @@ impl<'a, A: Air> ConstraintComposer<'a, A> {
         let step = self.air.ce_blowup_factor() as isize;
         let xs = ce_domain.elements();
         let n = ce_domain.size();
-        let mut result = Vec::with_capacity_in(n, PageAlignedAllocator);
+        let mut result = Vec::with_capacity_in(n, GpuAllocator);
         result.resize(n, A::Fq::zero());
 
         let trace_info = self.air.trace_info();
@@ -334,7 +337,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
             ark_std::cfg_into_iter!(composition_trace_polys.0)
                 .zip(composition_trace_alphas)
                 .map(|(coeffs, alpha)| {
-                    let mut res = Vec::new_in(PageAlignedAllocator);
+                    let mut res = Vec::new_in(GpuAllocator);
                     res.resize(trace_domain.size(), A::Fq::zero());
                     divide_out_point_into(&mut res, &coeffs, &z_n, &alpha);
                     res
@@ -354,7 +357,7 @@ impl<'a, A: Air> DeepPolyComposer<'a, A> {
             ark_std::cfg_into_iter!(trace_arguments)
                 .zip(execution_trace_alphas)
                 .map(|((col, offset), alpha)| {
-                    let mut res = Vec::new_in(PageAlignedAllocator);
+                    let mut res = Vec::new_in(GpuAllocator);
                     res.resize(trace_domain.size(), A::Fq::zero());
                     let x = z * if offset >= 0 { g } else { g_inv }.pow([offset.abs() as u64]);
                     if base_columns_range.contains(&col) {

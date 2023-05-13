@@ -3,10 +3,13 @@ use ark_ff::FftField;
 use ark_ff::Field;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
+use core::alloc::AllocError;
+use core::alloc::Allocator;
+use core::alloc::Layout;
 use core::ops::Add;
 use core::ops::AddAssign;
 use core::ops::Mul;
-use gpu_poly::GpuVec;
+use core::ptr::NonNull;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -52,15 +55,6 @@ pub fn interleave<T: Copy + Send + Sync + Default, const RADIX: usize>(
 //     }
 //     println!()
 // }
-
-/// Rounds the input value up the the nearest power of two
-pub fn ceil_power_of_two(value: usize) -> usize {
-    if value.is_power_of_two() {
-        value
-    } else {
-        value.next_power_of_two()
-    }
-}
 
 // from arkworks
 /// This evaluates the vanishing polynomial for this domain at tau.
@@ -189,4 +183,48 @@ pub fn reduce_lde_blowup_factor<T: Copy>(
     }
 
     lde.truncate(lde.len() / reduction_factor)
+}
+
+/// Shared vec between GPU and CPU.
+/// Requirement is that the vec's memory is page aligned.
+pub type GpuVec<T> = alloc::vec::Vec<T, GpuAllocator>;
+
+/// Allocator with page aligned allocations on Apple Silicon.
+/// Uses global allocator on all other platforms.
+pub struct GpuAllocator;
+
+unsafe impl Allocator for GpuAllocator {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        #[cfg(apple_silicon)]
+        return page_aligned_allocator::PageAlignedAllocator.allocate(layout);
+        #[cfg(not(apple_silicon))]
+        return ark_std::alloc::Global.allocate(layout);
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        #[cfg(apple_silicon)]
+        return page_aligned_allocator::PageAlignedAllocator.deallocate(ptr, layout);
+        #[cfg(not(apple_silicon))]
+        return ark_std::alloc::Global.deallocate(ptr, layout);
+    }
+}
+
+#[cfg(apple_silicon)]
+mod page_aligned_allocator {
+    use super::*;
+    use alloc::alloc::Global;
+
+    const PAGE_SIZE: usize = 16384;
+
+    pub struct PageAlignedAllocator;
+
+    unsafe impl Allocator for PageAlignedAllocator {
+        fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+            Global.allocate(layout.align_to(PAGE_SIZE).unwrap().pad_to_align())
+        }
+
+        unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+            Global.deallocate(ptr, layout.align_to(PAGE_SIZE).unwrap().pad_to_align())
+        }
+    }
 }

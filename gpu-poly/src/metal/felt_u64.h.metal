@@ -22,9 +22,54 @@ namespace p18446744069414584321
             return Fp(sub(inner, rhs.inner));
         }
 
+        constexpr explicit operator unsigned long() const
+        {
+            return inner;
+        }
+
         Fp operator*(const Fp rhs) const
         {
             return Fp(mul(inner, rhs.inner));
+        }
+
+        // used for S-box in the Rescue Prime Optimized hash function
+        Fp pow7() {
+            unsigned long t2 = mul(inner, inner);
+            return mul(mul(mul(t2, t2), t2), inner);
+        }
+
+        // used for S-box-inverse in the Rescue Prime Optimized hash function
+        Fp pow10540996611094048183() {
+            // ADDCHAIN IMPLEMENTATION
+            // // used addchain
+            // // https://github.com/mmcloughlin/addchain
+            // unsigned long _100 = sqn<2>(inner);
+            // unsigned long _100000 = sqn<3>(_100);
+            // unsigned long _100001 = mul(_100000, inner);
+            // unsigned long i9 = sqn<3>(_100000);
+            // unsigned long i10 = mul(_100001, i9);
+            // unsigned long i14 = mul(sqn<3>(i9), i10);
+            // unsigned long i17 = mul(sqn<1>(mul(_100, i14)), inner);
+            // unsigned long i18 = mul(i14, i17);
+            // unsigned long i19 = mul(i17, i18);
+            // unsigned long i20 = mul(i18, i19);
+            // unsigned long i21 = mul(inner, i20);
+            // unsigned long i23 = mul(sqn<1>(i21), inner);
+            // unsigned long i60 = mul(mul(sqn<17>(mul(sqn<17>(i23), i20)), i23), i21);
+            // return mul(sqn<14>(i60), i19);
+
+            // FROM MIDEN IMPLEMENTATION
+            // compute base^10540996611094048183 using 72 multiplications per array element
+            // 10540996611094048183 = b1001001001001001001001001001000110110110110110110110110110110111
+            unsigned long t1 = mul(inner, inner);
+            unsigned long t2 = mul(t1, t1);
+            unsigned long t3 = exp_acc<3>(t2, t2);
+            unsigned long t4 = exp_acc<6>(t3, t3);
+            unsigned long t5 = exp_acc<12>(t4, t4);
+            unsigned long t6 = exp_acc<6>(t5, t3);
+            unsigned long t7 = exp_acc<31>(t6, t6);
+            unsigned long t8 = sqn<2>(mul(mul(t7, t7), t6));
+            return mul(mul(mul(t1, t2), inner), t8);
         }
 
         Fp pow(unsigned exp)
@@ -82,13 +127,21 @@ namespace p18446744069414584321
         constexpr static const constant unsigned long R2 = 18446744065119617025;
 
         template<unsigned N_ACC>
-        inline unsigned long exp_acc(const unsigned long base, const unsigned long tail) const {
-            unsigned long result = base;
+        inline unsigned long exp_acc(unsigned long element, const unsigned long tail) const {
 #pragma unroll
             for (unsigned i = 0; i < N_ACC; i++) {
-                result = mul(result, result);
+                element = mul(element, element);
             }
-            return mul(result, tail);
+            return mul(element, tail);
+        }
+
+        template<unsigned N_ACC>
+        inline unsigned long sqn(unsigned long element) const {
+#pragma unroll
+            for (unsigned i = 0; i < N_ACC; i++) {
+                element = mul(element, element);
+            }
+            return element;
         }
 
         inline unsigned long add(const unsigned long a, const unsigned long b) const
@@ -111,11 +164,10 @@ namespace p18446744069414584321
 
         inline unsigned long mul(const unsigned long lhs, const unsigned long rhs) const
         {
-            // u128 x = u128(lhs) * u128(rhs);
-            unsigned long xl = lhs * rhs; // x.low;
+            unsigned long xl = lhs * rhs;
             unsigned long xh = metal::mulhi(lhs, rhs);
             unsigned long tmp = xl << 32;
-            unsigned long a_overflow = xl > (0xFFFFFFFFFFFFFFFF - tmp);
+            unsigned a_overflow = xl > (0xFFFFFFFFFFFFFFFF - tmp);
             unsigned long a = xl + tmp;
             unsigned long b = a - (a >> 32) - a_overflow;
             unsigned r_underflow = xh < b;

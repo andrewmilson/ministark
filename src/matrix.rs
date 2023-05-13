@@ -1,6 +1,8 @@
 use crate::constraints::ExecutionTraceColumn;
 use crate::merkle::MerkleTree;
 use crate::utils::horner_evaluate;
+use crate::utils::GpuAllocator;
+use crate::utils::GpuVec;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -8,7 +10,6 @@ use ark_ff::FftField;
 use ark_ff::Field;
 use ark_poly::domain::DomainCoeff;
 use ark_poly::domain::Radix2EvaluationDomain;
-#[cfg(not(feature = "gpu"))]
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use core::cmp::Ordering;
@@ -22,6 +23,20 @@ use gpu_poly::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+// pub trait StarkMatrix<F: GpuField + Field> {
+//     fn num_cols(&self) -> usize;
+
+//     fn num_rows(&self) -> usize;
+
+//     // TODO
+//     async fn interpolate_evaluate_commit<D: Digest>(
+//         &self,
+//         interp_domain: Radix2EvaluationDomain<F::FftField>,
+//         eval_domain: Radix2EvaluationDomain<F::FftField>,
+//     ) -> (Self, Self, MerkleTree<D>);
+//     async fn commit_to_rows(&self) -> MerkleTree<D>;
+// }
+
 /// Matrix is an array of columns.
 pub struct Matrix<F>(pub Vec<GpuVec<F>>);
 
@@ -34,7 +49,7 @@ impl<F: Field> Matrix<F> {
         let num_rows = rows.len();
         let num_cols = rows.first().map(|first| first.len()).unwrap_or(0);
         let mut cols = (0..num_cols)
-            .map(|_| Vec::with_capacity_in(num_rows, PageAlignedAllocator))
+            .map(|_| Vec::with_capacity_in(num_rows, GpuAllocator))
             .collect::<Vec<GpuVec<F>>>();
         // TODO: parallelise
         for row in rows {
@@ -154,6 +169,7 @@ impl<F: Field> Matrix<F> {
         let mut fft = GpuFft::from(domain);
 
         for column in &mut self.0 {
+            column.resize(domain.size(), F::zero());
             fft.encode(column);
         }
 
@@ -264,7 +280,7 @@ impl<F: Field> Matrix<F> {
     #[cfg(not(feature = "gpu"))]
     pub fn sum_columns_cpu(&self) -> Matrix<F> {
         let n = self.num_rows();
-        let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
+        let mut accumulator = Vec::with_capacity_in(n, GpuAllocator);
         accumulator.resize(n, F::zero());
 
         if self.num_cols() != 0 {
@@ -298,13 +314,13 @@ impl<F: Field> Matrix<F> {
     {
         let n = self.num_rows();
         // TODO: add into_sum_columns and prevent having to allocate new memory
-        let mut accumulator = Vec::with_capacity_in(n, PageAlignedAllocator);
+        let mut accumulator = Vec::with_capacity_in(n, GpuAllocator);
         accumulator.resize(n, F::zero());
 
         if self.num_cols() != 0 {
             // TODO: could improve
-            let library = &PLANNER.library;
-            let command_queue = &PLANNER.command_queue;
+            let library = &get_planner().library;
+            let command_queue = &get_planner().command_queue;
             let device = command_queue.device();
             let command_buffer = command_queue.new_command_buffer();
             let mut accumulator_buffer = buffer_mut_no_copy(device, &mut accumulator);
@@ -337,7 +353,7 @@ impl<F: Field> Clone for Matrix<F> {
         Self(
             self.0
                 .iter()
-                .map(|col| col.to_vec_in(PageAlignedAllocator))
+                .map(|col| col.to_vec_in(GpuAllocator))
                 .collect(),
         )
     }

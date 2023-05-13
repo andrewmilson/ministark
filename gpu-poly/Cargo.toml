@@ -3,39 +3,37 @@ name = "gpu-poly"
 version = "0.1.0"
 edition = "2021"
 
-[profile.test]
-opt-level = 3
-
 [dependencies]
-libc = "0.2"
-num-traits = "0.2.14"
-serde = { version = "1.0", features = ["derive"] }
-ark-ff = "0.4.0"
-ark-ff-optimized = "0.4.0"
-ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator" }
-ark-serialize = "0.4.0"
-once_cell = "1.15.0"
-rayon = { version = "1.5.3", optional = true }
-ark-std = "0.4.0"
-rand = "0.8.5"
-zeroize = { version = "1", default-features = false, features = ["zeroize_derive"] }
+once_cell = "1.15"
+ark-ff = { version = "0.4", optional = true }
+ark-ff-optimized = { version = "0.4", optional = true }
+ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator", optional = true }
+ark-serialize = { version = "0.4", optional = true }
+ark-std = { version = "0.4", optional = true }
+rayon = { version = "1.5", optional = true }
+winter-math = { version = "0.6", optional = true }
+zeroize = { version = "1", default-features = false, features = ["zeroize_derive"], optional = true }
+rand = "0.8"
 
 [features]
 default = []
-parallel = [ "dep:rayon", "ark-std/parallel" ]
+std = []
+gpu_vec = []
+winterfell = [ "dep:winter-math" ]
+arkworks = [ "dep:ark-ff", "dep:ark-ff-optimized", "dep:ark-serialize", "dep:ark-poly", "dep:ark-std", "dep:zeroize" ]
+parallel = [ "dep:rayon", "dep:ark-std" ]
 
 # Apple silicon depencencies
-[target.'cfg(target_os = "macos")'.dependencies]
-metal = { git = "https://github.com/gfx-rs/metal-rs" }
-
-# Apple silicon dev-depencencies
-[target.'cfg(target_os = "macos")'.dev-dependencies]
-objc = "0.2.7"
+[target.'cfg(all(target_arch = "aarch64", target_os = "macos"))'.dependencies]
+metal = { git = "https://github.com/gfx-rs/metal-rs", rev = "b710f05" }
 
 [dev-dependencies]
-criterion = "0.4.0"
+criterion = "0.4"
+pollster = "0.2"
+rand = "0.8"
 
-[[target.'cfg(target_arch = "aarch64")'.bench]]
+[[bench]]
 name = "fft"
 path = "benches/fft.rs"
+required-features = [ "arkworks" ]
 harness = false
