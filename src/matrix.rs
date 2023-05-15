@@ -129,9 +129,9 @@ impl<F: Field> Matrix<F> {
                     // TODO: a little messy. arkworks only takes a Vec with global allocator. To
                     // prevent cloning the memory we have to reconstruct a Vec from a GpuVec and
                     // convert it back to a GpuVec after the fft
-                    let mut column = unsafe { gpu_vec_to_vec(column) };
+                    let mut column = gpu_vec_to_vec(column);
                     domain.ifft_in_place(&mut column);
-                    unsafe { vec_to_gpu_vec(column) }
+                    vec_to_gpu_vec(column)
                 })
                 .collect(),
         )
@@ -176,9 +176,9 @@ impl<F: Field> Matrix<F> {
                     // TODO: a little messy. arkworks only takes a Vec with global allocator. To
                     // prevent cloning the memory we have to reconstruct a Vec from a GpuVec and
                     // convert it back to a GpuVec after the fft
-                    let mut column = unsafe { gpu_vec_to_vec(column) };
+                    let mut column = gpu_vec_to_vec(column);
                     domain.fft_in_place(&mut column);
-                    unsafe { vec_to_gpu_vec(column) }
+                    vec_to_gpu_vec(column)
                 })
                 .collect(),
         )
