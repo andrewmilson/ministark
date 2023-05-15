@@ -3,11 +3,11 @@
 // TODO: test GPU RPO against CPU rpo. these aren't tests.
 
 use ark_ff::One;
-use gpu_poly::fields::p18446744069414584321::ark::Fp;
-use gpu_poly::plan::gen_rpo_merkle_tree;
-use gpu_poly::plan::GpuRpo256ColumnMajor;
-use gpu_poly::plan::GpuRpo256RowMajor;
-use gpu_poly::utils::page_aligned_uninit_vector;
+use ministark_gpu::fields::p18446744069414584321::ark::Fp;
+use ministark_gpu::plan::gen_rpo_merkle_tree;
+use ministark_gpu::plan::GpuRpo256ColumnMajor;
+use ministark_gpu::plan::GpuRpo256RowMajor;
+use ministark_gpu::utils::page_aligned_uninit_vector;
 use std::time::Instant;
 
 #[test]

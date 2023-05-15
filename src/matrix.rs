@@ -19,7 +19,7 @@ use core::ops::DerefMut;
 use core::ops::Index;
 use core::ops::IndexMut;
 use digest::Digest;
-use gpu_poly::prelude::*;
+use ministark_gpu::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 

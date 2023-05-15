@@ -7,9 +7,9 @@ use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use digest::Digest;
-use gpu_poly::GpuField;
 use ministark::utils::GpuAllocator;
 use ministark::Matrix;
+use ministark_gpu::GpuField;
 use sha2::Sha256;
 
 const BENCHMARK_MATRIX_DIMENSIONS: [(usize, usize); 4] =

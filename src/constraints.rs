@@ -24,7 +24,7 @@ use core::ops::Neg;
 use core::ops::Sub;
 use core::ops::SubAssign;
 use digest::Digest;
-use gpu_poly::GpuFftField;
+use ministark_gpu::GpuFftField;
 use sha2::Sha256;
 
 fn from_bytes<F: Field>(bytes: &[u8]) -> F {
@@ -212,13 +212,13 @@ pub enum FieldType {
 #[derive(Debug)]
 #[cfg(feature = "gpu")]
 pub enum EvaluationLde<Fp, Fq> {
-    Fp(crate::utils::GpuVec<Fp>, gpu_poly::metal::Buffer),
-    Fq(crate::utils::GpuVec<Fq>, gpu_poly::metal::Buffer),
+    Fp(crate::utils::GpuVec<Fp>, ministark_gpu::metal::Buffer),
+    Fq(crate::utils::GpuVec<Fq>, ministark_gpu::metal::Buffer),
 }
 
 #[cfg(feature = "gpu")]
-impl<Fp: gpu_poly::GpuField, Fq: gpu_poly::GpuField> EvaluationLde<Fp, Fq> {
-    pub fn get_gpu_buffer(&self) -> &gpu_poly::metal::BufferRef {
+impl<Fp: ministark_gpu::GpuField, Fq: ministark_gpu::GpuField> EvaluationLde<Fp, Fq> {
+    pub fn get_gpu_buffer(&self) -> &ministark_gpu::metal::BufferRef {
         match self {
             EvaluationLde::Fp(_, buff) => buff,
             EvaluationLde::Fq(_, buff) => buff,
@@ -507,7 +507,7 @@ impl<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>> AlgebraicExpression<F
     /// TODO: improve the explanation: reuses shared nodes. determines node
     /// equality probabilistically using a kind of evaluation hash
     /// Inspired by Thorkil Værge's "Reusing Shared Nodes" article:
-    /// https://neptune.cash/learn/speed-up-stark-provers-with-multicircuits/
+    /// <https://neptune.cash/learn/speed-up-stark-provers-with-multicircuits/>
     pub fn reuse_shared_nodes(&self) -> Self {
         use AlgebraicExpression::*;
         let mut rng = rand::thread_rng();

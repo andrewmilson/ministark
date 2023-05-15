@@ -9,8 +9,6 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use gpu_poly::fields::p18446744069414584321::ark::Fp;
-use gpu_poly::fields::p18446744069414584321::ark::Fq3;
 use ministark::challenges::Challenges;
 use ministark::constraints::AlgebraicExpression;
 use ministark::constraints::FieldConstant;
@@ -20,6 +18,8 @@ use ministark::hints::Hints;
 use ministark::Air;
 use ministark::ProofOptions;
 use ministark::TraceInfo;
+use ministark_gpu::fields::p18446744069414584321::ark::Fp;
+use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct ExecutionInfo {

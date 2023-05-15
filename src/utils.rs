@@ -109,8 +109,8 @@ where
 }
 
 /// Calculates `c * (P(X) - P(z)) / (x^a - z)` using synthetic division
-/// https://en.wikipedia.org/wiki/Synthetic_division
-/// code taken from OpenZKP
+/// <https://en.wikipedia.org/wiki/Synthetic_division>
+/// source-code from from OpenZKP
 pub fn divide_out_point_into<
     Fp: Field,
     Fq: Field + for<'a> AddAssign<&'a Fp> + for<'a> Mul<&'a Fp>,

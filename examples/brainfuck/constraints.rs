@@ -12,13 +12,13 @@ use crate::tables::ProcessorBaseColumn;
 use crate::tables::ProcessorExtensionColumn;
 use crate::vm::OpCode;
 use ark_ff::FftField;
-use gpu_poly::GpuFftField;
 use ministark::constraints::AlgebraicExpression;
 use ministark::constraints::ExecutionTraceColumn;
 use ministark::constraints::FieldConstant;
 use ministark::constraints::Hint;
 use ministark::constraints::VerifierChallenge;
 use ministark::StarkExtensionOf;
+use ministark_gpu::GpuFftField;
 use std::borrow::Borrow;
 
 impl ProcessorBaseColumn {

@@ -474,25 +474,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpu-poly"
-version = "0.1.0"
-dependencies = [
- "ark-ff",
- "ark-ff-optimized",
- "ark-poly",
- "ark-serialize",
- "ark-std",
- "criterion",
- "metal",
- "once_cell",
- "pollster",
- "rand",
- "rayon",
- "winter-math",
- "zeroize",
-]
-
-[[package]]
 name = "half"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -653,7 +634,7 @@ dependencies = [
  "ark-std",
  "criterion",
  "digest",
- "gpu-poly",
+ "ministark-gpu",
  "num-bigint",
  "num-integer",
  "pollster",
@@ -664,6 +645,25 @@ dependencies = [
  "sha3",
  "snafu",
  "structopt",
+]
+
+[[package]]
+name = "ministark-gpu"
+version = "0.1.0"
+dependencies = [
+ "ark-ff",
+ "ark-ff-optimized",
+ "ark-poly",
+ "ark-serialize",
+ "ark-std",
+ "criterion",
+ "metal",
+ "once_cell",
+ "pollster",
+ "rand",
+ "rayon",
+ "winter-math",
+ "zeroize",
 ]
 
 [[package]]

@@ -2,7 +2,7 @@
 
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use gpu_poly::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp;
+use ministark_gpu::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp;
 use ark_ff::One;
 use ministark::Air;
 use ministark::ProofOptions;

@@ -4,7 +4,6 @@ use ark_ff::One;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
-use gpu_poly::fields::p18446744069414584321::ark::Fp;
 use ministark::constraints::AlgebraicExpression;
 use ministark::constraints::ExecutionTraceColumn;
 use ministark::constraints::FieldConstant;
@@ -15,6 +14,7 @@ use ministark::ProofOptions;
 use ministark::Prover;
 use ministark::Trace;
 use ministark::TraceInfo;
+use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use std::time::Instant;
 
 struct FibTrace(Matrix<Fp>);

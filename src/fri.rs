@@ -19,7 +19,7 @@ use ark_serialize::CanonicalSerialize;
 use core::ops::Deref;
 use digest::Digest;
 use digest::Output;
-use gpu_poly::prelude::*;
+use ministark_gpu::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use snafu::Snafu;

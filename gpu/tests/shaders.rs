@@ -8,10 +8,10 @@ use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;
 use ark_poly::EvaluationDomain;
-use gpu_poly::fields::p18446744069414584321::ark::Fq3;
-use gpu_poly::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp as Fp252;
-use gpu_poly::prelude::*;
-use gpu_poly::utils::page_aligned_uninit_vector;
+use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
+use ministark_gpu::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp as Fp252;
+use ministark_gpu::prelude::*;
+use ministark_gpu::utils::page_aligned_uninit_vector;
 
 #[test]
 fn fft_with_64_bit_field() {

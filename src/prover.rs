@@ -9,7 +9,7 @@ use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::Trace;
 use ark_ff::PrimeField;
-use gpu_poly::GpuFftField;
+use ministark_gpu::GpuFftField;
 use sha2::Sha256;
 
 /// Errors that can occur during the proving stage

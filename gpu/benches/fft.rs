@@ -13,7 +13,7 @@ mod benches {
     use ark_poly::Radix2EvaluationDomain;
     use criterion::BenchmarkId;
     use criterion::Criterion;
-    use gpu_poly::prelude::*;
+    use ministark_gpu::prelude::*;
 
     const BENCHMARK_INPUT_SIZES: [usize; 4] = [2048, 4096, 32768, 262144];
 
@@ -79,8 +79,8 @@ mod benches {
 
 #[cfg(apple_silicon)]
 fn fft_benches(c: &mut Criterion) {
-    use gpu_poly::fields::p18446744069414584321::ark::Fp as Fp64;
-    use gpu_poly::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp as Fp252;
+    use ministark_gpu::fields::p18446744069414584321::ark::Fp as Fp64;
+    use ministark_gpu::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp as Fp252;
     benches::fft_bench::<Fp64>(c, "FFT (64-bit prime field)");
     benches::fft_bench::<Fp252>(c, "FFT (252-bit prime field)");
 }

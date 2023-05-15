@@ -17,8 +17,6 @@ use ark_ff::PrimeField;
 use ark_ff::UniformRand;
 use ark_ff::Zero;
 use ark_std::rand;
-use gpu_poly::fields::p18446744069414584321::ark::Fp;
-use gpu_poly::fields::p18446744069414584321::ark::Fq3;
 use ministark::challenges::Challenges;
 use ministark::constraints::VerifierChallenge;
 use ministark::utils::GpuAllocator;
@@ -26,6 +24,8 @@ use ministark::utils::GpuVec;
 // use ministark::constraint::Challenge as _;
 use ministark::Matrix;
 use ministark::Trace;
+use ministark_gpu::fields::p18446744069414584321::ark::Fp;
+use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
 
 pub struct TraceMeta {
     pub input: Vec<u8>,

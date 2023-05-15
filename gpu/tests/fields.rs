@@ -2,17 +2,17 @@
 #![feature(allocator_api)]
 
 use ark_ff::UniformRand;
-use gpu_poly::stage::MulPowStage;
-use gpu_poly::utils::buffer_mut_no_copy;
-use gpu_poly::utils::buffer_no_copy;
+use ministark_gpu::stage::MulPowStage;
+use ministark_gpu::utils::buffer_mut_no_copy;
+use ministark_gpu::utils::buffer_no_copy;
 
 pub mod p18446744069414584321 {
     use super::*;
     use ark_ff::Field;
-    use gpu_poly::fields::p18446744069414584321::ark::Fp;
-    use gpu_poly::fields::p18446744069414584321::ark::Fq3;
-    use gpu_poly::prelude::get_planner;
-    use gpu_poly::utils::page_aligned_uninit_vector;
+    use ministark_gpu::fields::p18446744069414584321::ark::Fp;
+    use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
+    use ministark_gpu::prelude::get_planner;
+    use ministark_gpu::utils::page_aligned_uninit_vector;
 
     #[test]
     fn mul_pow_fp() {

@@ -13,21 +13,21 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use ark_ff::One;
 use ark_poly::EvaluationDomain;
-use gpu_poly::prelude::*;
-use gpu_poly::stage::AddAssignConstStage;
-use gpu_poly::stage::AddIntoConstStage;
-use gpu_poly::stage::AddIntoStage;
-use gpu_poly::stage::ConvertIntoStage;
-use gpu_poly::stage::ExpInPlaceStage;
-use gpu_poly::stage::ExpIntoStage;
-use gpu_poly::stage::InverseInPlaceStage;
-use gpu_poly::stage::MulAssignConstStage;
-use gpu_poly::stage::MulAssignStage;
-use gpu_poly::stage::MulIntoConstStage;
-use gpu_poly::stage::MulIntoStage;
-use gpu_poly::stage::NegInPlaceStage;
-use gpu_poly::stage::NegIntoStage;
-use gpu_poly::utils::buffer_no_copy;
+use ministark_gpu::prelude::*;
+use ministark_gpu::stage::AddAssignConstStage;
+use ministark_gpu::stage::AddIntoConstStage;
+use ministark_gpu::stage::AddIntoStage;
+use ministark_gpu::stage::ConvertIntoStage;
+use ministark_gpu::stage::ExpInPlaceStage;
+use ministark_gpu::stage::ExpIntoStage;
+use ministark_gpu::stage::InverseInPlaceStage;
+use ministark_gpu::stage::MulAssignConstStage;
+use ministark_gpu::stage::MulAssignStage;
+use ministark_gpu::stage::MulIntoConstStage;
+use ministark_gpu::stage::MulIntoStage;
+use ministark_gpu::stage::NegInPlaceStage;
+use ministark_gpu::stage::NegIntoStage;
+use ministark_gpu::utils::buffer_no_copy;
 
 pub fn lde_calculator<A: Air>(
     air: &A,

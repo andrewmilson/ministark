@@ -1,10 +1,10 @@
 use crate::air::BrainfuckAir;
 use crate::air::ExecutionInfo;
 use crate::trace::BrainfuckTrace;
-use gpu_poly::fields::p18446744069414584321::ark::Fp;
-use gpu_poly::fields::p18446744069414584321::ark::Fq3;
 use ministark::ProofOptions;
 use ministark::Prover;
+use ministark_gpu::fields::p18446744069414584321::ark::Fp;
+use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
 
 pub struct BrainfuckProver(ProofOptions);
 

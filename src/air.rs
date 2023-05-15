@@ -15,7 +15,7 @@ use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
-use gpu_poly::GpuFftField;
+use ministark_gpu::GpuFftField;
 
 pub trait Air {
     type Fp: GpuFftField<FftField = Self::Fp> + FftField;

@@ -12,9 +12,6 @@ use ark_poly::Radix2EvaluationDomain;
 use ark_std::rand::seq::SliceRandom;
 use ark_std::rand::Rng;
 use core::marker::PhantomData;
-use gpu_poly::fields::p18446744069414584321::ark::Fp;
-use gpu_poly::GpuFftField;
-use gpu_poly::GpuField;
 use ministark::constraints::AlgebraicExpression;
 use ministark::constraints::ExecutionTraceColumn;
 use ministark::constraints::FieldConstant;
@@ -25,6 +22,9 @@ use ministark::Matrix;
 use ministark::ProofOptions;
 use ministark::StarkExtensionOf;
 use ministark::TraceInfo;
+use ministark_gpu::fields::p18446744069414584321::ark::Fp;
+use ministark_gpu::GpuFftField;
+use ministark_gpu::GpuField;
 
 struct TestAir<Fp, Fq = Fp>(TraceInfo, ProofOptions, PhantomData<(Fp, Fq)>);
 

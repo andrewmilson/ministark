@@ -9,14 +9,14 @@ categories = ["cryptography"]
 readme = "README.md"
 
 [workspace]
-members = ["gpu-poly"]
+members = ["gpu"]
 
 [features]
 default = []
 gpu = []
 std = []
 asm = [ "sha2/asm" ]
-parallel = [ "dep:rayon", "ark-std/parallel", "gpu-poly/parallel" ]
+parallel = [ "dep:rayon", "ark-std/parallel", "ministark-gpu/parallel" ]
 
 [[bench]]
 name = "merkle_tree"
@@ -38,7 +38,7 @@ ark-ff = "0.4"
 ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator" }
 ark-serialize = "0.4"
 ark-ff-optimized = "0.4"
-gpu-poly = { path = "./gpu-poly", features = [ "arkworks" ] }
+ministark-gpu = { path = "./gpu", features = [ "arkworks" ] }
 rand = "0.8"
 snafu = { version = "0.7", default-features = false }
 rayon = { version = "1.5", optional = true }
