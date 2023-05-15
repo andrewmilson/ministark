@@ -8,12 +8,13 @@ categories = ["cryptography"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+readme = "README.md"
 
 [dependencies]
 once_cell = "1.15"
 ark-ff = { version = "0.4", optional = true }
 ark-ff-optimized = { version = "0.4", optional = true }
-ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator", optional = true }
+ark-poly = { version = "0.4", optional = true }
 ark-serialize = { version = "0.4", optional = true }
 ark-std = { version = "0.4", optional = true }
 rayon = { version = "1.5", optional = true }

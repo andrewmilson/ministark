@@ -209,6 +209,16 @@ unsafe impl Allocator for GpuAllocator {
     }
 }
 
+pub unsafe fn gpu_vec_to_vec<T>(v: GpuVec<T>) -> Vec<T> {
+    let (ptr, length, capacity) = v.into_raw_parts();
+    Vec::from_raw_parts(ptr, length, capacity)
+}
+
+pub unsafe fn vec_to_gpu_vec<T>(v: Vec<T>) -> GpuVec<T> {
+    let (ptr, length, capacity) = v.into_raw_parts();
+    Vec::from_raw_parts_in(ptr, length, capacity, GpuAllocator)
+}
+
 #[cfg(apple_silicon)]
 mod page_aligned_allocator {
     use super::*;

@@ -115,13 +115,26 @@ impl<F: Field> Matrix<F> {
     }
 
     #[cfg(not(feature = "gpu"))]
-    fn into_polynomials_cpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    fn into_polynomials_cpu(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
     where
         F: GpuField + DomainCoeff<F::FftField>,
         F::FftField: FftField,
     {
-        self.0.iter_mut().for_each(|col| domain.ifft_in_place(col));
-        self
+        use crate::utils::gpu_vec_to_vec;
+        use crate::utils::vec_to_gpu_vec;
+        Self(
+            self.0
+                .into_iter()
+                .map(|column| {
+                    // TODO: a little messy. arkworks only takes a Vec with global allocator. To
+                    // prevent cloning the memory we have to reconstruct a Vec from a GpuVec and
+                    // convert it back to a GpuVec after the fft
+                    let mut column = unsafe { gpu_vec_to_vec(column) };
+                    domain.ifft_in_place(&mut column);
+                    unsafe { vec_to_gpu_vec(column) }
+                })
+                .collect(),
+        )
     }
 
     /// Interpolates the columns of the polynomials over the domain
@@ -149,15 +162,26 @@ impl<F: Field> Matrix<F> {
     }
 
     #[cfg(not(feature = "gpu"))]
-    fn into_evaluations_cpu(mut self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    fn into_evaluations_cpu(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
     where
         F: GpuField + DomainCoeff<F::FftField>,
         F::FftField: FftField,
     {
-        for column in &mut self.0 {
-            domain.fft_in_place(column);
-        }
-        self
+        use crate::utils::gpu_vec_to_vec;
+        use crate::utils::vec_to_gpu_vec;
+        Self(
+            self.0
+                .into_iter()
+                .map(|column| {
+                    // TODO: a little messy. arkworks only takes a Vec with global allocator. To
+                    // prevent cloning the memory we have to reconstruct a Vec from a GpuVec and
+                    // convert it back to a GpuVec after the fft
+                    let mut column = unsafe { gpu_vec_to_vec(column) };
+                    domain.fft_in_place(&mut column);
+                    unsafe { vec_to_gpu_vec(column) }
+                })
+                .collect(),
+        )
     }
 
     #[cfg(feature = "gpu")]

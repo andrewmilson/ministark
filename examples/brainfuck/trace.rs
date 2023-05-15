@@ -21,7 +21,6 @@ use ministark::challenges::Challenges;
 use ministark::constraints::VerifierChallenge;
 use ministark::utils::GpuAllocator;
 use ministark::utils::GpuVec;
-// use ministark::constraint::Challenge as _;
 use ministark::Matrix;
 use ministark::Trace;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;

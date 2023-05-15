@@ -82,8 +82,9 @@ dependencies = [
 
 [[package]]
 name = "ark-poly"
-version = "0.4.0"
-source = "git+https://github.com/andrewmilson/algebra?branch=vec-allocator#5d7964eac705f8810151c388444ea214e3308c66"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d320bfc44ee185d899ccbadfa8bc31aab923ce1558716e1997a1e74057fe86bf"
 dependencies = [
  "ark-ff",
  "ark-serialize",

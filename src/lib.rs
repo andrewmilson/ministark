@@ -8,7 +8,8 @@
     iter_partition_in_place,
     slice_flatten,
     slice_as_chunks,
-    async_fn_in_trait
+    async_fn_in_trait,
+    vec_into_raw_parts
 )]
 
 #[macro_use]

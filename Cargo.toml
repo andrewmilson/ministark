@@ -35,7 +35,7 @@ digest = "0.10"
 rand_chacha = "0.3"
 ark-std = "0.4"
 ark-ff = "0.4"
-ark-poly = { git = "https://github.com/andrewmilson/algebra", branch = "vec-allocator" }
+ark-poly = "0.4"
 ark-serialize = "0.4"
 ark-ff-optimized = "0.4"
 ministark-gpu = { path = "./gpu", features = [ "arkworks" ] }
