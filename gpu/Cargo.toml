@@ -32,7 +32,7 @@ parallel = [ "dep:rayon", "dep:ark-std" ]
 
 # Apple silicon depencencies
 [target.'cfg(all(target_arch = "aarch64", target_os = "macos"))'.dependencies]
-metal = { git = "https://github.com/gfx-rs/metal-rs", rev = "b710f05" }
+metal = "0.25"
 
 [dev-dependencies]
 criterion = "0.4"
