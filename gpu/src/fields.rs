@@ -4,6 +4,7 @@ pub mod p18446744069414584321 {
         use crate::GpuAdd;
         use crate::GpuFftField;
         use crate::GpuField;
+        use crate::GpuFrom;
         use crate::GpuMul;
         use alloc::string::String;
         use alloc::string::ToString;
@@ -16,6 +17,8 @@ pub mod p18446744069414584321 {
                 "p18446744069414584321_fp".to_string()
             }
         }
+
+        impl GpuFrom<Fp> for Fp {}
 
         impl GpuMul<BaseElement> for BaseElement {}
 
@@ -33,6 +36,7 @@ pub mod p18446744069414584321 {
         use crate::GpuAdd;
         use crate::GpuFftField;
         use crate::GpuField;
+        use crate::GpuFrom;
         use crate::GpuMul;
         use alloc::string::ToString;
         use ark_ff::BigInt;
@@ -55,6 +59,8 @@ pub mod p18446744069414584321 {
                 "p18446744069414584321_fp".to_string()
             }
         }
+
+        impl GpuFrom<Fp> for Fp {}
 
         impl GpuMul<Fp> for Fp {}
 
@@ -182,6 +188,10 @@ pub mod p18446744069414584321 {
             }
         }
 
+        impl GpuFrom<Fp> for Fq3 {}
+
+        impl GpuFrom<Fq3> for Fq3 {}
+
         impl GpuMul<Fp> for Fq3 {}
 
         impl GpuMul<&Fp> for Fq3 {}
@@ -210,11 +220,15 @@ pub mod p18446744069414584321 {
 
 // StarkWare field
 pub mod p3618502788666131213697322783095070105623107215331596699973092056135872020481 {
+    pub const MODULUS: &str =
+        "3618502788666131213697322783095070105623107215331596699973092056135872020481";
+
     #[cfg(feature = "arkworks")]
     pub mod ark {
         use crate::GpuAdd;
         use crate::GpuFftField;
         use crate::GpuField;
+        use crate::GpuFrom;
         use crate::GpuMul;
         use alloc::string::ToString;
         use ark_ff::Fp256;
@@ -240,6 +254,8 @@ pub mod p36185027886661312136973227830950701056231072153315966999730920561358720
                     .to_string()
             }
         }
+
+        impl GpuFrom<Fp> for Fp {}
 
         impl GpuMul<Fp> for Fp {}
 

@@ -25,6 +25,9 @@ pub trait GpuMul<Rhs> {}
 /// A marker trait to be implemented if `Self + Rhs` can be done on the GPU
 pub trait GpuAdd<Rhs> {}
 
+/// A marker trait indicating `Self` can be converted to `Rhs` on the GPU
+pub trait GpuFrom<Rhs> {}
+
 /// A marker trait for fields that have a GPU implementation
 pub trait GpuField: GpuMul<Self> + GpuAdd<Self> + GpuMul<Self::FftField> + Sized {
     type FftField: GpuFftField;

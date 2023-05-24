@@ -18,36 +18,23 @@ use core::ops::Deref;
 use core::ops::DerefMut;
 use core::ops::Index;
 use core::ops::IndexMut;
+use digest::generic_array::GenericArray;
 use digest::Digest;
 use ministark_gpu::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-// pub trait StarkMatrix<F: GpuField + Field> {
-//     fn num_cols(&self) -> usize;
-
-//     fn num_rows(&self) -> usize;
-
-//     // TODO
-//     async fn interpolate_evaluate_commit<D: Digest>(
-//         &self,
-//         interp_domain: Radix2EvaluationDomain<F::FftField>,
-//         eval_domain: Radix2EvaluationDomain<F::FftField>,
-//     ) -> (Self, Self, MerkleTree<D>);
-//     async fn commit_to_rows(&self) -> MerkleTree<D>;
-// }
 
 /// Matrix is an array of columns.
 pub struct Matrix<F>(pub Vec<GpuVec<F>>);
 
 impl<F: Field> Matrix<F> {
     pub fn new(cols: Vec<GpuVec<F>>) -> Self {
-        Matrix(cols)
+        Self(cols)
     }
 
     pub fn from_rows(rows: Vec<Vec<F>>) -> Self {
         let num_rows = rows.len();
-        let num_cols = rows.first().map(|first| first.len()).unwrap_or(0);
+        let num_cols = rows.first().map_or(0, Vec::len);
         let mut cols = (0..num_cols)
             .map(|_| Vec::with_capacity_in(num_rows, GpuAllocator))
             .collect::<Vec<GpuVec<F>>>();
@@ -55,10 +42,10 @@ impl<F: Field> Matrix<F> {
         for row in rows {
             debug_assert_eq!(row.len(), num_cols);
             for (col, value) in cols.iter_mut().zip(row) {
-                col.push(value)
+                col.push(value);
             }
         }
-        Matrix::new(cols)
+        Self::new(cols)
     }
 
     // TODO: perhaps bring naming of rows and cols in line with
@@ -70,23 +57,23 @@ impl<F: Field> Matrix<F> {
         // Check all columns have the same length
         let expected_len = self.0[0].len();
         for (i, col) in self.0.iter().enumerate() {
-            assert_eq!(expected_len, col.len(), "length of column {i} is invalid")
+            assert_eq!(expected_len, col.len(), "length of column {i} is invalid");
         }
         expected_len
     }
 
-    pub fn append(&mut self, other: Matrix<F>) {
+    pub fn append(&mut self, other: Self) {
         for col in other.0 {
-            self.0.push(col)
+            self.0.push(col);
         }
     }
 
-    pub fn join(mut matrices: Vec<Matrix<F>>) -> Matrix<F> {
+    pub fn join(mut matrices: Vec<Self>) -> Self {
         let mut accumulator = Vec::new();
         for matrix in &mut matrices {
-            accumulator.append(matrix)
+            accumulator.append(matrix);
         }
-        Matrix::new(accumulator)
+        Self::new(accumulator)
     }
 
     pub fn num_cols(&self) -> usize {
@@ -229,7 +216,7 @@ impl<F: Field> Matrix<F> {
     pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {
         let num_rows = self.num_rows();
 
-        let mut row_hashes = vec![Default::default(); num_rows];
+        let mut row_hashes = vec![GenericArray::default(); num_rows];
 
         #[cfg(not(feature = "parallel"))]
         let chunk_size = row_hashes.len();
@@ -258,10 +245,7 @@ impl<F: Field> Matrix<F> {
         MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
     }
 
-    pub fn evaluate_at<T: Field>(&self, x: T) -> Vec<T>
-    where
-        T: for<'a> Add<&'a F, Output = T>,
-    {
+    pub fn evaluate_at<T: Field + for<'a> Add<&'a F, Output = T>>(&self, x: T) -> Vec<T> {
         ark_std::cfg_iter!(self.0)
             .map(|col| horner_evaluate(col, &x))
             .collect()
@@ -276,8 +260,8 @@ impl<F: Field> Matrix<F> {
     }
 
     fn read_row(&self, row_idx: usize, row: &mut [F]) {
-        for (column, value) in self.0.iter().zip(row.iter_mut()) {
-            *value = column[row_idx]
+        for (column, value) in self.0.iter().zip(row) {
+            *value = column[row_idx];
         }
     }
 
@@ -302,7 +286,7 @@ impl<F: Field> Matrix<F> {
     }
 
     #[cfg(not(feature = "gpu"))]
-    pub fn sum_columns_cpu(&self) -> Matrix<F> {
+    pub fn sum_columns_cpu(&self) -> Self {
         let n = self.num_rows();
         let mut accumulator = Vec::with_capacity_in(n, GpuAllocator);
         accumulator.resize(n, F::zero());
@@ -328,11 +312,11 @@ impl<F: Field> Matrix<F> {
                 });
         }
 
-        Matrix::new(vec![accumulator])
+        Self::new(vec![accumulator])
     }
 
     #[cfg(feature = "gpu")]
-    pub fn sum_columns_gpu(&self) -> Matrix<F>
+    pub fn sum_columns_gpu(&self) -> Self
     where
         F: GpuField,
     {
@@ -347,21 +331,21 @@ impl<F: Field> Matrix<F> {
             let command_queue = &get_planner().command_queue;
             let device = command_queue.device();
             let command_buffer = command_queue.new_command_buffer();
-            let mut accumulator_buffer = buffer_mut_no_copy(device, &mut accumulator);
+            let accumulator_buffer = buffer_mut_no_copy(device, &mut accumulator);
             let adder = AddAssignStage::<F>::new(library, n);
             for column in &self.0 {
                 let column_buffer = buffer_no_copy(command_queue.device(), column);
-                adder.encode(command_buffer, &mut accumulator_buffer, &column_buffer, 0);
+                adder.encode(command_buffer, &accumulator_buffer, &column_buffer, 0);
             }
             command_buffer.commit();
             command_buffer.wait_until_completed();
         }
 
-        Matrix::new(vec![accumulator])
+        Self::new(vec![accumulator])
     }
 
     /// Sums columns into a single column matrix
-    pub fn sum_columns(&self) -> Matrix<F>
+    pub fn sum_columns(&self) -> Self
     where
         F: GpuField,
     {

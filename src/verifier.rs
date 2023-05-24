@@ -1,13 +1,15 @@
+use crate::air::AirConfig;
 use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
-use crate::constraints::FieldConstant;
+use crate::constraints::AlgebraicItem;
+use crate::constraints::CompositionItem;
 use crate::fri;
 use crate::fri::FriVerifier;
 use crate::hints::Hints;
-use crate::merkle::MerkleProof;
+use crate::merkle;
 use crate::merkle::MerkleTree;
-use crate::merkle::MerkleTreeError;
 use crate::random::PublicCoin;
+use crate::utils::FieldVariant;
 use crate::Air;
 // use crate::channel::VerifierChannel;
 use crate::Proof;
@@ -18,7 +20,6 @@ use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
-use core::ops::Deref;
 use digest::Digest;
 use digest::Output;
 use rand::Rng;
@@ -43,18 +44,20 @@ pub enum VerificationError {
     FriProofOfWork,
 }
 
-impl<A: Air> Proof<A> {
+impl<A: AirConfig> Proof<A> {
+    // TODO: recude lines
+    #[allow(clippy::too_many_lines)]
     pub fn verify(self) -> Result<(), VerificationError> {
         use VerificationError::*;
 
-        let Proof {
+        let Self {
             base_trace_commitment,
             extension_trace_commitment,
             composition_trace_commitment,
             execution_trace_ood_evals,
             composition_trace_ood_evals,
             trace_queries,
-            trace_info,
+            trace_len,
             public_inputs,
             options,
             fri_proof,
@@ -64,29 +67,29 @@ impl<A: Air> Proof<A> {
 
         let mut seed = Vec::new();
         public_inputs.serialize_compressed(&mut seed).unwrap();
-        trace_info.serialize_compressed(&mut seed).unwrap();
+        trace_len.serialize_compressed(&mut seed).unwrap();
         options.serialize_compressed(&mut seed).unwrap();
         let mut public_coin = PublicCoin::<Sha256>::new(&seed);
 
-        let air = A::new(trace_info, public_inputs, options);
+        let air = Air::new(trace_len, public_inputs, options);
 
         let base_trace_comitment = Output::<Sha256>::from_iter(base_trace_commitment);
-        public_coin.reseed(&base_trace_comitment.deref());
-        let challenges = air.get_challenges(&mut public_coin);
-        let hints = air.get_hints(&challenges);
+        public_coin.reseed(&&*base_trace_comitment);
+        let challenges = air.gen_challenges(&mut public_coin);
+        let hints = air.gen_hints(&challenges);
 
         let extension_trace_commitment =
             extension_trace_commitment.map(|extension_trace_commitment| {
                 let extension_trace_commitment =
                     Output::<Sha256>::from_iter(extension_trace_commitment);
-                public_coin.reseed(&extension_trace_commitment.deref());
+                public_coin.reseed(&&*extension_trace_commitment);
                 extension_trace_commitment
             });
 
-        let composition_coeffs = air.get_constraint_composition_coeffs(&mut public_coin);
+        let composition_coeffs = air.gen_composition_constraint_coeffs(&mut public_coin);
         let composition_trace_commitment =
             Output::<Sha256>::from_iter(composition_trace_commitment);
-        public_coin.reseed(&composition_trace_commitment.deref());
+        public_coin.reseed(&&*composition_trace_commitment);
 
         let z = public_coin.draw::<A::Fq>();
         public_coin.reseed(&execution_trace_ood_evals);
@@ -96,7 +99,7 @@ impl<A: Air> Proof<A> {
             .into_iter()
             .zip(execution_trace_ood_evals.iter().copied())
             .collect::<BTreeMap<(usize, isize), A::Fq>>();
-        let calculated_ood_constraint_evaluation = ood_constraint_evaluation(
+        let calculated_ood_constraint_evaluation = ood_constraint_evaluation::<A>(
             &composition_coeffs,
             &challenges,
             &hints,
@@ -120,7 +123,7 @@ impl<A: Air> Proof<A> {
             return Err(InconsistentOodConstraintEvaluations);
         }
 
-        let deep_coeffs = air.get_deep_composition_coeffs(&mut public_coin);
+        let deep_coeffs = air.gen_deep_composition_coeffs(&mut public_coin);
         let fri_verifier = FriVerifier::<A::Fq, Sha256>::new(
             &mut public_coin,
             options.into_fri_options(),
@@ -130,7 +133,7 @@ impl<A: Air> Proof<A> {
 
         if options.grinding_factor != 0 {
             public_coin.reseed(&pow_nonce);
-            if public_coin.seed_leading_zeros() < options.grinding_factor as u32 {
+            if public_coin.seed_leading_zeros() < u32::from(options.grinding_factor) {
                 return Err(FriProofOfWork);
             }
         }
@@ -143,12 +146,12 @@ impl<A: Air> Proof<A> {
 
         let base_trace_rows = trace_queries
             .base_trace_values
-            .chunks(air.trace_info().num_base_columns)
+            .chunks(A::NUM_BASE_COLUMNS)
             .collect::<Vec<&[A::Fp]>>();
-        let extension_trace_rows = if air.trace_info().num_extension_columns > 0 {
+        let extension_trace_rows = if A::NUM_EXTENSION_COLUMNS > 0 {
             trace_queries
                 .extension_trace_values
-                .chunks(air.trace_info().num_extension_columns)
+                .chunks(A::NUM_EXTENSION_COLUMNS)
                 .collect::<Vec<&[A::Fq]>>()
         } else {
             Vec::new()
@@ -161,7 +164,7 @@ impl<A: Air> Proof<A> {
 
         // base trace positions
         verify_positions::<Sha256>(
-            base_trace_comitment,
+            &base_trace_comitment,
             &query_positions,
             &base_trace_rows,
             trace_queries.base_trace_proofs,
@@ -171,7 +174,7 @@ impl<A: Air> Proof<A> {
         if let Some(extension_trace_commitment) = extension_trace_commitment {
             // extension trace positions
             verify_positions::<Sha256>(
-                extension_trace_commitment,
+                &extension_trace_commitment,
                 &query_positions,
                 &extension_trace_rows,
                 trace_queries.extension_trace_proofs,
@@ -181,7 +184,7 @@ impl<A: Air> Proof<A> {
 
         // composition trace positions
         verify_positions::<Sha256>(
-            composition_trace_commitment,
+            &composition_trace_commitment,
             &query_positions,
             &composition_trace_rows,
             trace_queries.composition_trace_proofs,
@@ -191,65 +194,47 @@ impl<A: Air> Proof<A> {
         let deep_evaluations = deep_composition_evaluations(
             &air,
             &query_positions,
-            deep_coeffs,
-            base_trace_rows,
-            extension_trace_rows,
-            composition_trace_rows,
+            &deep_coeffs,
+            &base_trace_rows,
+            &extension_trace_rows,
+            &composition_trace_rows,
+            &trace_ood_eval_map,
+            &composition_trace_ood_evals,
             z,
-            trace_ood_eval_map,
-            composition_trace_ood_evals,
         );
 
         Ok(fri_verifier.verify(&query_positions, &deep_evaluations)?)
     }
 }
 
-fn ood_constraint_evaluation<A: Air>(
-    composition_coefficients: &[(A::Fq, A::Fq)],
+fn ood_constraint_evaluation<A: AirConfig>(
+    composition_coefficients: &[A::Fq],
     challenges: &Challenges<A::Fq>,
     hints: &Hints<A::Fq>,
     trace_ood_eval_map: &BTreeMap<(usize, isize), A::Fq>,
-    air: &A,
+    air: &Air<A>,
     x: A::Fq,
 ) -> A::Fq {
-    let mut result = A::Fq::zero();
-    let trace_degree = air.trace_len() - 1;
-    let composition_degree = air.composition_degree();
-
-    for (i, constraint) in air.constraints().iter().enumerate() {
-        let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
-        let evaluation_degree = numerator_degree - denominator_degree;
-        assert!(evaluation_degree <= composition_degree);
-        let degree_adjustment = (composition_degree - evaluation_degree) as u64;
-
-        let eval_result = constraint.eval(
-            &FieldConstant::Fq(x),
-            &|i| FieldConstant::Fq(hints[i]),
-            &|i| FieldConstant::Fq(challenges[i]),
-            &|i, j| FieldConstant::Fq(*trace_ood_eval_map.get(&(i, j)).unwrap()),
-        );
-
-        let eval_result = match eval_result {
-            FieldConstant::Fq(v) => v,
-            FieldConstant::Fp(_) => unreachable!(),
-        };
-
-        // TODO docs
-        // TODO: proper errors
-        // TODO: don't allow degree 0 constraints
-        let (alpha, beta) = composition_coefficients[i];
-        result += eval_result * (alpha * x.pow([degree_adjustment]) + beta)
-    }
-
-    result
+    use AlgebraicItem::*;
+    use CompositionItem::*;
+    air.composition_constraint()
+        .eval(&mut |leaf| match leaf {
+            Item(X) => FieldVariant::Fq(x),
+            &Item(Constant(v)) => v,
+            &Item(Challenge(i)) => FieldVariant::Fq(challenges[i]),
+            &Item(Hint(i)) => FieldVariant::Fq(hints[i]),
+            &Item(Trace(i, j)) => FieldVariant::Fq(*trace_ood_eval_map.get(&(i, j)).unwrap()),
+            &CompositionCoeff(i) => FieldVariant::Fq(composition_coefficients[i]),
+        })
+        .as_fq()
 }
 
 fn verify_positions<D: Digest>(
-    commitment: Output<D>,
+    commitment: &Output<D>,
     positions: &[usize],
     rows: &[&[impl CanonicalSerialize]],
-    proofs: Vec<MerkleProof>,
-) -> Result<(), MerkleTreeError> {
+    proofs: Vec<merkle::Proof>,
+) -> Result<(), merkle::Error> {
     for ((position, proof), row) in positions.iter().zip(proofs).zip(rows) {
         let proof = proof.parse::<D>();
         let expected_leaf = &proof[0];
@@ -258,26 +243,26 @@ fn verify_positions<D: Digest>(
         let actual_leaf = D::new_with_prefix(&row_bytes).finalize();
 
         if *expected_leaf != actual_leaf {
-            return Err(MerkleTreeError::InvalidProof);
+            return Err(merkle::Error::InvalidProof);
         }
 
-        MerkleTree::<D>::verify(&commitment, &proof, *position)?;
+        MerkleTree::<D>::verify(commitment, &proof, *position)?;
     }
 
     Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
-fn deep_composition_evaluations<A: Air>(
-    air: &A,
+fn deep_composition_evaluations<A: AirConfig>(
+    air: &Air<A>,
     query_positions: &[usize],
-    composition_coeffs: DeepCompositionCoeffs<A::Fq>,
-    base_trace_rows: Vec<&[A::Fp]>,
-    extension_trace_rows: Vec<&[A::Fq]>,
-    composition_trace_rows: Vec<&[A::Fq]>,
+    composition_coeffs: &DeepCompositionCoeffs<A::Fq>,
+    base_trace_rows: &[&[A::Fp]],
+    extension_trace_rows: &[&[A::Fq]],
+    composition_trace_rows: &[&[A::Fq]],
+    execution_trace_ood_evals_map: &BTreeMap<(usize, isize), A::Fq>,
+    composition_trace_ood_evals: &[A::Fq],
     z: A::Fq,
-    execution_trace_ood_evals_map: BTreeMap<(usize, isize), A::Fq>,
-    composition_trace_ood_evals: Vec<A::Fq>,
 ) -> Vec<A::Fq> {
     let trace_domain = air.trace_domain();
     let g = trace_domain.group_gen();
@@ -291,21 +276,20 @@ fn deep_composition_evaluations<A: Air>(
     let mut evals = vec![A::Fq::zero(); query_positions.len()];
 
     // add execution trace
-    let trace_info = air.trace_info();
-    let base_columns_range = trace_info.base_columns_range();
-    let extension_columns_range = trace_info.extension_columns_range();
+    let base_columns_range = Air::<A>::base_column_range();
+    let extension_columns_range = Air::<A>::extension_column_range();
     for (i, (&x, eval)) in xs.iter().zip(&mut evals).enumerate() {
         for (j, ((column, offset), ood_eval)) in execution_trace_ood_evals_map.iter().enumerate() {
             let trace_value = if base_columns_range.contains(column) {
                 A::Fq::from(base_trace_rows[i][*column])
             } else if extension_columns_range.contains(column) {
-                extension_trace_rows[i][column - trace_info.num_base_columns]
+                extension_trace_rows[i][column - A::NUM_BASE_COLUMNS]
             } else {
                 panic!("column {column} does not exist");
             };
 
             let alpha = composition_coeffs.execution_trace[j];
-            let shift = if offset.is_positive() { g } else { g_inv }.pow([offset.abs() as u64]);
+            let shift = if *offset >= 0 { g } else { g_inv }.pow([offset.unsigned_abs() as u64]);
             *eval += alpha * (trace_value - ood_eval) / (A::Fq::from(x) - z * shift);
         }
     }

@@ -12,6 +12,7 @@ use ministark::Matrix;
 use ministark_gpu::GpuField;
 use sha2::Sha256;
 
+/// Matrix dimensions of the form (rows, columns)
 const BENCHMARK_MATRIX_DIMENSIONS: [(usize, usize); 4] =
     [(2048, 1), (2048, 12), (65536, 1), (65536, 24)];
 

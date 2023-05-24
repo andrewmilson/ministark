@@ -12,18 +12,19 @@ use crate::tables::ProcessorBaseColumn;
 use crate::tables::ProcessorExtensionColumn;
 use crate::vm::OpCode;
 use ark_ff::FftField;
-use ministark::constraints::AlgebraicExpression;
+use ministark::constraints::AlgebraicItem;
 use ministark::constraints::ExecutionTraceColumn;
-use ministark::constraints::FieldConstant;
 use ministark::constraints::Hint;
 use ministark::constraints::VerifierChallenge;
+use ministark::expression::Expr;
+use ministark::utils::FieldVariant;
 use ministark::StarkExtensionOf;
 use ministark_gpu::GpuFftField;
 use std::borrow::Borrow;
 
 impl ProcessorBaseColumn {
     pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use ProcessorBaseColumn::*;
         vec![
             Cycle.curr(),
@@ -36,9 +37,9 @@ impl ProcessorBaseColumn {
     }
 
     pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use ProcessorBaseColumn::*;
-        let one = FieldConstant::Fp(Fp::one());
+        let one = AlgebraicItem::Constant(FieldVariant::Fp(Fp::one()));
         let two = one + one;
         let mem_val_is_zero = MemVal.curr() * MemValInv.curr() - one;
         let mut constraints = (None, None, None);
@@ -78,7 +79,7 @@ impl ProcessorBaseColumn {
                 }
                 LoopBegin => {
                     instr_constraints.0 = Some(
-                        MemVal.curr() * (Ip.next() - Ip.curr() - two)
+                        MemVal.curr() * (Ip.next() - Ip.curr() - &two)
                             + mem_val_is_zero.clone() * (Ip.next() - NextInstr.curr()),
                     );
                     instr_constraints.1 = Some(Mp.next() - Mp.curr());
@@ -86,7 +87,7 @@ impl ProcessorBaseColumn {
                 }
                 LoopEnd => {
                     instr_constraints.0 = Some(
-                        &mem_val_is_zero * (Ip.next() - Ip.curr() - two)
+                        &mem_val_is_zero * (Ip.next() - Ip.curr() - &two)
                             + MemVal.curr() * (Ip.next() - NextInstr.curr()),
                     );
                     instr_constraints.1 = Some(Mp.next() - Mp.curr());
@@ -119,7 +120,7 @@ impl ProcessorBaseColumn {
             // dummy has to be zero or one
             (Dummy.next() - one) * Dummy.next(),
             // dummy indicates if the row is padding
-            instr_zerofier(CurrInstr.curr()) * (Dummy.curr() - FieldConstant::Fp(Fp::one()))
+            instr_zerofier(CurrInstr.curr()) * (Dummy.curr() - one)
                 + CurrInstr.curr() * Dummy.curr(),
         ]
     }
@@ -127,13 +128,13 @@ impl ProcessorBaseColumn {
 
 impl ProcessorExtensionColumn {
     pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use ProcessorExtensionColumn::*;
         vec![InputEvaluation.curr(), OutputEvaluation.curr()]
     }
 
     pub fn terminal_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use Challenge::Alpha;
         use Challenge::Beta;
         use Challenge::A;
@@ -141,7 +142,7 @@ impl ProcessorExtensionColumn {
         use Challenge::C;
         use ProcessorBaseColumn::*;
         use ProcessorExtensionColumn::*;
-        let one = FieldConstant::Fp(Fp::one());
+        let one = AlgebraicItem::Constant(FieldVariant::Fp(Fp::one()));
         vec![
             // instruction permutation:
             // 1. instruction and processor are not padding
@@ -224,7 +225,7 @@ impl ProcessorExtensionColumn {
     }
 
     pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use Challenge::Alpha;
         use Challenge::Beta;
         use Challenge::Delta;
@@ -277,15 +278,15 @@ impl ProcessorExtensionColumn {
 
 impl MemoryBaseColumn {
     pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use MemoryBaseColumn::*;
         vec![Cycle.curr(), Mp.curr(), MemVal.curr()]
     }
 
     pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use MemoryBaseColumn::*;
-        let one = FieldConstant::Fp(Fp::one());
+        let one = AlgebraicItem::Constant(FieldVariant::Fp(Fp::one()));
         vec![
             // 1. memory pointer increases by one or zero
             // note: remember table is sorted by memory address
@@ -310,10 +311,11 @@ impl MemoryBaseColumn {
 
 impl MemoryExtensionColumn {
     pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use Challenge::Beta;
         use MemoryBaseColumn::*;
         use MemoryExtensionColumn::*;
+        let one = AlgebraicItem::Constant(FieldVariant::Fp(Fp::one()));
         // Only progress permutation if dummy != 1
         vec![
             (Permutation.next()
@@ -322,7 +324,7 @@ impl MemoryExtensionColumn {
                         - Challenge::D.challenge() * Cycle.curr()
                         - Challenge::E.challenge() * Mp.curr()
                         - Challenge::F.challenge() * MemVal.curr()))
-                * (Dummy.curr() - FieldConstant::Fp(Fp::one()))
+                * (Dummy.curr() - one)
                 + (Permutation.next() - Permutation.curr()) * Dummy.curr(),
         ]
     }
@@ -330,15 +332,15 @@ impl MemoryExtensionColumn {
 
 impl InstructionBaseColumn {
     pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use InstructionBaseColumn::*;
         vec![Ip.curr()]
     }
 
     pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use InstructionBaseColumn::*;
-        let one = FieldConstant::Fp(Fp::one());
+        let one = AlgebraicItem::Constant(FieldVariant::Fp(Fp::one()));
         vec![
             // instruction pointer increases by 0 or 1
             (Ip.next() - Ip.curr() - one) * (Ip.next() - Ip.curr()),
@@ -362,7 +364,7 @@ impl InstructionBaseColumn {
 
 impl InstructionExtensionColumn {
     pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use Challenge::A;
         use Challenge::B;
         use Challenge::C;
@@ -377,13 +379,13 @@ impl InstructionExtensionColumn {
     }
 
     pub fn terminal_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use InstructionExtensionColumn::*;
         vec![ProgramEvaluation.curr() - EvaluationArgumentHint::Instruction.hint()]
     }
 
     pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use Challenge::Alpha;
         use Challenge::Eta;
         use Challenge::A;
@@ -391,7 +393,7 @@ impl InstructionExtensionColumn {
         use Challenge::C;
         use InstructionBaseColumn::*;
         use InstructionExtensionColumn::*;
-        let one = FieldConstant::Fp(Fp::one());
+        let one = AlgebraicItem::Constant(FieldVariant::Fp(Fp::one()));
         vec![
             // - processor permutation changes correctly if ip changes
             // - processor permutation doesn't change if `curr_instr=0` i.e. padding
@@ -423,14 +425,14 @@ impl InstructionExtensionColumn {
 
 impl InputExtensionColumn {
     pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use InputBaseColumn::*;
         use InputExtensionColumn::*;
         vec![Evaluation.curr() - Value.curr()]
     }
 
     pub fn terminal_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use InputExtensionColumn::*;
         vec![
             Evaluation.curr()
@@ -439,7 +441,7 @@ impl InputExtensionColumn {
     }
 
     pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use Challenge::Gamma;
         use InputBaseColumn::*;
         use InputExtensionColumn::*;
@@ -449,14 +451,14 @@ impl InputExtensionColumn {
 
 impl OutputExtensionColumn {
     pub fn boundary_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use OutputBaseColumn::*;
         use OutputExtensionColumn::*;
         vec![Evaluation.curr() - Value.curr()]
     }
 
     pub fn terminal_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use OutputExtensionColumn::*;
         vec![
             Evaluation.curr()
@@ -466,7 +468,7 @@ impl OutputExtensionColumn {
     }
 
     pub fn transition_constraints<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    ) -> Vec<AlgebraicExpression<Fp, Fq>> {
+    ) -> Vec<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>> {
         use Challenge::Delta;
         use OutputBaseColumn::*;
         use OutputExtensionColumn::*;
@@ -475,11 +477,11 @@ impl OutputExtensionColumn {
 }
 
 fn instr_zerofier<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
-    instr: impl Borrow<AlgebraicExpression<Fp, Fq>>,
-) -> AlgebraicExpression<Fp, Fq> {
+    instr: impl Borrow<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>>,
+) -> Expr<AlgebraicItem<FieldVariant<Fp, Fq>>> {
     OpCode::VALUES
         .into_iter()
-        .map(|opcode| instr.borrow() - FieldConstant::Fp(Fp::from(opcode as u64)))
+        .map(|op| instr.borrow() - AlgebraicItem::Constant(FieldVariant::Fp(Fp::from(op as u64))))
         .product()
 }
 
@@ -487,13 +489,14 @@ fn instr_zerofier<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
 /// for one provided
 fn if_not_instr<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     instr: OpCode,
-    indeterminate: impl Borrow<AlgebraicExpression<Fp, Fq>>,
-) -> AlgebraicExpression<Fp, Fq> {
+    indeterminate: impl Borrow<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>>,
+) -> Expr<AlgebraicItem<FieldVariant<Fp, Fq>>> {
+    let indeterminate = indeterminate.borrow();
     OpCode::VALUES
         .into_iter()
-        .filter_map(|opcode| {
-            if opcode != instr {
-                Some(indeterminate.borrow() - FieldConstant::Fp(Fp::from(opcode as u64)))
+        .filter_map(|op| {
+            if op != instr {
+                Some(indeterminate - AlgebraicItem::Constant(FieldVariant::Fp(Fp::from(op as u64))))
             } else {
                 None
             }
@@ -503,7 +506,8 @@ fn if_not_instr<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
 
 fn if_instr<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
     instr: OpCode,
-    indeterminate: impl Borrow<AlgebraicExpression<Fp, Fq>>,
-) -> AlgebraicExpression<Fp, Fq> {
-    indeterminate.borrow() - FieldConstant::Fp(Fp::from(instr as u64))
+    indeterminate: impl Borrow<Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>>,
+) -> Expr<AlgebraicItem<FieldVariant<Fp, Fq>>> {
+    use AlgebraicItem::Constant;
+    indeterminate.borrow() - Constant(FieldVariant::Fp(Fp::from(instr as u64)))
 }

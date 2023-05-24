@@ -13,10 +13,10 @@ impl<F: Field> Hints<F> {
         for [(a, _), (b, _)] in hints.array_windows() {
             assert!(a != b, "multiple hints exist at index {a}");
         }
-        for (expected, (actual, _)) in (0..hints.len()).zip(&hints) {
-            assert!(expected == *actual, "missing hint at index {expected}")
+        for (expected, (actual, _)) in hints.iter().enumerate() {
+            assert!(expected == *actual, "missing hint at index {expected}");
         }
-        Hints(hints.into_iter().map(|(_, value)| value).collect())
+        Self(hints.into_iter().map(|(_, value)| value).collect())
     }
 }
 

@@ -4,10 +4,9 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use ministark_gpu::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp;
 use ark_ff::One;
-use ministark::Air;
-use ministark::ProofOptions;
-use ministark::TraceInfo;
-use ministark::constraints::AlgebraicExpression;
+use ministark::air::AirConfig;
+use ministark::constraints::Constraint;
+use ministark::utils::FieldVariant;
 use crate::rescue::Rescue;
 
 mod rescue;
@@ -18,48 +17,16 @@ struct RescueInfo {
     output: [Fp; 2],
 }
 
-struct RescueAir {
-    options: ProofOptions,
-    trace_info: TraceInfo,
-    rescue_info: RescueInfo,
-    constraints: Vec<AlgebraicExpression<Fp>>,
-}
+struct RescueAirConfig;
 
-impl RescueAir {
-    fn generate_constraints(_input: [Fp; 2]) -> Vec<AlgebraicExpression<Fp>> {
-        // vec![0.curr() - input[0], 1.curr() - input[1]]
-        todo!()
-    }
-}
-
-impl Air for RescueAir {
+impl AirConfig for RescueAirConfig {
+    const NUM_BASE_COLUMNS: usize = 0;
     type Fp = Fp;
     type Fq = Fp;
-    type PublicInputs = RescueInfo;
+    type PublicInputs = ();
 
-    fn new(trace_info: TraceInfo, rescue_info: RescueInfo, options: ProofOptions) -> Self {
-        RescueAir {
-            options,
-            trace_info,
-            rescue_info,
-            constraints: Self::generate_constraints(rescue_info.input),
-        }
-    }
-
-    fn constraints(&self) -> Vec<AlgebraicExpression<Fp>> {
-        self.constraints.clone()
-    }
-
-    fn pub_inputs(&self) -> &RescueInfo {
-        &self.rescue_info
-    }
-
-    fn trace_info(&self) -> &TraceInfo {
-        &self.trace_info
-    }
-
-    fn options(&self) -> &ProofOptions {
-        &self.options
+    fn constraints(_trace_len: usize) -> Vec<Constraint<FieldVariant<Self::Fp, Self::Fq>>> {
+        todo!()
     }
 }
 

@@ -5,18 +5,23 @@ authors = ["Andrew Milson <andrew.j.milson@gmail.com>"]
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/andrewmilson/ministark"
+keywords = ["gpu", "stark", "zkstark"]
 categories = ["cryptography"]
 readme = "README.md"
+license = "MIT"
 
 [workspace]
-members = ["gpu"]
+members = [ ]
 
 [features]
-default = []
-gpu = []
-std = []
+default = [ ]
+std = [ "ministark-gpu/std" ]
 asm = [ "sha2/asm" ]
 parallel = [ "dep:rayon", "ark-std/parallel", "ministark-gpu/parallel" ]
+
+# The gpu feature enables miniSTARK to use the GPU for proof generation.
+# Currently only supports Apple Silicon devices.
+gpu = [ ]
 
 [[bench]]
 name = "merkle_tree"
@@ -38,7 +43,8 @@ ark-ff = "0.4"
 ark-poly = "0.4"
 ark-serialize = "0.4"
 ark-ff-optimized = "0.4"
-ministark-gpu = { path = "./gpu", features = [ "arkworks" ] }
+ministark-gpu = { version = "0.1", path = "./gpu", features = [ "arkworks" ] }
+num-traits = "0.2"
 rand = "0.8"
 snafu = { version = "0.7", default-features = false }
 rayon = { version = "1.5", optional = true }
@@ -61,9 +67,6 @@ opt-level = 3
 [profile.release]
 codegen-units = 1
 lto = true
-
-[profile.test]
-opt-level = 3
 
 [profile.bench]
 codegen-units = 1

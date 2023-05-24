@@ -16,11 +16,11 @@ use ark_ff::One;
 use ark_ff::PrimeField;
 use ark_ff::UniformRand;
 use ark_ff::Zero;
-use ark_std::rand;
 use ministark::challenges::Challenges;
 use ministark::constraints::VerifierChallenge;
 use ministark::utils::GpuAllocator;
 use ministark::utils::GpuVec;
+// use ministark::constraint::Challenge as _;
 use ministark::Matrix;
 use ministark::Trace;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
@@ -94,7 +94,8 @@ impl Trace for BrainfuckTrace {
             ..
         } = self;
 
-        let mut rng = rand::thread_rng();
+        // let mut rng = rand::thread_rng();
+        let mut rng = ark_std::test_rng(); // rand::thread_rng();
         let instr_initial = Fq3::rand(&mut rng);
         let mem_initial = Fq3::rand(&mut rng);
 

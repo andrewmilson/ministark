@@ -10,7 +10,7 @@ pub struct Challenges<F: Field>(Vec<F>);
 
 impl<F: Field> Challenges<F> {
     pub fn new<R: Rng + ?Sized>(rng: &mut R, num_challenges: usize) -> Self {
-        Challenges((0..num_challenges).map(|_| F::rand(rng)).collect())
+        Self((0..num_challenges).map(|_| F::rand(rng)).collect())
     }
 }
 

@@ -1,14 +1,18 @@
-//! Use arkwork_rs or re make this. Just used for personal education.
+//! Use `arkwork_rs` or re make this. Just used for personal education.
 use alloc::vec::Vec;
+// use ark_crypto_primitives::CRHScheme;
+// use ark_crypto_primitives::Error;
+// use ark_ff::Field;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+// use ark_sponge::CryptographicSponge;
 use digest::Digest;
 use digest::Output;
 use snafu::Snafu;
 
-/// MerkleTree tree error
+/// Merkle tree error
 #[derive(Debug, Snafu)]
-pub enum MerkleTreeError {
+pub enum Error {
     #[snafu(display("tree must contain `{expected}` leaves, but `{actual}` were provided"))]
     TooFewLeaves { expected: usize, actual: usize },
     #[snafu(display("number of leaves must be a power of two, but `{n}` were provided"))]
@@ -20,11 +24,11 @@ pub enum MerkleTreeError {
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct MerkleProof(Vec<u8>);
+pub struct Proof(Vec<u8>);
 
-impl MerkleProof {
+impl Proof {
     pub fn new<D: Digest>(merkle_path: Vec<Output<D>>) -> Self {
-        MerkleProof(merkle_path.into_iter().flatten().collect())
+        Self(merkle_path.into_iter().flatten().collect())
     }
 
     pub fn parse<D: Digest>(&self) -> Vec<Output<D>> {
@@ -54,29 +58,37 @@ pub struct MerkleTree<D: Digest> {
 }
 
 impl<D: Digest> MerkleTree<D> {
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * there are less than two leaves
+    /// * the number of leaves is not a power of two
     // TODO: why not just commit to leaf values directly
-    pub fn new(leaf_nodes: Vec<Output<D>>) -> Result<Self, MerkleTreeError> {
+    pub fn new(leaf_nodes: Vec<Output<D>>) -> Result<Self, Error> {
         let n = leaf_nodes.len();
         if n < 2 {
-            return Err(MerkleTreeError::TooFewLeaves {
+            return Err(Error::TooFewLeaves {
                 expected: 2,
                 actual: n,
             });
         } else if !n.is_power_of_two() {
-            return Err(MerkleTreeError::NumberOfLeavesNotPowerOfTwo { n });
+            return Err(Error::NumberOfLeavesNotPowerOfTwo { n });
         }
 
         let nodes = build_merkle_nodes::<D>(&leaf_nodes);
-        Ok(MerkleTree { nodes, leaf_nodes })
+        Ok(Self { nodes, leaf_nodes })
     }
 
     pub fn root(&self) -> &Output<D> {
         &self.nodes[1]
     }
 
-    pub fn prove(&self, index: usize) -> Result<MerkleProof, MerkleTreeError> {
+    /// # Errors
+    ///
+    /// Returns an error if the leaf index is out of bounds.
+    pub fn prove(&self, index: usize) -> Result<Proof, Error> {
         if index >= self.leaf_nodes.len() {
-            return Err(MerkleTreeError::LeafIndexOutOfBounds {
+            return Err(Error::LeafIndexOutOfBounds {
                 n: self.leaf_nodes.len(),
                 i: index,
             });
@@ -95,14 +107,13 @@ impl<D: Digest> MerkleTree<D> {
             index >>= 1;
         }
 
-        Ok(MerkleProof::new::<D>(path))
+        Ok(Proof::new::<D>(path))
     }
 
-    pub fn verify(
-        root: &Output<D>,
-        proof: &[Output<D>],
-        mut position: usize,
-    ) -> Result<(), MerkleTreeError> {
+    /// # Errors
+    ///
+    /// This function returns an error if the proof fails verification.
+    pub fn verify(root: &Output<D>, proof: &[Output<D>], mut position: usize) -> Result<(), Error> {
         let mut proof_iter = proof.iter();
         let mut running_hash = proof_iter.next().unwrap().clone();
         for node in proof_iter {
@@ -121,7 +132,7 @@ impl<D: Digest> MerkleTree<D> {
         if *root == running_hash {
             Ok(())
         } else {
-            Err(MerkleTreeError::InvalidProof)
+            Err(Error::InvalidProof)
         }
     }
 }
@@ -135,7 +146,7 @@ fn build_merkle_nodes<D: Digest>(leaf_nodes: &[Output<D>]) -> Vec<Output<D>> {
     // code adapted from winterfell
     rayon::scope(|s| {
         for i in 0..num_subtrees {
-            let nodes = unsafe { &mut *(&mut nodes[..] as *mut [Output<D>]) };
+            let nodes = unsafe { &mut *core::ptr::addr_of_mut!(nodes[..]) };
             s.spawn(move |_| {
                 // generate layer of nodes from leaf nodes
                 let batch_size = n / num_subtrees;
@@ -198,3 +209,35 @@ fn build_merkle_nodes<D: Digest>(leaf_nodes: &[Output<D>]) -> Vec<Output<D>> {
 
     nodes
 }
+
+// pub trait ElementCRHScheme<F: Field>: CRHScheme {
+//     fn evaluate_elements(parameters: &Self::Parameters, input: &[F])
+//         -> Result<Self::Output, Error>;
+// }
+
+// trait MT {
+//     type Commitment;
+// }
+
+// #[derive(Clone)]
+// pub struct Sha256Sponge(Sha256);
+
+// impl CryptographicSponge for Sha256Sponge {
+//     type Config = ();
+
+//     fn new(_: &Self::Config) -> Self {
+//         Sha256Sponge(Sha256::new())
+//     }
+
+//     fn absorb(&mut self, input: &impl ark_sponge::Absorb) {
+//         self.0.update(input.to_sponge_bytes_as_vec())
+//     }
+
+//     fn squeeze_bytes(&mut self, num_bytes: usize) -> Vec<u8> {
+//         self.
+//     }
+
+//     fn squeeze_bits(&mut self, num_bits: usize) -> Vec<bool> {
+//         todo!()
+//     }
+// }

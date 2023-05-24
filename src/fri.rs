@@ -1,6 +1,4 @@
-use crate::merkle::MerkleProof;
-use crate::merkle::MerkleTree;
-use crate::merkle::MerkleTreeError;
+use crate::merkle;
 use crate::random::PublicCoin;
 use crate::utils::interleave;
 use crate::utils::GpuAllocator;
@@ -16,7 +14,6 @@ use ark_poly::Polynomial;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use core::ops::Deref;
 use digest::Digest;
 use digest::Output;
 use ministark_gpu::prelude::*;
@@ -32,15 +29,19 @@ pub struct FriOptions {
 }
 
 impl FriOptions {
-    pub fn new(blowup_factor: usize, folding_factor: usize, max_remainder_size: usize) -> Self {
-        FriOptions {
+    pub const fn new(
+        blowup_factor: usize,
+        folding_factor: usize,
+        max_remainder_size: usize,
+    ) -> Self {
+        Self {
             folding_factor,
             max_remainder_size,
             blowup_factor,
         }
     }
 
-    pub fn num_layers(&self, mut domain_size: usize) -> usize {
+    pub const fn num_layers(&self, mut domain_size: usize) -> usize {
         let mut num_layers = 0;
         while domain_size > self.max_remainder_size {
             domain_size /= self.folding_factor;
@@ -49,14 +50,14 @@ impl FriOptions {
         num_layers
     }
 
-    pub fn remainder_size(&self, mut domain_size: usize) -> usize {
+    pub const fn remainder_size(&self, mut domain_size: usize) -> usize {
         while domain_size > self.max_remainder_size {
             domain_size /= self.folding_factor;
         }
         domain_size
     }
 
-    pub fn domain_offset<F: GpuField>(&self) -> F::FftField
+    pub const fn domain_offset<F: GpuField>(&self) -> F::FftField
     where
         F::FftField: FftField,
     {
@@ -80,10 +81,10 @@ where
         remainder_commitment: Vec<u8>,
         remainder: Vec<F>,
     ) -> Self {
-        FriProof {
+        Self {
             layers,
-            remainder_commitment,
             remainder,
+            remainder_commitment,
         }
     }
 }
@@ -94,14 +95,14 @@ pub struct FriProver<F: GpuField, D: Digest> {
 }
 
 struct FriLayer<F: GpuField, D: Digest> {
-    tree: MerkleTree<D>,
+    tree: merkle::MerkleTree<D>,
     evaluations: Vec<F>,
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct FriProofLayer<F: Field> {
     values: Vec<F>,
-    proofs: Vec<MerkleProof>,
+    proofs: Vec<merkle::Proof>,
     commitment: Vec<u8>,
 }
 
@@ -111,11 +112,11 @@ where
 {
     pub fn new<const N: usize>(
         values: Vec<[F; N]>,
-        proofs: Vec<MerkleProof>,
+        proofs: Vec<merkle::Proof>,
         commitment: Vec<u8>,
     ) -> Self {
         let values = values.into_iter().flatten().collect();
-        FriProofLayer {
+        Self {
             values,
             proofs,
             commitment,
@@ -125,7 +126,7 @@ where
     pub fn verify<D: Digest, const N: usize>(
         &self,
         positions: &[usize],
-    ) -> Result<(), MerkleTreeError> {
+    ) -> Result<(), merkle::Error> {
         let commitment = Output::<D>::from_slice(&self.commitment);
         // TODO: could check raminder is empty but not critical
         // TODO: could check positions has the same len as other vecs but not critical
@@ -139,22 +140,21 @@ where
             let actual_leaf = D::new_with_prefix(chunk_bytes).finalize();
 
             if *expected_leaf != actual_leaf {
-                return Err(MerkleTreeError::InvalidProof);
+                return Err(merkle::Error::InvalidProof);
             }
 
-            MerkleTree::<D>::verify(commitment, &proof, *position / 4)?;
+            merkle::MerkleTree::<D>::verify(commitment, &proof, *position / 4)?;
         }
         Ok(())
     }
 }
 
-impl<F: GpuField + Field, D: Digest> FriProver<F, D>
+impl<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest> FriProver<F, D>
 where
-    F: DomainCoeff<F::FftField>,
     F::FftField: FftField,
 {
-    pub fn new(options: FriOptions) -> Self {
-        FriProver {
+    pub const fn new(options: FriOptions) -> Self {
+        Self {
             options,
             layers: Vec::new(),
         }
@@ -203,7 +203,7 @@ where
         assert!(self.layers.is_empty());
         // let codeword = evaluations.0[0];
 
-        for _ in 0..self.options.num_layers(evaluations.len()) + 1 {
+        for _ in 0..=self.options.num_layers(evaluations.len()) {
             evaluations = match self.options.folding_factor {
                 2 => self.build_layer::<2>(channel, evaluations),
                 4 => self.build_layer::<4>(channel, evaluations),
@@ -236,7 +236,7 @@ where
             })
             .collect();
 
-        let evals_merkle_tree = MerkleTree::new(hashed_evals).unwrap();
+        let evals_merkle_tree = merkle::MerkleTree::new(hashed_evals).unwrap();
         channel.commit_fri_layer(evals_merkle_tree.root());
 
         let alpha = channel.draw_fri_alpha();
@@ -291,9 +291,8 @@ where
     domain: Radix2EvaluationDomain<F::FftField>,
 }
 
-impl<F: GpuField + Field, D: Digest> FriVerifier<F, D>
+impl<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest> FriVerifier<F, D>
 where
-    F: DomainCoeff<F::FftField>,
     F::FftField: FftField,
 {
     pub fn new(
@@ -314,7 +313,7 @@ where
             // TODO: batch merkle tree proofs
             // get the merkle root from the first merkle path
             let layer_commitment = Output::<D>::from_slice(&layer.commitment).clone();
-            public_coin.reseed(&layer_commitment.deref());
+            public_coin.reseed(&&*layer_commitment);
             let alpha = public_coin.draw();
             layer_alphas.push(alpha);
             layer_commitments.push(layer_commitment);
@@ -331,17 +330,17 @@ where
         }
 
         let remainder_root = Output::<D>::from_slice(&proof.remainder_commitment).clone();
-        public_coin.reseed(&remainder_root.deref());
+        public_coin.reseed(&&*remainder_root);
         let remainder_alpha = public_coin.draw();
         layer_alphas.push(remainder_alpha);
         layer_commitments.push(remainder_root);
 
-        Ok(FriVerifier {
+        Ok(Self {
             options,
-            domain,
             layer_commitments,
             layer_alphas,
             proof,
+            domain,
         })
     }
 
@@ -385,8 +384,8 @@ where
                     return Err(VerificationError::LayerCommitmentInvalid { layer: i });
                 }
 
-                MerkleTree::<D>::verify(&layer_commitment, &proof, *position)
-                    .map_err(|_| VerificationError::LayerCommitmentInvalid { layer: i })?
+                merkle::MerkleTree::<D>::verify(&layer_commitment, &proof, *position)
+                    .map_err(|_| VerificationError::LayerCommitmentInvalid { layer: i })?;
             }
 
             let query_values = get_query_values(chunks, &positions, &folded_positions, domain_size);
@@ -417,7 +416,7 @@ where
         }
 
         verify_remainder::<F, D, N>(
-            layer_commitments.next().unwrap(),
+            &layer_commitments.next().unwrap(),
             self.proof.remainder,
             domain_size - 1,
         )
@@ -439,13 +438,12 @@ where
     }
 }
 
-fn verify_remainder<F: GpuField + Field, D: Digest, const N: usize>(
-    commitment: Output<D>,
+fn verify_remainder<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest, const N: usize>(
+    commitment: &Output<D>,
     mut remainder_evals: Vec<F>,
     max_degree: usize,
 ) -> Result<(), VerificationError>
 where
-    F: DomainCoeff<F::FftField>,
     F::FftField: FftField,
 {
     if max_degree >= remainder_evals.len() {
@@ -461,9 +459,9 @@ where
             D::new_with_prefix(&buff).finalize()
         })
         .collect();
-    let remainder_merkle_tree = MerkleTree::<D>::new(hashed_evals).unwrap();
+    let remainder_merkle_tree = merkle::MerkleTree::<D>::new(hashed_evals).unwrap();
 
-    if commitment != *remainder_merkle_tree.root() {
+    if commitment != remainder_merkle_tree.root() {
         return Err(VerificationError::RemainderCommitmentInvalid);
     }
 
@@ -528,14 +526,13 @@ pub trait ProverChannel<F: GpuField> {
 //    ├────────┼────┼────┼────┼────┤
 //    │ drp[i] │ 82 │ 12 │ 57 │ 34 │
 //    └────────┴────┴────┴────┴────┘
-pub fn apply_drp<F: GpuField + Field>(
+pub fn apply_drp<F: GpuField + Field + DomainCoeff<F::FftField>>(
     evals: GpuVec<F>,
     domain_offset: F::FftField,
     alpha: F,
     folding_factor: usize,
 ) -> GpuVec<F>
 where
-    F: DomainCoeff<F::FftField>,
     F::FftField: FftField,
 {
     let n = evals.len();
@@ -564,12 +561,13 @@ where
     fft(drp_coeffs, drp_domain)
 }
 
-fn ifft<F: GpuField + Field>(
+// requires ownership when the gpu feature is enabled
+#[allow(clippy::needless_pass_by_value)]
+fn ifft<F: GpuField + Field + DomainCoeff<F::FftField>>(
     evals: GpuVec<F>,
     domain: Radix2EvaluationDomain<F::FftField>,
 ) -> GpuVec<F>
 where
-    F: DomainCoeff<F::FftField>,
     F::FftField: FftField,
 {
     #[cfg(feature = "gpu")]
@@ -585,12 +583,13 @@ where
     coeffs.to_vec_in(GpuAllocator)
 }
 
-fn fft<F: GpuField + Field>(
+// requires ownership when the gpu feature is enabled
+#[allow(clippy::needless_pass_by_value)]
+fn fft<F: GpuField + Field + DomainCoeff<F::FftField>>(
     coeffs: GpuVec<F>,
     domain: Radix2EvaluationDomain<F::FftField>,
 ) -> GpuVec<F>
 where
-    F: DomainCoeff<F::FftField>,
     F::FftField: FftField,
 {
     #[cfg(feature = "gpu")]
@@ -611,7 +610,7 @@ fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {
         .iter()
         .map(|pos| pos % max)
         .collect::<Vec<usize>>();
-    res.sort();
+    res.sort_unstable();
     res.dedup();
     res
 }
@@ -651,7 +650,7 @@ where
                 .prove(*pos)
                 .expect("failed to generate Merkle proof")
         })
-        .collect::<Vec<MerkleProof>>();
+        .collect::<Vec<merkle::Proof>>();
     let mut values: Vec<[F; N]> = Vec::new();
     for &position in positions {
         let i = position * N;

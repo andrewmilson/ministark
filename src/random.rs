@@ -14,7 +14,7 @@ pub struct PublicCoin<D: Digest> {
 
 impl<D: Digest> PublicCoin<D> {
     pub fn new(seed: &[u8]) -> Self {
-        PublicCoin {
+        Self {
             seed: D::new_with_prefix(seed).finalize(),
             counter: 0,
         }

@@ -1,6 +1,7 @@
 use crate::tables;
 use crate::tables::Challenge;
 use crate::tables::EvaluationArgumentHint;
+use crate::trace::BrainfuckTrace;
 use crate::vm::compile;
 use ark_ff::Field;
 use ark_ff::One;
@@ -9,17 +10,18 @@ use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use ministark::air::AirConfig;
 use ministark::challenges::Challenges;
-use ministark::constraints::AlgebraicExpression;
-use ministark::constraints::FieldConstant;
+use ministark::constraints::AlgebraicItem;
+use ministark::constraints::Constraint;
 use ministark::constraints::Hint;
 use ministark::constraints::VerifierChallenge;
 use ministark::hints::Hints;
-use ministark::Air;
-use ministark::ProofOptions;
-use ministark::TraceInfo;
+use ministark::utils::FieldVariant;
+use ministark::Trace;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
+use num_traits::Pow;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct ExecutionInfo {
@@ -28,25 +30,49 @@ pub struct ExecutionInfo {
     pub output: Vec<u8>,
 }
 
-pub struct BrainfuckAir {
-    options: ProofOptions,
-    trace_info: TraceInfo,
-    execution_info: ExecutionInfo,
-    constraints: Vec<AlgebraicExpression<Fp, Fq3>>,
-}
+pub struct BrainfuckAirConfig;
 
-impl Air for BrainfuckAir {
+impl AirConfig for BrainfuckAirConfig {
+    const NUM_BASE_COLUMNS: usize = BrainfuckTrace::NUM_BASE_COLUMNS;
+    const NUM_EXTENSION_COLUMNS: usize = BrainfuckTrace::NUM_EXTENSION_COLUMNS;
     type Fp = Fp;
     type Fq = Fq3;
     type PublicInputs = ExecutionInfo;
 
-    fn new(trace_info: TraceInfo, execution_info: ExecutionInfo, options: ProofOptions) -> Self {
-        use AlgebraicExpression::*;
-        let one = FieldConstant::Fp(Fp::one());
-        let trace_len = trace_info.trace_len;
+    fn gen_hints(
+        trace_len: usize,
+        execution_info: &ExecutionInfo,
+        challenges: &Challenges<Self::Fq>,
+    ) -> Hints<Self::Fq> {
+        use Challenge::*;
+        use EvaluationArgumentHint::*;
+        let ExecutionInfo {
+            source_code,
+            input,
+            output,
+        } = execution_info;
+
+        let (input_eval_arg, input_eval_offset) =
+            io_terminal_helper(input, challenges[Gamma.index()], trace_len);
+        let (output_eval_arg, output_eval_offset) =
+            io_terminal_helper(output, challenges[Delta.index()], trace_len);
+        let instruction_eval_arg = compute_instruction_evaluation_argument(source_code, challenges);
+
+        Hints::new(vec![
+            (Instruction.index(), instruction_eval_arg),
+            (Input.index(), input_eval_arg),
+            (InputOffset.index(), input_eval_offset),
+            (Output.index(), output_eval_arg),
+            (OutputOffset.index(), output_eval_offset),
+        ])
+    }
+
+    fn constraints(trace_len: usize) -> Vec<Constraint<FieldVariant<Self::Fp, Self::Fq>>> {
+        use AlgebraicItem::*;
+        let one = Constant(FieldVariant::<Fp, Fq3>::Fp(Fp::one()));
         let trace_xs = Radix2EvaluationDomain::<Fp>::new(trace_len).unwrap();
-        let first_trace_x = FieldConstant::Fp(trace_xs.element(0));
-        let last_trace_x = FieldConstant::Fp(trace_xs.element(trace_len - 1));
+        let first_trace_x = Constant(FieldVariant::<Fp, Fq3>::Fp(trace_xs.element(0)));
+        let last_trace_x = Constant(FieldVariant::Fp(trace_xs.element(trace_len - 1)));
 
         let transition_constraints = [
             tables::ProcessorBaseColumn::transition_constraints(),
@@ -100,57 +126,11 @@ impl Air for BrainfuckAir {
             constraint / (X - last_trace_x)
         });
 
-        BrainfuckAir {
-            options,
-            trace_info,
-            execution_info,
-            constraints: transition_constraints
-                .chain(boundary_constraints)
-                .chain(terminal_constraints)
-                .collect(),
-        }
-    }
-
-    fn get_hints(&self, challenges: &Challenges<Self::Fq>) -> Hints<Self::Fq> {
-        use Challenge::*;
-        use EvaluationArgumentHint::*;
-
-        let ExecutionInfo {
-            source_code,
-            input,
-            output,
-        } = &self.execution_info;
-        let trace_len = self.trace_info().trace_len;
-
-        let (input_eval_arg, input_eval_offset) =
-            io_terminal_helper(input, challenges[Gamma.index()], trace_len);
-        let (output_eval_arg, output_eval_offset) =
-            io_terminal_helper(output, challenges[Delta.index()], trace_len);
-        let instruction_eval_arg = compute_instruction_evaluation_argument(source_code, challenges);
-
-        Hints::new(vec![
-            (Instruction.index(), instruction_eval_arg),
-            (Input.index(), input_eval_arg),
-            (InputOffset.index(), input_eval_offset),
-            (Output.index(), output_eval_arg),
-            (OutputOffset.index(), output_eval_offset),
-        ])
-    }
-
-    fn options(&self) -> &ProofOptions {
-        &self.options
-    }
-
-    fn pub_inputs(&self) -> &Self::PublicInputs {
-        &self.execution_info
-    }
-
-    fn constraints(&self) -> Vec<AlgebraicExpression<Self::Fp, Self::Fq>> {
-        self.constraints.clone()
-    }
-
-    fn trace_info(&self) -> &TraceInfo {
-        &self.trace_info
+        transition_constraints
+            .chain(boundary_constraints)
+            .chain(terminal_constraints)
+            .map(Constraint::from)
+            .collect()
     }
 }
 

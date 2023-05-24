@@ -347,6 +347,11 @@ FillBuff<p18446744069414584321::Fq3>(
         device p18446744069414584321::Fq3*,
         constant p18446744069414584321::Fq3&,
         unsigned);
+template [[ host_name("exp_in_place_p18446744069414584321_fq3") ]] kernel void
+ExpInPlace<p18446744069414584321::Fq3>(
+        device p18446744069414584321::Fq3*,
+        constant unsigned&,
+        unsigned);
 template [[ host_name("mul_assign_LHS_p18446744069414584321_fq3_RHS_p18446744069414584321_fp") ]] kernel void
 MulAssign<p18446744069414584321::Fq3, p18446744069414584321::Fp>(
         device p18446744069414584321::Fq3*,
@@ -402,6 +407,12 @@ template [[ host_name("neg_into_p18446744069414584321_fq3") ]] kernel void
 NegInto<p18446744069414584321::Fq3>(
         device p18446744069414584321::Fq3*,
         constant p18446744069414584321::Fq3*,
+        unsigned);
+template [[ host_name("exp_into_p18446744069414584321_fq3") ]] kernel void
+ExpInto<p18446744069414584321::Fq3>(
+        device p18446744069414584321::Fq3*,
+        constant p18446744069414584321::Fq3*,
+        constant unsigned&,
         unsigned);
 // ===========================================================
 // Evaluation for Fp=3618502788666131213697322783095070105623107215331596699973092056135872020481

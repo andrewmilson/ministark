@@ -9,11 +9,12 @@ use criterion::Criterion;
 use digest::Digest;
 use digest::Output;
 use ministark::merkle::MerkleTree;
+use ministark_gpu::GpuField;
 use sha2::Sha256;
 
 const BENCHMARK_TREE_DEPTH: [usize; 4] = [14, 15, 16, 17];
 
-fn build_merkle_tree_bench<F: Field, D: Digest>(c: &mut Criterion, name: &str) {
+fn build_merkle_tree_bench<F: GpuField + Field, D: Digest>(c: &mut Criterion, name: &str) {
     let mut rng = ark_std::test_rng();
     let mut group = c.benchmark_group(name);
     group.sample_size(10);

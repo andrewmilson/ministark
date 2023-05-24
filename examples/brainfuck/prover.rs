@@ -1,4 +1,4 @@
-use crate::air::BrainfuckAir;
+use crate::air::BrainfuckAirConfig;
 use crate::air::ExecutionInfo;
 use crate::trace::BrainfuckTrace;
 use ministark::ProofOptions;
@@ -11,7 +11,7 @@ pub struct BrainfuckProver(ProofOptions);
 impl Prover for BrainfuckProver {
     type Fp = Fp;
     type Fq = Fq3;
-    type Air = BrainfuckAir;
+    type AirConfig = BrainfuckAirConfig;
     type Trace = BrainfuckTrace;
 
     fn new(options: ProofOptions) -> Self {

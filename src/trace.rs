@@ -1,40 +1,36 @@
+use crate::air::AirConfig;
 use crate::challenges::Challenges;
-use crate::merkle::MerkleProof;
+use crate::merkle;
 use crate::merkle::MerkleTree;
-use crate::Air;
 use crate::Matrix;
 use alloc::vec::Vec;
+use ark_ff::FftField;
 use ark_ff::Field;
-use ark_ff::PrimeField;
-use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use core::ops::Range;
 use digest::Digest;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct Queries<A: Air> {
+pub struct Queries<A: AirConfig> {
     pub base_trace_values: Vec<A::Fp>,
     pub extension_trace_values: Vec<A::Fq>,
     pub composition_trace_values: Vec<A::Fq>,
-    pub base_trace_proofs: Vec<MerkleProof>,
-    pub extension_trace_proofs: Vec<MerkleProof>,
-    pub composition_trace_proofs: Vec<MerkleProof>,
+    pub base_trace_proofs: Vec<merkle::Proof>,
+    pub extension_trace_proofs: Vec<merkle::Proof>,
+    pub composition_trace_proofs: Vec<merkle::Proof>,
 }
 
-impl<A: Air> Queries<A> {
-    #[allow(clippy::too_many_arguments)]
+impl<A: AirConfig> Queries<A> {
     pub fn new<D: Digest>(
-        air: &A,
-        base_trace_polys: &Matrix<A::Fp>,
-        extension_trace_polys: Option<&Matrix<A::Fq>>,
+        base_trace_lde: &Matrix<A::Fp>,
+        extension_trace_lde: Option<&Matrix<A::Fq>>,
         composition_trace_lde: &Matrix<A::Fq>,
-        base_commitment: MerkleTree<D>,
-        extension_commitment: Option<MerkleTree<D>>,
-        composition_commitment: MerkleTree<D>,
+        base_commitment: &MerkleTree<D>,
+        extension_commitment: Option<&MerkleTree<D>>,
+        composition_commitment: &MerkleTree<D>,
         positions: &[usize],
     ) -> Self {
-        let lde_xs = air.lde_domain();
         let mut base_trace_values = Vec::new();
         let mut extension_trace_values = Vec::new();
         let mut composition_trace_values = Vec::new();
@@ -43,15 +39,14 @@ impl<A: Air> Queries<A> {
         let mut composition_trace_proofs = Vec::new();
         for &position in positions {
             // execution trace
-            let lde_x = lde_xs.element(position);
-            let base_trace_row = base_trace_polys.evaluate_at(lde_x);
+            let base_trace_row = base_trace_lde.get_row(position).unwrap();
             base_trace_values.extend(base_trace_row);
             let base_proof = base_commitment.prove(position).unwrap();
             base_trace_proofs.push(base_proof);
 
-            if let Some(extension_trace_polys) = extension_trace_polys {
+            if let Some(extension_trace_lde) = extension_trace_lde {
                 // TODO: suport ark DomainCoeff on evaluate_at
-                let extension_trace_row = extension_trace_polys.evaluate_at(A::Fq::from(lde_x));
+                let extension_trace_row = extension_trace_lde.get_row(position).unwrap();
                 extension_trace_values.extend(extension_trace_row);
                 let extension_proof = extension_commitment
                     .as_ref()
@@ -67,7 +62,7 @@ impl<A: Air> Queries<A> {
             let composition_proof = composition_commitment.prove(position).unwrap();
             composition_trace_proofs.push(composition_proof);
         }
-        Queries {
+        Self {
             base_trace_values,
             extension_trace_values,
             composition_trace_values,
@@ -109,7 +104,7 @@ impl TraceInfo {
         assert!(num_total_cols <= Self::MAX_TRACE_WIDTH, "too many columns");
         assert!(meta.len() <= Self::MAX_META_BYTES, "too much meta data");
         assert!(trace_len >= Self::MIN_TRACE_LENGTH, "trace too small");
-        TraceInfo {
+        Self {
             num_base_columns,
             num_extension_columns,
             trace_len,
@@ -117,11 +112,11 @@ impl TraceInfo {
         }
     }
 
-    pub fn base_columns_range(&self) -> Range<usize> {
+    pub const fn base_columns_range(&self) -> Range<usize> {
         0..self.num_base_columns
     }
 
-    pub fn extension_columns_range(&self) -> Range<usize> {
+    pub const fn extension_columns_range(&self) -> Range<usize> {
         self.num_base_columns..self.num_base_columns + self.num_extension_columns
     }
 }
@@ -132,7 +127,7 @@ pub trait Trace {
     const NUM_BASE_COLUMNS: usize;
     const NUM_EXTENSION_COLUMNS: usize = 0;
 
-    type Fp: PrimeField;
+    type Fp: FftField;
     type Fq: Field<BasePrimeField = Self::Fp>;
 
     /// Returns the number of rows in this trace.
@@ -159,7 +154,7 @@ pub trait Trace {
             Self::NUM_BASE_COLUMNS,
             Self::NUM_EXTENSION_COLUMNS,
             self.len(),
-            self.meta().map(|meta| meta.to_vec()),
+            self.meta().map(<[u8]>::to_vec),
         )
     }
 

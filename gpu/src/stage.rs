@@ -8,6 +8,7 @@ use crate::utils::distribute_powers;
 use crate::utils::page_aligned_uninit_vector;
 use crate::utils::void_ptr;
 use crate::GpuAdd;
+use crate::GpuFrom;
 use crate::GpuMul;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -576,6 +577,7 @@ impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> AddIntoConstStage<LhsF, RhsF
         command_encoder.end_encoding()
     }
 }
+
 pub struct ConvertIntoStage<LhsF, RhsF = LhsF> {
     pipeline: metal::ComputePipelineState,
     threadgroup_dim: metal::MTLSize,
@@ -583,7 +585,7 @@ pub struct ConvertIntoStage<LhsF, RhsF = LhsF> {
     _phantom: PhantomData<(LhsF, RhsF)>,
 }
 
-impl<LhsF: GpuField + GpuAdd<RhsF>, RhsF: GpuField> ConvertIntoStage<LhsF, RhsF> {
+impl<LhsF: GpuField + GpuFrom<RhsF>, RhsF: GpuField> ConvertIntoStage<LhsF, RhsF> {
     pub fn new(library: &metal::LibraryRef, n: usize) -> Self {
         // Create the compute pipeline
         let func = library

@@ -1,3 +1,4 @@
+use crate::air::AirConfig;
 use crate::fri;
 use crate::fri::FriProof;
 use crate::random::PublicCoin;
@@ -7,14 +8,14 @@ use crate::Proof;
 use alloc::vec::Vec;
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
-use core::ops::Deref;
+use digest::generic_array::GenericArray;
 use digest::Digest;
 use digest::Output;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-pub struct ProverChannel<'a, A: Air, D: Digest> {
-    air: &'a A,
+pub struct ProverChannel<'a, A: AirConfig, D: Digest> {
+    air: &'a Air<A>,
     pub public_coin: PublicCoin<D>,
     base_trace_commitment: Output<D>,
     extension_trace_commitment: Option<Output<D>>,
@@ -26,42 +27,39 @@ pub struct ProverChannel<'a, A: Air, D: Digest> {
 }
 
 // impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
-impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
-    pub fn new(air: &'a A) -> Self {
+impl<'a, A: AirConfig, D: Digest> ProverChannel<'a, A, D> {
+    pub fn new(air: &'a Air<A>) -> Self {
         let mut seed = Vec::new();
-        // Seed the public coin with:
-        // 1. serialized public imputs
-        air.pub_inputs().serialize_compressed(&mut seed).unwrap();
-        // 2. various metadata about the air and proof
-        // TODO: field bytes?
-        air.trace_info().serialize_compressed(&mut seed).unwrap();
+        // Seed the public coin:
+        air.public_inputs().serialize_compressed(&mut seed).unwrap();
+        air.trace_len().serialize_compressed(&mut seed).unwrap();
         air.options().serialize_compressed(&mut seed).unwrap();
         let public_coin = PublicCoin::<D>::new(&seed);
         ProverChannel {
             air,
             public_coin,
             extension_trace_commitment: None,
-            base_trace_commitment: Default::default(),
-            composition_trace_commitment: Default::default(),
-            execution_trace_ood_evals: Default::default(),
-            composition_trace_ood_evals: Default::default(),
-            fri_layer_commitments: Default::default(),
+            base_trace_commitment: GenericArray::default(),
+            composition_trace_commitment: GenericArray::default(),
+            execution_trace_ood_evals: Vec::default(),
+            composition_trace_ood_evals: Vec::default(),
+            fri_layer_commitments: Vec::default(),
             pow_nonce: 0,
         }
     }
 
     pub fn commit_base_trace(&mut self, commitment: &Output<D>) {
-        self.public_coin.reseed(&commitment.deref());
+        self.public_coin.reseed(&&**commitment);
         self.base_trace_commitment = commitment.clone();
     }
 
     pub fn commit_extension_trace(&mut self, commitment: &Output<D>) {
-        self.public_coin.reseed(&commitment.deref());
+        self.public_coin.reseed(&&**commitment);
         self.extension_trace_commitment = Some(commitment.clone());
     }
 
     pub fn commit_composition_trace(&mut self, commitment: &Output<D>) {
-        self.public_coin.reseed(&commitment.deref());
+        self.public_coin.reseed(&&**commitment);
         self.composition_trace_commitment = commitment.clone();
     }
 
@@ -80,7 +78,7 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
     }
 
     pub fn grind_fri_commitments(&mut self) {
-        let grinding_factor = self.air.options().grinding_factor as u32;
+        let grinding_factor = u32::from(self.air.options().grinding_factor);
         if grinding_factor == 0 {
             // skip if there is no grinding required
             return;
@@ -111,12 +109,12 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
 
     pub fn build_proof(self, trace_queries: Queries<A>, fri_proof: FriProof<A::Fq>) -> Proof<A> {
         Proof {
-            options: *self.air.options(),
-            trace_info: self.air.trace_info().clone(),
+            options: self.air.options(),
+            trace_len: self.air.trace_len(),
             base_trace_commitment: self.base_trace_commitment.to_vec(),
             extension_trace_commitment: self.extension_trace_commitment.map(|o| o.to_vec()),
             composition_trace_commitment: self.composition_trace_commitment.to_vec(),
-            public_inputs: self.air.pub_inputs().clone(),
+            public_inputs: self.air.public_inputs().clone(),
             execution_trace_ood_evals: self.execution_trace_ood_evals,
             composition_trace_ood_evals: self.composition_trace_ood_evals,
             pow_nonce: self.pow_nonce,
@@ -127,11 +125,11 @@ impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
 }
 
 // FRI prover channel implementation
-impl<'a, A: Air, D: Digest> fri::ProverChannel<A::Fq> for ProverChannel<'a, A, D> {
+impl<'a, A: AirConfig, D: Digest> fri::ProverChannel<A::Fq> for ProverChannel<'a, A, D> {
     type Digest = D;
 
     fn commit_fri_layer(&mut self, commitment: &Output<D>) {
-        self.public_coin.reseed(&commitment.deref());
+        self.public_coin.reseed(&&**commitment);
         self.fri_layer_commitments.push(commitment.clone());
     }
 

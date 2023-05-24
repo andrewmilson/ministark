@@ -207,13 +207,13 @@ macro_rules! wrap_field {
 
         impl core::iter::Product<Self> for $outer {
             fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
-                iter.fold(ark_ff::Zero::zero(), core::ops::Mul::mul)
+                iter.fold(ark_ff::One::one(), core::ops::Mul::mul)
             }
         }
 
         impl<'a> core::iter::Product<&'a Self> for $outer {
             fn product<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
-                iter.fold(ark_ff::Zero::zero(), core::ops::Mul::mul)
+                iter.fold(ark_ff::One::one(), core::ops::Mul::mul)
             }
         }
 

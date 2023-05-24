@@ -1,6 +1,6 @@
 #![feature(allocator_api)]
 
-use air::BrainfuckAir;
+use air::BrainfuckAirConfig;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use ministark::Proof;
@@ -115,7 +115,8 @@ fn verify(
 ) {
     let source_code = fs::read_to_string(source_code_path).unwrap();
     let proof_bytes = fs::read(proof_path).unwrap();
-    let proof: Proof<BrainfuckAir> = Proof::deserialize_compressed(proof_bytes.as_slice()).unwrap();
+    let proof: Proof<BrainfuckAirConfig> =
+        Proof::deserialize_compressed(proof_bytes.as_slice()).unwrap();
     assert_eq!(input.as_bytes(), proof.public_inputs.input);
     assert_eq!(output.as_bytes(), proof.public_inputs.output);
     assert_eq!(source_code, proof.public_inputs.source_code);
