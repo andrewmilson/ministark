@@ -1,10 +1,10 @@
 // Implementation is adapted from RationalExpression in https://github.com/0xProject/OpenZKP
 
 use alloc::collections::BTreeMap;
-use alloc::collections::BTreeSet;
 use ark_ff::One;
 use ark_std::Zero;
 use core::cmp::Ordering;
+use core::hash::Hash;
 use core::iter::Product;
 use core::iter::Sum;
 use core::ops::Add;
@@ -17,9 +17,14 @@ use core::ops::Neg;
 use core::ops::Sub;
 use core::ops::SubAssign;
 use num_traits::Pow;
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 use std::ptr::addr_of;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
+use std::time::Instant;
 
 pub type P<T> = Arc<RwLock<T>>;
 
@@ -109,12 +114,12 @@ impl<T> Expr<T> {
     // TODO: change this to self
     fn _map_leaves<U>(
         this: &P<Self>,
-        sl: &mut BTreeMap<T, P<Expr<U>>>,
+        sl: &mut BTreeMap<*const T, P<Expr<U>>>,
         sn: &mut BTreeMap<*const Self, P<Expr<U>>>,
         f: &mut impl FnMut(&T) -> U,
     ) -> P<Expr<U>>
     where
-        T: Ord + Copy,
+        T: Ord,
     {
         // The lint's suggestion "Using Option::map_or_else" doesn't work because
         // `.insert` requires mutable access to seen (which is already borrowed).
@@ -125,12 +130,12 @@ impl<T> Expr<T> {
             use Expr::*;
             let res = Arc::new(RwLock::new(match &*this.read().unwrap() {
                 Leaf(l) => {
-                    if let Some(leaf) = sl.get(l) {
+                    if let Some(leaf) = sl.get(&addr_of!(*l)) {
                         return Arc::clone(leaf);
                     }
 
                     let res = Arc::new(RwLock::new(Leaf(f(l))));
-                    sl.insert(*l, Arc::clone(&res));
+                    sl.insert(addr_of!(*l), Arc::clone(&res));
                     sn.insert(addr_of!(*this.read().unwrap()), Arc::clone(&res));
                     return res;
                 }
@@ -158,7 +163,7 @@ impl<T> Expr<T> {
     #[allow(clippy::many_single_char_names)]
     pub fn map_leaves<U>(&self, f: &mut impl FnMut(&T) -> U) -> Expr<U>
     where
-        T: Ord + Copy,
+        T: Ord,
     {
         use Expr::*;
         let mut leafs_map = BTreeMap::new();
@@ -176,60 +181,208 @@ impl<T> Expr<T> {
     }
 
     /// Inspired by <https://neptune.cash/learn/speed-up-stark-provers-with-multicircuits/>
+    /// Runtime: O(n log n) where n is the number of edges TODO: check
+    #[allow(clippy::too_many_lines)]
     pub fn reuse_shared_nodes(&self) -> Self
     where
-        T: Ord + Clone,
+        T: Ord + Clone + Hash,
     {
-        // build graph in O(n^2)
-        let mut visited = BTreeSet::<Self>::new();
-        self.map(&mut |node| {
-            use Expr::*;
-            visited.insert(match &node {
-                // TODO: `Rc` keyword like `box` keyword would be cool
-                // Add(Rc Constant(a), Rc Constant(b)) => ...
-                Add(a, b) => Add(
-                    Arc::new(RwLock::new(
-                        visited.get(&a.read().unwrap()).unwrap().clone(),
-                    )),
-                    Arc::new(RwLock::new(
-                        visited.get(&b.read().unwrap()).unwrap().clone(),
-                    )),
-                ),
+        type Id = u64;
+        type SeenSet<T> = Rc<RefCell<BTreeMap<Id, P<Expr<T>>>>>;
 
-                // TODO: consider replacing items in node map if there is a more optimal
-                // representation
-                Mul(a, b) => Mul(
-                    Arc::new(RwLock::new(
-                        visited.get(&a.read().unwrap()).unwrap().clone(),
-                    )),
-                    Arc::new(RwLock::new(
-                        visited.get(&b.read().unwrap()).unwrap().clone(),
-                    )),
-                ),
-                Div(a, b) => Div(
-                    Arc::new(RwLock::new(
-                        visited.get(&a.read().unwrap()).unwrap().clone(),
-                    )),
-                    Arc::new(RwLock::new(
-                        visited.get(&b.read().unwrap()).unwrap().clone(),
-                    )),
-                ),
-                Neg(a) => Neg(Arc::new(RwLock::new(
-                    visited.get(&a.read().unwrap()).unwrap().clone(),
-                ))),
-                Pow(a, e) => Pow(
-                    Arc::new(RwLock::new(
-                        visited.get(&a.read().unwrap()).unwrap().clone(),
-                    )),
-                    *e,
-                ),
-                Leaf(v) => Leaf(v.clone()),
-            });
+        struct IdNode<T> {
+            node: P<Expr<T>>,
+            seen: SeenSet<T>,
+            id: Id,
+        }
 
-            node
-        });
+        impl<T: Hash + Clone> IdNode<T> {
+            fn new_leaf(leaf: &T, seen: SeenSet<T>) -> Self {
+                // `id` is the hash of the leaf
+                let mut hasher = DefaultHasher::new();
+                "leaf".hash(&mut hasher);
+                leaf.hash(&mut hasher);
+                let id = hasher.finish();
 
-        visited.get(self).unwrap().clone()
+                // if_let_else would not be appropriate
+                // Also can't use .get because it causes borrow_mut errors
+                #[allow(clippy::option_if_let_else)]
+                let node = if seen.as_ref().borrow().contains_key(&id) {
+                    // we have encountered this leaf
+                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                } else {
+                    // we haven't encountered this leaf
+                    // create a new node for this leaf
+                    let node = Arc::new(RwLock::new(Expr::Leaf(leaf.clone())));
+                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    node
+                };
+
+                Self { node, seen, id }
+            }
+        }
+
+        impl<T> Add for IdNode<T> {
+            type Output = Self;
+
+            fn add(self, rhs: Self) -> Self::Output {
+                let seen = self.seen;
+
+                let mut hasher = DefaultHasher::new();
+                "add".hash(&mut hasher);
+                self.id.hash(&mut hasher);
+                rhs.id.hash(&mut hasher);
+                let id = hasher.finish();
+
+                // if_let_else would not be appropriate
+                // Also can't use .get because it causes borrow_mut errors
+                #[allow(clippy::option_if_let_else)]
+                let node = if seen.as_ref().borrow().contains_key(&id) {
+                    // we have encountered this leaf
+                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                } else {
+                    // we haven't encountered this leaf
+                    // create a new node for this leaf
+                    let node = Arc::new(RwLock::new(Expr::Add(self.node, rhs.node)));
+                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    node
+                };
+
+                Self { node, seen, id }
+            }
+        }
+
+        impl<T> Mul for IdNode<T> {
+            type Output = Self;
+
+            fn mul(self, rhs: Self) -> Self::Output {
+                let seen = self.seen;
+
+                let mut hasher = DefaultHasher::new();
+                "mul".hash(&mut hasher);
+                self.id.hash(&mut hasher);
+                rhs.id.hash(&mut hasher);
+                let id = hasher.finish();
+
+                // if_let_else would not be appropriate
+                // Also can't use .get because it causes borrow_mut errors
+                #[allow(clippy::option_if_let_else)]
+                let node = if seen.as_ref().borrow().contains_key(&id) {
+                    // we have encountered this leaf
+                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                } else {
+                    // we haven't encountered this leaf
+                    // create a new node for this leaf
+                    let node = Arc::new(RwLock::new(Expr::Mul(self.node, rhs.node)));
+                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    node
+                };
+
+                Self { node, seen, id }
+            }
+        }
+
+        impl<T> Div for IdNode<T> {
+            type Output = Self;
+
+            fn div(self, rhs: Self) -> Self::Output {
+                let seen = self.seen;
+
+                let mut hasher = DefaultHasher::new();
+                "div".hash(&mut hasher);
+                self.id.hash(&mut hasher);
+                rhs.id.hash(&mut hasher);
+                let id = hasher.finish();
+
+                // if_let_else would not be appropriate
+                // Also can't use .get because it causes borrow_mut errors
+                #[allow(clippy::option_if_let_else)]
+                let node = if seen.as_ref().borrow().contains_key(&id) {
+                    // we have encountered this leaf
+                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                } else {
+                    // we haven't encountered this leaf
+                    // create a new node for this leaf
+                    let node = Arc::new(RwLock::new(Expr::Div(self.node, rhs.node)));
+                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    node
+                };
+
+                Self { node, seen, id }
+            }
+        }
+
+        impl<T> Neg for IdNode<T> {
+            type Output = Self;
+
+            fn neg(self) -> Self::Output {
+                let seen = self.seen;
+
+                let mut hasher = DefaultHasher::new();
+                "neg".hash(&mut hasher);
+                self.id.hash(&mut hasher);
+                let id = hasher.finish();
+
+                // if_let_else would not be appropriate
+                // Also can't use .get because it causes borrow_mut errors
+                #[allow(clippy::option_if_let_else)]
+                let node = if seen.as_ref().borrow().contains_key(&id) {
+                    // we have encountered this leaf
+                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                } else {
+                    // we haven't encountered this leaf
+                    // create a new node for this leaf
+                    let node = Arc::new(RwLock::new(Expr::Neg(self.node)));
+                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    node
+                };
+
+                Self { node, seen, id }
+            }
+        }
+
+        impl<T> Pow<usize> for IdNode<T> {
+            type Output = Self;
+
+            fn pow(self, exp: usize) -> Self::Output {
+                let seen = self.seen;
+
+                let mut hasher = DefaultHasher::new();
+                "pow".hash(&mut hasher);
+                self.id.hash(&mut hasher);
+                exp.hash(&mut hasher);
+                let id = hasher.finish();
+
+                // if_let_else would not be appropriate
+                // Also can't use .get because it causes borrow_mut errors
+                #[allow(clippy::option_if_let_else)]
+                let node = if seen.as_ref().borrow().contains_key(&id) {
+                    // we have encountered this leaf
+                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                } else {
+                    // we haven't encountered this leaf
+                    // create a new node for this leaf
+                    let node = Arc::new(RwLock::new(Expr::Pow(self.node, exp)));
+                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    node
+                };
+
+                Self { node, seen, id }
+            }
+        }
+
+        impl<T> Hash for IdNode<T> {
+            fn hash<H: Hasher>(&self, _: &mut H) {
+                unimplemented!()
+            }
+        }
+
+        let seen = Rc::new(RefCell::new(BTreeMap::new()));
+        let res = self.eval(&mut |leaf| IdNode::new_leaf(leaf, Rc::clone(&seen)));
+        // Drop references
+        drop(seen);
+        drop(Rc::into_inner(res.seen).unwrap().into_inner());
+        Arc::into_inner(res.node).unwrap().into_inner().unwrap()
     }
 
     // Adapted from https://github.com/0xProject/OpenZKP

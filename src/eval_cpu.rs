@@ -209,8 +209,6 @@ impl<
 
     fn add(self, rhs: Self) -> Self::Output {
         use EvalItem::*;
-        // #[cfg(feature = "std")]
-        // println!("HOOOOO");
         match (self, rhs) {
             (Constant(lhs), Constant(rhs)) => Constant(lhs + rhs),
             (Evals(evals), Constant(c)) | (Constant(c), Evals(evals)) => match (*evals, c) {
@@ -271,6 +269,17 @@ impl<
 
     fn mul(self, rhs: Self) -> Self::Output {
         use EvalItem::*;
+        // Don't mult if one side is `1`
+        // let (lhs, rhs) = match (self, rhs) {
+        //     (Constant(c), other) | (other, Constant(c)) => {
+        //         if c.is_one() {
+        //             return other;
+        //         }
+        //         (Constant(c), other)
+        //     }
+        //     (lhs, rhs) => (lhs, rhs),
+        // };
+
         match (self, rhs) {
             (Constant(lhs), Constant(rhs)) => Constant(lhs * rhs),
             (Evals(evals), Constant(c)) | (Constant(c), Evals(evals)) => match (*evals, c) {

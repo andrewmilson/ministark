@@ -73,8 +73,8 @@ impl<A: AirConfig> Proof<A> {
 
         let air = Air::new(trace_len, public_inputs, options);
 
-        let base_trace_comitment = Output::<Sha256>::from_iter(base_trace_commitment);
-        public_coin.reseed(&&*base_trace_comitment);
+        let base_trace_commitment = Output::<Sha256>::from_iter(base_trace_commitment);
+        public_coin.reseed(&&*base_trace_commitment);
         let challenges = air.gen_challenges(&mut public_coin);
         let hints = air.gen_hints(&challenges);
 
@@ -97,7 +97,7 @@ impl<A: AirConfig> Proof<A> {
         let trace_ood_eval_map = air
             .trace_arguments()
             .into_iter()
-            .zip(execution_trace_ood_evals.iter().copied())
+            .zip(execution_trace_ood_evals)
             .collect::<BTreeMap<(usize, isize), A::Fq>>();
         let calculated_ood_constraint_evaluation = ood_constraint_evaluation::<A>(
             &composition_coeffs,
@@ -164,7 +164,7 @@ impl<A: AirConfig> Proof<A> {
 
         // base trace positions
         verify_positions::<Sha256>(
-            &base_trace_comitment,
+            &base_trace_commitment,
             &query_positions,
             &base_trace_rows,
             trace_queries.base_trace_proofs,
@@ -218,12 +218,12 @@ fn ood_constraint_evaluation<A: AirConfig>(
     use AlgebraicItem::*;
     use CompositionItem::*;
     air.composition_constraint()
-        .eval(&mut |leaf| match leaf {
+        .graph_eval(&mut |leaf| match leaf {
             Item(X) => FieldVariant::Fq(x),
             &Item(Constant(v)) => v,
             &Item(Challenge(i)) => FieldVariant::Fq(challenges[i]),
             &Item(Hint(i)) => FieldVariant::Fq(hints[i]),
-            &Item(Trace(i, j)) => FieldVariant::Fq(*trace_ood_eval_map.get(&(i, j)).unwrap()),
+            &Item(Trace(i, j)) => FieldVariant::Fq(trace_ood_eval_map[&(i, j)]),
             &CompositionCoeff(i) => FieldVariant::Fq(composition_coefficients[i]),
         })
         .as_fq()

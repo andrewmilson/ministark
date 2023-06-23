@@ -57,26 +57,26 @@ pub trait AirConfig: Send + Sync + Sized + 'static {
         base_trace_lde: &Matrix<Self::Fp>,
         extension_trace_lde: Option<&Matrix<Self::Fq>>,
     ) -> Matrix<Self::Fq> {
-        let eval_expr = composition_constraint
-            .map_leaves(&mut |leaf| match leaf {
-                CompositionItem::Item(item) => *item,
-                CompositionItem::CompositionCoeff(i) => {
-                    AlgebraicItem::Constant(FieldVariant::Fq(composition_constraint_coeffs[*i]))
-                }
-            })
-            .reuse_shared_nodes();
+        let eval_expr = composition_constraint.map_leaves(&mut |leaf| match leaf {
+            CompositionItem::Item(item) => *item,
+            CompositionItem::CompositionCoeff(i) => {
+                AlgebraicItem::Constant(FieldVariant::Fq(composition_constraint_coeffs[*i]))
+            }
+        });
+        // TODO: add back in
+        // .reuse_shared_nodes();
         // TODO: GPU constraint eval is currently slower than CPU
-        #[cfg(feature = "gpu")]
-        return crate::eval_gpu::eval::<Self::Fp, Self::Fq>(
-            &eval_expr,
-            challenges,
-            hints,
-            lde_step,
-            x_lde,
-            base_trace_lde,
-            extension_trace_lde,
-        );
-        #[cfg(not(feature = "gpu"))]
+        // #[cfg(feature = "gpu")]
+        // return crate::eval_gpu::eval::<Self::Fp, Self::Fq>(
+        //     &eval_expr,
+        //     challenges,
+        //     hints,
+        //     lde_step,
+        //     x_lde,
+        //     base_trace_lde,
+        //     extension_trace_lde,
+        // );
+        // #[cfg(not(feature = "gpu"))]
         return crate::eval_cpu::eval::<Self::Fp, Self::Fq>(
             &eval_expr,
             challenges,

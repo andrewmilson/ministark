@@ -14,9 +14,11 @@ use core::ops::Mul;
 use core::ops::Neg;
 use core::ops::Sub;
 use num_traits::Pow;
+use std::hash::Hash;
+use std::time::Instant;
 
 // TODO: should really remove copy as this type might change in the future
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub enum AlgebraicItem<T> {
     X,
     Constant(T),
@@ -276,7 +278,7 @@ impl<T> DerefMut for Constraint<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub enum CompositionItem<T> {
     Item(AlgebraicItem<T>),
     CompositionCoeff(usize),
@@ -295,7 +297,7 @@ pub struct CompositionConstraint<T> {
     expr: Expr<CompositionItem<T>>,
 }
 
-impl<T: Clone + Copy + Zero + Ord> CompositionConstraint<T> {
+impl<T: Clone + Copy + Zero + Ord + Hash> CompositionConstraint<T> {
     /// Combines multiple constraints into a single constraint (the composition
     /// constraint). Constraints are composed with verifiers randomness.
     /// This verifier randomness is expressed symbolically.
@@ -319,8 +321,10 @@ impl<T: Clone + Copy + Zero + Ord> CompositionConstraint<T> {
                 let beta = composition_coeff.next().unwrap();
                 &constraint * (x.clone().pow(degree_adjustment) * alpha + beta)
             })
-            .sum::<Expr<CompositionItem<T>>>()
-            .reuse_shared_nodes();
+            .sum::<Expr<CompositionItem<T>>>();
+        let now = Instant::now();
+        let expr = expr.reuse_shared_nodes();
+        println!("Reuse took: {:?}", now.elapsed());
         Self {
             ce_blowup_factor,
             expr,
