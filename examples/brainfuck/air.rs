@@ -1,15 +1,13 @@
 use crate::tables;
 use crate::tables::Challenge;
 use crate::tables::EvaluationArgumentHint;
-use crate::trace::BrainfuckTrace;
 use crate::vm::compile;
+use crate::ExecutionInfo;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
-use ark_serialize::CanonicalDeserialize;
-use ark_serialize::CanonicalSerialize;
 use ministark::air::AirConfig;
 use ministark::challenges::Challenges;
 use ministark::constraints::AlgebraicItem;
@@ -18,23 +16,16 @@ use ministark::constraints::Hint;
 use ministark::constraints::VerifierChallenge;
 use ministark::hints::Hints;
 use ministark::utils::FieldVariant;
-use ministark::Trace;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
 use num_traits::Pow;
 
-#[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct ExecutionInfo {
-    pub source_code: String,
-    pub input: Vec<u8>,
-    pub output: Vec<u8>,
-}
-
 pub struct BrainfuckAirConfig;
 
 impl AirConfig for BrainfuckAirConfig {
-    const NUM_BASE_COLUMNS: usize = BrainfuckTrace::NUM_BASE_COLUMNS;
-    const NUM_EXTENSION_COLUMNS: usize = BrainfuckTrace::NUM_EXTENSION_COLUMNS;
+    const NUM_BASE_COLUMNS: usize = 17;
+    const NUM_EXTENSION_COLUMNS: usize = 9;
+
     type Fp = Fp;
     type Fq = Fq3;
     type PublicInputs = ExecutionInfo;

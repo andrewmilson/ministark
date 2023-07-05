@@ -3,7 +3,6 @@
 use ark_ff::One;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
-use ark_serialize::CanonicalSerialize;
 use ministark::air::AirConfig;
 use ministark::constraints::AlgebraicItem;
 use ministark::constraints::Constraint;
@@ -13,21 +12,27 @@ use ministark::utils::FieldVariant;
 use ministark::utils::GpuAllocator;
 use ministark::Matrix;
 use ministark::ProofOptions;
-use ministark::Prover;
-use ministark::Trace;
+use ministark::Provable;
+use ministark::Verifiable;
+use ministark::Witness;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use num_traits::Pow;
+use sha2::Sha256;
 use std::time::Instant;
 
 struct FibTrace(Matrix<Fp>);
 
-impl Trace for FibTrace {
+impl FibTrace {
+    fn last_value(&self) -> Fp {
+        *(self.0).0[7].last().unwrap()
+    }
+}
+
+impl Witness for FibTrace {
     type Fp = Fp;
     type Fq = Fp;
 
-    const NUM_BASE_COLUMNS: usize = 8;
-
-    fn len(&self) -> usize {
+    fn trace_len(&self) -> usize {
         self.0.num_rows()
     }
 
@@ -43,7 +48,7 @@ enum FibHint {
 struct FibAirConfig;
 
 impl AirConfig for FibAirConfig {
-    const NUM_BASE_COLUMNS: usize = FibTrace::NUM_BASE_COLUMNS;
+    const NUM_BASE_COLUMNS: usize = 8;
     type Fp = Fp;
     type Fq = Fp;
     type PublicInputs = Fp;
@@ -132,26 +137,21 @@ impl AirConfig for FibAirConfig {
     }
 }
 
-struct FibProver(ProofOptions);
+struct FibClaim(Fp);
 
-impl Prover for FibProver {
+impl Verifiable for FibClaim {
     type Fp = Fp;
     type Fq = Fp;
     type AirConfig = FibAirConfig;
-    type Trace = FibTrace;
+    type Digest = Sha256;
 
-    fn new(options: ProofOptions) -> Self {
-        FibProver(options)
-    }
-
-    fn options(&self) -> ProofOptions {
+    fn get_public_inputs(&self) -> Fp {
         self.0
     }
+}
 
-    fn get_pub_inputs(&self, trace: &FibTrace) -> Fp {
-        // get the last item in the trace
-        *trace.0[7].last().unwrap()
-    }
+impl Provable for FibClaim {
+    type Witness = FibTrace;
 }
 
 fn gen_trace(n: usize) -> FibTrace {
@@ -205,17 +205,18 @@ fn gen_trace(n: usize) -> FibTrace {
 
 fn main() {
     let options = ProofOptions::new(32, 4, 8, 8, 64);
-    let prover = FibProver::new(options);
+
     let now = Instant::now();
     let trace = gen_trace(1048576 * 32);
     println!("Trace generated in: {:?}", now.elapsed());
 
-    let now = Instant::now();
-    let proof = pollster::block_on(prover.generate_proof(trace)).unwrap();
-    println!("Proof generated in: {:?}", now.elapsed());
-    let mut proof_bytes = Vec::new();
-    proof.serialize_compressed(&mut proof_bytes).unwrap();
-    println!("Result: {:?}", proof_bytes.len());
+    let claim = FibClaim(trace.last_value());
 
-    proof.verify().unwrap();
+    let now = Instant::now();
+    let proof = pollster::block_on(claim.generate_proof(options, trace)).expect("prover failed");
+    println!("Proof generated in: {:?}", now.elapsed());
+
+    let now = Instant::now();
+    claim.verify(proof).expect("verification failed");
+    println!("Proof generated in: {:?}", now.elapsed());
 }

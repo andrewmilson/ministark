@@ -5,15 +5,13 @@ use crate::tables::MemoryBaseColumn;
 use crate::tables::OutputBaseColumn;
 use crate::tables::ProcessorBaseColumn;
 use crate::trace::into_columns;
-use crate::trace::TraceMeta;
 use crate::BrainfuckTrace;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
 use ministark::Matrix;
-use ministark::TraceInfo;
 
-type Fp = <BrainfuckTrace as ministark::Trace>::Fp;
+type Fp = <BrainfuckTrace as ministark::Witness>::Fp;
 
 /// Opcodes determined by the lexer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,11 +107,11 @@ struct Register {
 
 // Outputs base execution trace
 pub fn simulate(
-    source_code: String,
+    source_code: &str,
     input: &mut impl std::io::Read,
     output: &mut impl std::io::Write,
 ) -> BrainfuckTrace {
-    let program = compile(&source_code);
+    let program = compile(source_code);
 
     let mut tape = [0u8; 1024];
     let mut register = Register {
@@ -253,7 +251,6 @@ pub fn simulate(
             instruction_rows.len(),
             input_rows.len(),
             output_rows.len(),
-            TraceInfo::MIN_TRACE_LENGTH,
         ]
         .into_iter()
         .max()
@@ -273,14 +270,7 @@ pub fn simulate(
     let input_base_trace = Matrix::new(into_columns(input_rows));
     let output_base_trace = Matrix::new(into_columns(output_rows));
 
-    let meta = TraceMeta {
-        input: input_symbols,
-        output: output_symbols,
-        source_code,
-    };
-
     BrainfuckTrace::new(
-        meta,
         processor_base_trace,
         memory_base_trace,
         instruction_base_trace,

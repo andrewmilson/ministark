@@ -24,7 +24,6 @@ use std::ptr::addr_of;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::time::Instant;
 
 pub type P<T> = Arc<RwLock<T>>;
 
@@ -200,21 +199,18 @@ impl<T> Expr<T> {
             fn new_leaf(leaf: &T, seen: SeenSet<T>) -> Self {
                 // `id` is the hash of the leaf
                 let mut hasher = DefaultHasher::new();
-                "leaf".hash(&mut hasher);
-                leaf.hash(&mut hasher);
+                ("leaf", leaf).hash(&mut hasher);
                 let id = hasher.finish();
 
-                // if_let_else would not be appropriate
-                // Also can't use .get because it causes borrow_mut errors
+                // can't use if_let_else because it causes borrow errors
                 #[allow(clippy::option_if_let_else)]
-                let node = if seen.as_ref().borrow().contains_key(&id) {
+                let node = if seen.borrow().contains_key(&id) {
                     // we have encountered this leaf
-                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                    Arc::clone(seen.borrow().get(&id).unwrap())
                 } else {
-                    // we haven't encountered this leaf
-                    // create a new node for this leaf
+                    // we haven't encountered this leaf, create a new entry
                     let node = Arc::new(RwLock::new(Expr::Leaf(leaf.clone())));
-                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    seen.borrow_mut().insert(id, Arc::clone(&node));
                     node
                 };
 
@@ -229,22 +225,18 @@ impl<T> Expr<T> {
                 let seen = self.seen;
 
                 let mut hasher = DefaultHasher::new();
-                "add".hash(&mut hasher);
-                self.id.hash(&mut hasher);
-                rhs.id.hash(&mut hasher);
+                ("add", self.id, rhs.id).hash(&mut hasher);
                 let id = hasher.finish();
 
-                // if_let_else would not be appropriate
-                // Also can't use .get because it causes borrow_mut errors
+                // can't use if_let_else because it causes borrow errors
                 #[allow(clippy::option_if_let_else)]
-                let node = if seen.as_ref().borrow().contains_key(&id) {
-                    // we have encountered this leaf
-                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                let node = if seen.borrow().contains_key(&id) {
+                    // we have encountered this node
+                    Arc::clone(seen.borrow().get(&id).unwrap())
                 } else {
-                    // we haven't encountered this leaf
-                    // create a new node for this leaf
+                    // we haven't encountered this node, create a new entry
                     let node = Arc::new(RwLock::new(Expr::Add(self.node, rhs.node)));
-                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    seen.borrow_mut().insert(id, Arc::clone(&node));
                     node
                 };
 
@@ -259,22 +251,18 @@ impl<T> Expr<T> {
                 let seen = self.seen;
 
                 let mut hasher = DefaultHasher::new();
-                "mul".hash(&mut hasher);
-                self.id.hash(&mut hasher);
-                rhs.id.hash(&mut hasher);
+                ("mul", self.id, rhs.id).hash(&mut hasher);
                 let id = hasher.finish();
 
-                // if_let_else would not be appropriate
-                // Also can't use .get because it causes borrow_mut errors
+                // can't use if_let_else because it causes borrow errors
                 #[allow(clippy::option_if_let_else)]
-                let node = if seen.as_ref().borrow().contains_key(&id) {
+                let node = if seen.borrow().contains_key(&id) {
                     // we have encountered this leaf
-                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                    Arc::clone(seen.borrow().get(&id).unwrap())
                 } else {
-                    // we haven't encountered this leaf
-                    // create a new node for this leaf
+                    // we haven't encountered this node, create a new entry
                     let node = Arc::new(RwLock::new(Expr::Mul(self.node, rhs.node)));
-                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    seen.borrow_mut().insert(id, Arc::clone(&node));
                     node
                 };
 
@@ -289,22 +277,18 @@ impl<T> Expr<T> {
                 let seen = self.seen;
 
                 let mut hasher = DefaultHasher::new();
-                "div".hash(&mut hasher);
-                self.id.hash(&mut hasher);
-                rhs.id.hash(&mut hasher);
+                ("div", self.id, rhs.id).hash(&mut hasher);
                 let id = hasher.finish();
 
-                // if_let_else would not be appropriate
-                // Also can't use .get because it causes borrow_mut errors
+                // can't use if_let_else because it causes borrow errors
                 #[allow(clippy::option_if_let_else)]
-                let node = if seen.as_ref().borrow().contains_key(&id) {
+                let node = if seen.borrow().contains_key(&id) {
                     // we have encountered this leaf
-                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                    Arc::clone(seen.borrow().get(&id).unwrap())
                 } else {
-                    // we haven't encountered this leaf
-                    // create a new node for this leaf
+                    // we haven't encountered this node, create a new entry
                     let node = Arc::new(RwLock::new(Expr::Div(self.node, rhs.node)));
-                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    seen.borrow_mut().insert(id, Arc::clone(&node));
                     node
                 };
 
@@ -319,21 +303,18 @@ impl<T> Expr<T> {
                 let seen = self.seen;
 
                 let mut hasher = DefaultHasher::new();
-                "neg".hash(&mut hasher);
-                self.id.hash(&mut hasher);
+                ("neg", self.id).hash(&mut hasher);
                 let id = hasher.finish();
 
-                // if_let_else would not be appropriate
-                // Also can't use .get because it causes borrow_mut errors
+                // can't use if_let_else because it causes borrow errors
                 #[allow(clippy::option_if_let_else)]
-                let node = if seen.as_ref().borrow().contains_key(&id) {
+                let node = if seen.borrow().contains_key(&id) {
                     // we have encountered this leaf
-                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                    Arc::clone(seen.borrow().get(&id).unwrap())
                 } else {
-                    // we haven't encountered this leaf
-                    // create a new node for this leaf
+                    // we haven't encountered this node, create a new entry
                     let node = Arc::new(RwLock::new(Expr::Neg(self.node)));
-                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    seen.borrow_mut().insert(id, Arc::clone(&node));
                     node
                 };
 
@@ -348,22 +329,18 @@ impl<T> Expr<T> {
                 let seen = self.seen;
 
                 let mut hasher = DefaultHasher::new();
-                "pow".hash(&mut hasher);
-                self.id.hash(&mut hasher);
-                exp.hash(&mut hasher);
+                ("pow", self.id, exp).hash(&mut hasher);
                 let id = hasher.finish();
 
-                // if_let_else would not be appropriate
-                // Also can't use .get because it causes borrow_mut errors
+                // can't use if_let_else because it causes borrow errors
                 #[allow(clippy::option_if_let_else)]
-                let node = if seen.as_ref().borrow().contains_key(&id) {
+                let node = if seen.borrow().contains_key(&id) {
                     // we have encountered this leaf
-                    Arc::clone(seen.as_ref().borrow().get(&id).unwrap())
+                    Arc::clone(seen.borrow().get(&id).unwrap())
                 } else {
-                    // we haven't encountered this leaf
-                    // create a new node for this leaf
+                    // we haven't encountered this node, create a new entry
                     let node = Arc::new(RwLock::new(Expr::Pow(self.node, exp)));
-                    seen.as_ref().borrow_mut().insert(id, Arc::clone(&node));
+                    seen.borrow_mut().insert(id, Arc::clone(&node));
                     node
                 };
 
@@ -371,17 +348,10 @@ impl<T> Expr<T> {
             }
         }
 
-        impl<T> Hash for IdNode<T> {
-            fn hash<H: Hasher>(&self, _: &mut H) {
-                unimplemented!()
-            }
-        }
-
         let seen = Rc::new(RefCell::new(BTreeMap::new()));
         let res = self.eval(&mut |leaf| IdNode::new_leaf(leaf, Rc::clone(&seen)));
         // Drop references
-        drop(seen);
-        drop(Rc::into_inner(res.seen).unwrap().into_inner());
+        drop((seen, res.seen));
         Arc::into_inner(res.node).unwrap().into_inner().unwrap()
     }
 

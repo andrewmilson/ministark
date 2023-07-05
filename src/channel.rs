@@ -2,7 +2,7 @@ use crate::air::AirConfig;
 use crate::fri;
 use crate::fri::FriProof;
 use crate::random::PublicCoin;
-use crate::trace::Queries;
+use crate::witness::Queries;
 use crate::Air;
 use crate::Proof;
 use alloc::vec::Vec;
@@ -107,14 +107,17 @@ impl<'a, A: AirConfig, D: Digest> ProverChannel<'a, A, D> {
             .collect()
     }
 
-    pub fn build_proof(self, trace_queries: Queries<A>, fri_proof: FriProof<A::Fq>) -> Proof<A> {
+    pub fn build_proof(
+        self,
+        trace_queries: Queries<A::Fp, A::Fq>,
+        fri_proof: FriProof<A::Fq>,
+    ) -> Proof<A::Fp, A::Fq> {
         Proof {
             options: self.air.options(),
             trace_len: self.air.trace_len(),
             base_trace_commitment: self.base_trace_commitment.to_vec(),
             extension_trace_commitment: self.extension_trace_commitment.map(|o| o.to_vec()),
             composition_trace_commitment: self.composition_trace_commitment.to_vec(),
-            public_inputs: self.air.public_inputs().clone(),
             execution_trace_ood_evals: self.execution_trace_ood_evals,
             composition_trace_ood_evals: self.composition_trace_ood_evals,
             pow_nonce: self.pow_nonce,

@@ -9,48 +9,46 @@ use crate::hints::Hints;
 use crate::merkle;
 use crate::merkle::MerkleTree;
 use crate::random::PublicCoin;
+use crate::utils::horner_evaluate;
 use crate::utils::FieldVariant;
 use crate::Air;
-// use crate::channel::VerifierChannel;
 use crate::Proof;
+use crate::StarkExtensionOf;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
+use ark_ff::FftField;
 use ark_ff::Field;
-use ark_ff::One;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
+use ministark_gpu::GpuFftField;
 use rand::Rng;
-use sha2::Sha256;
 use snafu::Snafu;
 
-/// Errors that are returned during verification of a STARK proof
-#[derive(Debug, Snafu)]
-pub enum VerificationError {
-    #[snafu(display("constraint evaluations at the out-of-domain point are inconsistent"))]
-    InconsistentOodConstraintEvaluations,
-    #[snafu(context(false))]
-    #[snafu(display("fri verification failed: {source}"))]
-    FriVerification { source: fri::VerificationError },
-    #[snafu(display("query does not resolve to the base trace commitment"))]
-    BaseTraceQueryDoesNotMatchCommitment,
-    #[snafu(display("query does not resolve to the extension trace commitment"))]
-    ExtensionTraceQueryDoesNotMatchCommitment,
-    #[snafu(display("query does not resolve to the composition trace commitment"))]
-    CompositionTraceQueryDoesNotMatchCommitment,
-    #[snafu(display("insufficient proof of work on fri commitments"))]
-    FriProofOfWork,
-}
+pub trait Verifiable {
+    type Fp: GpuFftField + FftField;
+    type Fq: StarkExtensionOf<Self::Fp>;
+    type AirConfig: AirConfig<Fp = Self::Fp, Fq = Self::Fq>;
+    type Digest: Digest;
 
-impl<A: AirConfig> Proof<A> {
-    // TODO: recude lines
+    fn get_public_inputs(&self) -> <Self::AirConfig as AirConfig>::PublicInputs;
+
+    fn gen_public_coin(&self, air: &Air<Self::AirConfig>) -> PublicCoin<Self::Digest> {
+        let mut seed = Vec::new();
+        air.public_inputs().serialize_compressed(&mut seed).unwrap();
+        air.trace_len().serialize_compressed(&mut seed).unwrap();
+        air.options().serialize_compressed(&mut seed).unwrap();
+        PublicCoin::<Self::Digest>::new(&seed)
+    }
+
     #[allow(clippy::too_many_lines)]
-    pub fn verify(self) -> Result<(), VerificationError> {
+    fn verify(&self, proof: Proof<Self::Fp, Self::Fq>) -> Result<(), VerificationError> {
         use VerificationError::*;
 
-        let Self {
+        let Proof {
+            options,
             base_trace_commitment,
             extension_trace_commitment,
             composition_trace_commitment,
@@ -58,48 +56,39 @@ impl<A: AirConfig> Proof<A> {
             composition_trace_ood_evals,
             trace_queries,
             trace_len,
-            public_inputs,
-            options,
             fri_proof,
             pow_nonce,
             ..
-        } = self;
+        } = proof;
 
-        let mut seed = Vec::new();
-        public_inputs.serialize_compressed(&mut seed).unwrap();
-        trace_len.serialize_compressed(&mut seed).unwrap();
-        options.serialize_compressed(&mut seed).unwrap();
-        let mut public_coin = PublicCoin::<Sha256>::new(&seed);
+        let air = Air::new(trace_len, self.get_public_inputs(), options);
+        let mut public_coin = self.gen_public_coin(&air);
 
-        let air = Air::new(trace_len, public_inputs, options);
-
-        let base_trace_commitment = Output::<Sha256>::from_iter(base_trace_commitment);
+        let base_trace_commitment = Output::<Self::Digest>::from_iter(base_trace_commitment);
         public_coin.reseed(&&*base_trace_commitment);
         let challenges = air.gen_challenges(&mut public_coin);
         let hints = air.gen_hints(&challenges);
 
-        let extension_trace_commitment =
-            extension_trace_commitment.map(|extension_trace_commitment| {
-                let extension_trace_commitment =
-                    Output::<Sha256>::from_iter(extension_trace_commitment);
-                public_coin.reseed(&&*extension_trace_commitment);
-                extension_trace_commitment
-            });
+        let extension_trace_commitment = extension_trace_commitment.map(|commitment| {
+            let commitment = Output::<Self::Digest>::from_iter(commitment);
+            public_coin.reseed(&&*commitment);
+            commitment
+        });
 
         let composition_coeffs = air.gen_composition_constraint_coeffs(&mut public_coin);
         let composition_trace_commitment =
-            Output::<Sha256>::from_iter(composition_trace_commitment);
+            Output::<Self::Digest>::from_iter(composition_trace_commitment);
         public_coin.reseed(&&*composition_trace_commitment);
 
-        let z = public_coin.draw::<A::Fq>();
+        let z = public_coin.draw::<Self::Fq>();
         public_coin.reseed(&execution_trace_ood_evals);
         // execution trace ood evaluation map
         let trace_ood_eval_map = air
             .trace_arguments()
             .into_iter()
             .zip(execution_trace_ood_evals)
-            .collect::<BTreeMap<(usize, isize), A::Fq>>();
-        let calculated_ood_constraint_evaluation = ood_constraint_evaluation::<A>(
+            .collect::<BTreeMap<(usize, isize), Self::Fq>>();
+        let calculated_ood_constraint_evaluation = ood_constraint_evaluation::<Self::AirConfig>(
             &composition_coeffs,
             &challenges,
             &hints,
@@ -109,26 +98,18 @@ impl<A: AirConfig> Proof<A> {
         );
 
         public_coin.reseed(&composition_trace_ood_evals);
-        let mut acc = A::Fq::one();
-        let provided_ood_constraint_evaluation =
-            composition_trace_ood_evals
-                .iter()
-                .fold(A::Fq::zero(), |mut res, value| {
-                    res += *value * acc;
-                    acc *= z;
-                    res
-                });
+        let provided_ood_constraint_evaluation = horner_evaluate(&composition_trace_ood_evals, &z);
 
         if calculated_ood_constraint_evaluation != provided_ood_constraint_evaluation {
             return Err(InconsistentOodConstraintEvaluations);
         }
 
         let deep_coeffs = air.gen_deep_composition_coeffs(&mut public_coin);
-        let fri_verifier = FriVerifier::<A::Fq, Sha256>::new(
+        let fri_verifier = FriVerifier::<Self::Fq, Self::Digest>::new(
             &mut public_coin,
             options.into_fri_options(),
             fri_proof,
-            air.trace_len() - 1,
+            trace_len - 1,
         )?;
 
         if options.grinding_factor != 0 {
@@ -146,24 +127,24 @@ impl<A: AirConfig> Proof<A> {
 
         let base_trace_rows = trace_queries
             .base_trace_values
-            .chunks(A::NUM_BASE_COLUMNS)
-            .collect::<Vec<&[A::Fp]>>();
-        let extension_trace_rows = if A::NUM_EXTENSION_COLUMNS > 0 {
+            .chunks(Self::AirConfig::NUM_BASE_COLUMNS)
+            .collect::<Vec<_>>();
+        let extension_trace_rows = if Self::AirConfig::NUM_EXTENSION_COLUMNS == 0 {
+            Vec::new()
+        } else {
             trace_queries
                 .extension_trace_values
-                .chunks(A::NUM_EXTENSION_COLUMNS)
-                .collect::<Vec<&[A::Fq]>>()
-        } else {
-            Vec::new()
+                .chunks(Self::AirConfig::NUM_EXTENSION_COLUMNS)
+                .collect::<Vec<_>>()
         };
 
         let composition_trace_rows = trace_queries
             .composition_trace_values
             .chunks(air.ce_blowup_factor())
-            .collect::<Vec<&[A::Fq]>>();
+            .collect::<Vec<&[Self::Fq]>>();
 
         // base trace positions
-        verify_positions::<Sha256>(
+        verify_positions::<Self::Digest>(
             &base_trace_commitment,
             &query_positions,
             &base_trace_rows,
@@ -173,7 +154,7 @@ impl<A: AirConfig> Proof<A> {
 
         if let Some(extension_trace_commitment) = extension_trace_commitment {
             // extension trace positions
-            verify_positions::<Sha256>(
+            verify_positions::<Self::Digest>(
                 &extension_trace_commitment,
                 &query_positions,
                 &extension_trace_rows,
@@ -183,7 +164,7 @@ impl<A: AirConfig> Proof<A> {
         }
 
         // composition trace positions
-        verify_positions::<Sha256>(
+        verify_positions::<Self::Digest>(
             &composition_trace_commitment,
             &query_positions,
             &composition_trace_rows,
@@ -205,6 +186,24 @@ impl<A: AirConfig> Proof<A> {
 
         Ok(fri_verifier.verify(&query_positions, &deep_evaluations)?)
     }
+}
+
+/// Errors that are returned during verification of a STARK proof
+#[derive(Debug, Snafu)]
+pub enum VerificationError {
+    #[snafu(display("constraint evaluations at the out-of-domain point are inconsistent"))]
+    InconsistentOodConstraintEvaluations,
+    #[snafu(context(false))]
+    #[snafu(display("fri verification failed: {source}"))]
+    FriVerification { source: fri::VerificationError },
+    #[snafu(display("query does not resolve to the base trace commitment"))]
+    BaseTraceQueryDoesNotMatchCommitment,
+    #[snafu(display("query does not resolve to the extension trace commitment"))]
+    ExtensionTraceQueryDoesNotMatchCommitment,
+    #[snafu(display("query does not resolve to the composition trace commitment"))]
+    CompositionTraceQueryDoesNotMatchCommitment,
+    #[snafu(display("insufficient proof of work on fri commitments"))]
+    FriProofOfWork,
 }
 
 fn ood_constraint_evaluation<A: AirConfig>(
@@ -275,14 +274,16 @@ fn deep_composition_evaluations<A: AirConfig>(
 
     let mut evals = vec![A::Fq::zero(); query_positions.len()];
 
+    let num_columns = A::NUM_BASE_COLUMNS + A::NUM_EXTENSION_COLUMNS;
+    let base_column_range = 0..A::NUM_BASE_COLUMNS;
+    let extension_column_range = A::NUM_BASE_COLUMNS..num_columns;
+
     // add execution trace
-    let base_columns_range = Air::<A>::base_column_range();
-    let extension_columns_range = Air::<A>::extension_column_range();
     for (i, (&x, eval)) in xs.iter().zip(&mut evals).enumerate() {
         for (j, ((column, offset), ood_eval)) in execution_trace_ood_evals_map.iter().enumerate() {
-            let trace_value = if base_columns_range.contains(column) {
+            let trace_value = if base_column_range.contains(column) {
                 A::Fq::from(base_trace_rows[i][*column])
-            } else if extension_columns_range.contains(column) {
+            } else if extension_column_range.contains(column) {
                 extension_trace_rows[i][column - A::NUM_BASE_COLUMNS]
             } else {
                 panic!("column {column} does not exist");

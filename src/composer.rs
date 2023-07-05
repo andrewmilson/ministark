@@ -52,25 +52,24 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
         let g = trace_domain.group_gen();
         let g_inv = trace_domain.group_gen_inv();
 
+        let num_columns = A::NUM_BASE_COLUMNS + A::NUM_EXTENSION_COLUMNS;
+        let base_column_range = 0..A::NUM_BASE_COLUMNS;
+        let extension_column_range = A::NUM_BASE_COLUMNS..num_columns;
+
         // generate ood evaluations for the execution trace polynomials
-        let base_column_range = Air::<A>::base_column_range();
-        let extension_column_range = Air::<A>::extension_column_range();
         let execution_trace_evals = ark_std::cfg_into_iter!(air.trace_arguments())
-            .map(|(column, offset)| {
+            .map(|(col_idx, offset)| {
                 let generator = if offset >= 0 { g } else { g_inv };
                 let offset = offset.unsigned_abs() as u64;
                 let x = *z * generator.pow([offset]);
-                if base_column_range.contains(&column) {
-                    let coeffs = &base_trace_polys[column];
+                if base_column_range.contains(&col_idx) {
+                    let coeffs = &base_trace_polys[col_idx];
                     horner_evaluate(coeffs, &x)
-                } else if extension_column_range.contains(&column) {
-                    let coeffs = &extension_trace_polys.unwrap()[column - A::NUM_BASE_COLUMNS];
+                } else if extension_column_range.contains(&col_idx) {
+                    let coeffs = &extension_trace_polys.unwrap()[col_idx - A::NUM_BASE_COLUMNS];
                     horner_evaluate(coeffs, &x)
                 } else {
-                    panic!(
-                        "column is {column} but there are only {} columns",
-                        A::NUM_BASE_COLUMNS + A::NUM_EXTENSION_COLUMNS
-                    )
+                    panic!("column is {col_idx} but there are only {num_columns} columns")
                 }
             })
             .collect();
@@ -118,9 +117,11 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
                 .collect(),
         );
 
+        let num_columns = A::NUM_BASE_COLUMNS + A::NUM_EXTENSION_COLUMNS;
+        let base_column_range = 0..A::NUM_BASE_COLUMNS;
+        let extension_column_range = A::NUM_BASE_COLUMNS..num_columns;
+
         // divide out OOD points from execution trace polys
-        let base_column_range = Air::<A>::base_column_range();
-        let extension_column_range = Air::<A>::extension_column_range();
         // NOTE: ark_std::cfg_into_iter! doesn't work with
         // .zip() on BTreeSet but works with Vec.
         #[allow(clippy::needless_collect)]
@@ -128,23 +129,20 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
         let execution_trace_quotients = Matrix::new(
             ark_std::cfg_into_iter!(trace_arguments)
                 .zip(execution_trace_alphas)
-                .map(|((col, offset), alpha)| {
+                .map(|((col_idx, offset), alpha)| {
                     let mut res = Vec::new_in(GpuAllocator);
                     res.resize(trace_domain.size(), A::Fq::zero());
                     let generator = if offset >= 0 { g } else { g_inv };
                     let offset = offset.unsigned_abs() as u64;
                     let x = z * generator.pow([offset]);
-                    if base_column_range.contains(&col) {
-                        let coeffs = &base_trace_polys[col];
+                    if base_column_range.contains(&col_idx) {
+                        let coeffs = &base_trace_polys[col_idx];
                         divide_out_point_into(&mut res, coeffs, &x, &alpha);
-                    } else if extension_column_range.contains(&col) {
-                        let coeffs = &extension_trace_polys.unwrap()[col - A::NUM_BASE_COLUMNS];
+                    } else if extension_column_range.contains(&col_idx) {
+                        let coeffs = &extension_trace_polys.unwrap()[col_idx - A::NUM_BASE_COLUMNS];
                         divide_out_point_into(&mut res, coeffs, &x, &alpha);
                     } else {
-                        panic!(
-                            "column is {col} but there are only {} columns",
-                            A::NUM_BASE_COLUMNS + A::NUM_EXTENSION_COLUMNS
-                        )
+                        panic!("column is {col_idx} but there are only {num_columns} columns",)
                     }
                     res
                 })

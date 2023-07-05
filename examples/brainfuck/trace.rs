@@ -22,18 +22,11 @@ use ministark::utils::GpuAllocator;
 use ministark::utils::GpuVec;
 // use ministark::constraint::Challenge as _;
 use ministark::Matrix;
-use ministark::Trace;
+use ministark::Witness;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
 
-pub struct TraceMeta {
-    pub input: Vec<u8>,
-    pub output: Vec<u8>,
-    pub source_code: String,
-}
-
 pub struct BrainfuckTrace {
-    meta: TraceMeta,
     processor_base_trace: Matrix<Fp>,
     memory_base_trace: Matrix<Fp>,
     instruction_base_trace: Matrix<Fp>,
@@ -44,7 +37,6 @@ pub struct BrainfuckTrace {
 
 impl BrainfuckTrace {
     pub fn new(
-        meta: TraceMeta,
         processor_base_trace: Matrix<Fp>,
         memory_base_trace: Matrix<Fp>,
         instruction_base_trace: Matrix<Fp>,
@@ -58,8 +50,7 @@ impl BrainfuckTrace {
             input_base_trace.clone(),
             output_base_trace.clone(),
         ]);
-        BrainfuckTrace {
-            meta,
+        Self {
             processor_base_trace,
             memory_base_trace,
             instruction_base_trace,
@@ -68,18 +59,11 @@ impl BrainfuckTrace {
             base_trace,
         }
     }
-
-    pub fn meta(&self) -> &TraceMeta {
-        &self.meta
-    }
 }
 
-impl Trace for BrainfuckTrace {
+impl Witness for BrainfuckTrace {
     type Fp = Fp;
     type Fq = Fq3;
-
-    const NUM_BASE_COLUMNS: usize = 17;
-    const NUM_EXTENSION_COLUMNS: usize = 9;
 
     fn build_extension_columns(
         &self,
