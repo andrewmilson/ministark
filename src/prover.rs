@@ -137,6 +137,7 @@ pub trait Provable: Verifiable {
         _base_trace: &crate::Matrix<Self::Fp>,
         _extension_trace: Option<&crate::Matrix<Self::Fq>>,
     ) {
+        // ```text
         // TODO: move constraint checking from air.rs into here
         // #[cfg(all(feature = "std", debug_assertions))]
         // fn validate_constraints(
@@ -246,5 +247,6 @@ pub trait Provable: Verifiable {
         //         }
         //     }
         // }
+        // ```
     }
 }

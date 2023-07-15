@@ -1,4 +1,5 @@
 // Implementation is adapted from RationalExpression in https://github.com/0xProject/OpenZKP
+#![allow(clippy::arc_with_non_send_sync)]
 
 use alloc::collections::BTreeMap;
 use ark_ff::One;

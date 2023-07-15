@@ -495,6 +495,7 @@ pub trait ProverChannel {
 
 /// Performs a degree respecting projection (drp) on polynomial evaluations.
 // Example for `folding_factor = 2`:
+// ```text
 // 1. interpolate evals over the evaluation domain to obtain f(x):
 //    ┌─────────┬───┬───┬───┬───┬───┬───┬───┬───┐
 //    │ i       │ 0 │ 1 │ 2 │ 3 │ 4 │ 5 │ 6 │ 7 │
@@ -527,6 +528,7 @@ pub trait ProverChannel {
 //    ├────────┼────┼────┼────┼────┤
 //    │ drp[i] │ 82 │ 12 │ 57 │ 34 │
 //    └────────┴────┴────┴────┴────┘
+// ```
 pub fn apply_drp<F: GpuField + Field + DomainCoeff<F::FftField>>(
     evals: GpuVec<F>,
     domain_offset: F::FftField,

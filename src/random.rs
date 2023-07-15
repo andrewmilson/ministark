@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-/// PublicCoin trait adapted from Winterfell
+/// `PublicCoin` trait adapted from Winterfell
 pub trait PublicCoin: Sync + Debug {
     type Digest: Digest;
     type Field: Field;
@@ -48,7 +48,6 @@ impl<D: Digest, F: Field> Debug for PublicCoinImpl<D, F> {
             .field("seed", &self.seed)
             .field("counter", &self.counter)
             .field("bytes", &self.bytes)
-            .field("_phantom", &self._phantom)
             .finish()
     }
 }

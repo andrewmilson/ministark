@@ -105,7 +105,7 @@ pub fn fill_vanishing_polynomial<F: FftField>(
         .enumerate()
         .for_each(|(i, chunk)| {
             let mut acc = scaled_eval_offset * scaled_eval_generator.pow([(i * chunk_size) as u64]);
-            for coeff in chunk.iter_mut() {
+            for coeff in chunk {
                 *coeff = acc - scaled_vanish_offset;
                 acc *= &scaled_eval_generator;
             }
