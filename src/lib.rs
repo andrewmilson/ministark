@@ -44,9 +44,9 @@ pub mod matrix;
 pub mod merkle;
 pub mod prover;
 pub mod random;
+pub mod trace;
 pub mod utils;
 pub mod verifier;
-pub mod witness;
 
 #[macro_use]
 extern crate alloc;
@@ -74,9 +74,9 @@ use ministark_gpu::GpuField;
 use ministark_gpu::GpuFrom;
 use ministark_gpu::GpuMul;
 pub use prover::Provable;
+use trace::Queries;
+pub use trace::Trace;
 pub use verifier::Verifiable;
-use witness::Queries;
-pub use witness::Witness;
 
 // TODO: include ability to specify:
 // - base field

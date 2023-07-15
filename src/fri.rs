@@ -67,9 +67,9 @@ impl FriOptions {
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct FriProof<F: Field> {
-    layers: Vec<FriProofLayer<F>>,
-    remainder: Vec<F>,
-    remainder_commitment: Vec<u8>,
+    pub layers: Vec<FriProofLayer<F>>,
+    pub remainder: Vec<F>,
+    pub remainder_commitment: Vec<u8>,
 }
 
 impl<F: GpuField + Field> FriProof<F>
@@ -89,11 +89,6 @@ where
     }
 }
 
-pub struct FriProver<F: GpuField, D: Digest> {
-    options: FriOptions,
-    layers: Vec<FriLayer<F, D>>,
-}
-
 struct FriLayer<F: GpuField, D: Digest> {
     tree: merkle::MerkleTree<D>,
     evaluations: Vec<F>,
@@ -101,9 +96,9 @@ struct FriLayer<F: GpuField, D: Digest> {
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct FriProofLayer<F: Field> {
-    values: Vec<F>,
-    proofs: Vec<merkle::Proof>,
-    commitment: Vec<u8>,
+    pub values: Vec<F>,
+    pub proofs: Vec<merkle::Proof>,
+    pub commitment: Vec<u8>,
 }
 
 impl<F: GpuField + Field> FriProofLayer<F>
@@ -137,7 +132,7 @@ where
             let expected_leaf = &proof[0];
             let mut chunk_bytes = Vec::with_capacity(chunks.compressed_size());
             chunks.serialize_compressed(&mut chunk_bytes).unwrap();
-            let actual_leaf = D::new_with_prefix(chunk_bytes).finalize();
+            let actual_leaf = D::digest(chunk_bytes);
 
             if *expected_leaf != actual_leaf {
                 return Err(merkle::Error::InvalidProof);
@@ -147,6 +142,11 @@ where
         }
         Ok(())
     }
+}
+
+pub struct FriProver<F: GpuField, D: Digest> {
+    options: FriOptions,
+    layers: Vec<FriLayer<F, D>>,
 }
 
 impl<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest> FriProver<F, D>
@@ -197,7 +197,7 @@ where
 
     pub fn build_layers(
         &mut self,
-        channel: &mut impl ProverChannel<F, Digest = D>,
+        channel: &mut impl ProverChannel<Field = F, Digest = D>,
         mut evaluations: GpuVec<F>,
     ) {
         assert!(self.layers.is_empty());
@@ -218,7 +218,7 @@ where
     /// Returns the evaluations for the next layer.
     fn build_layer<const N: usize>(
         &mut self,
-        channel: &mut impl ProverChannel<F, Digest = D>,
+        channel: &mut impl ProverChannel<Field = F, Digest = D>,
         mut evaluations: GpuVec<F>,
     ) -> GpuVec<F> {
         // Each layer requires decommitting to `folding_factor` many evaluations e.g.
@@ -232,7 +232,7 @@ where
             .map(|chunk| {
                 let mut buff = Vec::with_capacity(chunk.compressed_size());
                 chunk.serialize_compressed(&mut buff).unwrap();
-                D::new_with_prefix(&buff).finalize()
+                D::digest(&buff)
             })
             .collect();
 
@@ -296,7 +296,7 @@ where
     F::FftField: FftField,
 {
     pub fn new(
-        public_coin: &mut PublicCoin<impl Digest>,
+        public_coin: &mut impl PublicCoin<Field = F, Digest = D>,
         options: FriOptions,
         proof: FriProof<F>,
         max_poly_degree: usize,
@@ -313,7 +313,7 @@ where
             // TODO: batch merkle tree proofs
             // get the merkle root from the first merkle path
             let layer_commitment = Output::<D>::from_slice(&layer.commitment).clone();
-            public_coin.reseed(&&*layer_commitment);
+            public_coin.reseed_with_hash(&layer_commitment);
             let alpha = public_coin.draw();
             layer_alphas.push(alpha);
             layer_commitments.push(layer_commitment);
@@ -330,7 +330,7 @@ where
         }
 
         let remainder_root = Output::<D>::from_slice(&proof.remainder_commitment).clone();
-        public_coin.reseed(&&*remainder_root);
+        public_coin.reseed_with_hash(&remainder_root);
         let remainder_alpha = public_coin.draw();
         layer_alphas.push(remainder_alpha);
         layer_commitments.push(remainder_root);
@@ -378,7 +378,7 @@ where
                 let chunk = chunks[j];
                 let mut chunk_bytes = Vec::with_capacity(chunk.compressed_size());
                 chunk.serialize_compressed(&mut chunk_bytes).unwrap();
-                let actual_leaf = D::new_with_prefix(&chunk_bytes).finalize();
+                let actual_leaf = D::digest(&chunk_bytes);
 
                 if *expected_leaf != actual_leaf {
                     return Err(VerificationError::LayerCommitmentInvalid { layer: i });
@@ -456,7 +456,7 @@ where
         .map(|chunk| {
             let mut buff = Vec::with_capacity(chunk.compressed_size());
             chunk.serialize_compressed(&mut buff).unwrap();
-            D::new_with_prefix(&buff).finalize()
+            D::digest(&buff)
         })
         .collect();
     let remainder_merkle_tree = merkle::MerkleTree::<D>::new(hashed_evals).unwrap();
@@ -484,12 +484,13 @@ where
     }
 }
 
-pub trait ProverChannel<F: GpuField> {
+pub trait ProverChannel {
     type Digest: Digest;
+    type Field: GpuField;
 
     fn commit_fri_layer(&mut self, layer_root: &Output<Self::Digest>);
 
-    fn draw_fri_alpha(&mut self) -> F;
+    fn draw_fri_alpha(&mut self) -> Self::Field;
 }
 
 /// Performs a degree respecting projection (drp) on polynomial evaluations.

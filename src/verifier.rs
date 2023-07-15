@@ -8,6 +8,7 @@ use crate::fri::FriVerifier;
 use crate::hints::Hints;
 use crate::merkle;
 use crate::merkle::MerkleTree;
+use crate::random::draw_multiple;
 use crate::random::PublicCoin;
 use crate::utils::horner_evaluate;
 use crate::utils::FieldVariant;
@@ -24,7 +25,6 @@ use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
 use ministark_gpu::GpuFftField;
-use rand::Rng;
 use snafu::Snafu;
 
 pub trait Verifiable {
@@ -32,15 +32,30 @@ pub trait Verifiable {
     type Fq: StarkExtensionOf<Self::Fp>;
     type AirConfig: AirConfig<Fp = Self::Fp, Fq = Self::Fq>;
     type Digest: Digest;
+    type PublicCoin: PublicCoin<Digest = Self::Digest, Field = Self::Fq>;
 
     fn get_public_inputs(&self) -> <Self::AirConfig as AirConfig>::PublicInputs;
 
-    fn gen_public_coin(&self, air: &Air<Self::AirConfig>) -> PublicCoin<Self::Digest> {
+    fn gen_public_coin(&self, air: &Air<Self::AirConfig>) -> Self::PublicCoin {
         let mut seed = Vec::new();
         air.public_inputs().serialize_compressed(&mut seed).unwrap();
         air.trace_len().serialize_compressed(&mut seed).unwrap();
         air.options().serialize_compressed(&mut seed).unwrap();
-        PublicCoin::<Self::Digest>::new(&seed)
+        PublicCoin::new(Self::Digest::digest(&seed))
+    }
+
+    fn gen_deep_coeffs(
+        &self,
+        public_coin: &mut Self::PublicCoin,
+        air: &Air<Self::AirConfig>,
+    ) -> DeepCompositionCoeffs<Self::Fq> {
+        let num_execution_trace = air.trace_arguments().len();
+        let num_composition_trace = air.ce_blowup_factor();
+        DeepCompositionCoeffs {
+            execution_trace: draw_multiple(public_coin, num_execution_trace),
+            composition_trace: draw_multiple(public_coin, num_composition_trace),
+            degree: (public_coin.draw(), public_coin.draw()),
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -65,23 +80,31 @@ pub trait Verifiable {
         let mut public_coin = self.gen_public_coin(&air);
 
         let base_trace_commitment = Output::<Self::Digest>::from_iter(base_trace_commitment);
-        public_coin.reseed(&&*base_trace_commitment);
-        let challenges = air.gen_challenges(&mut public_coin);
+        public_coin.reseed_with_hash(&base_trace_commitment);
+        let num_challenges = air.num_challenges();
+        let challenges = Challenges::new(draw_multiple(&mut public_coin, num_challenges));
         let hints = air.gen_hints(&challenges);
 
         let extension_trace_commitment = extension_trace_commitment.map(|commitment| {
             let commitment = Output::<Self::Digest>::from_iter(commitment);
-            public_coin.reseed(&&*commitment);
+            public_coin.reseed_with_hash(&commitment);
             commitment
         });
 
-        let composition_coeffs = air.gen_composition_constraint_coeffs(&mut public_coin);
+        let num_composition_coeffs = air.num_composition_constraint_coeffs();
+        let composition_coeffs = draw_multiple(&mut public_coin, num_composition_coeffs);
         let composition_trace_commitment =
             Output::<Self::Digest>::from_iter(composition_trace_commitment);
-        public_coin.reseed(&&*composition_trace_commitment);
+        public_coin.reseed_with_hash(&composition_trace_commitment);
 
-        let z = public_coin.draw::<Self::Fq>();
-        public_coin.reseed(&execution_trace_ood_evals);
+        let z = public_coin.draw();
+        {
+            let mut bytes = Vec::new();
+            execution_trace_ood_evals
+                .serialize_compressed(&mut bytes)
+                .unwrap();
+            public_coin.reseed_with_hash(&Self::Digest::digest(&bytes));
+        }
         // execution trace ood evaluation map
         let trace_ood_eval_map = air
             .trace_arguments()
@@ -97,14 +120,20 @@ pub trait Verifiable {
             z,
         );
 
-        public_coin.reseed(&composition_trace_ood_evals);
+        {
+            let mut bytes = Vec::new();
+            composition_trace_ood_evals
+                .serialize_compressed(&mut bytes)
+                .unwrap();
+            public_coin.reseed_with_hash(&Self::Digest::digest(&bytes));
+        }
         let provided_ood_constraint_evaluation = horner_evaluate(&composition_trace_ood_evals, &z);
 
         if calculated_ood_constraint_evaluation != provided_ood_constraint_evaluation {
             return Err(InconsistentOodConstraintEvaluations);
         }
 
-        let deep_coeffs = air.gen_deep_composition_coeffs(&mut public_coin);
+        let deep_coeffs = self.gen_deep_coeffs(&mut public_coin, &air);
         let fri_verifier = FriVerifier::<Self::Fq, Self::Digest>::new(
             &mut public_coin,
             options.into_fri_options(),
@@ -113,17 +142,15 @@ pub trait Verifiable {
         )?;
 
         if options.grinding_factor != 0 {
-            public_coin.reseed(&pow_nonce);
-            if public_coin.seed_leading_zeros() < u32::from(options.grinding_factor) {
+            if !public_coin.verify_proof_of_work(options.grinding_factor, pow_nonce) {
                 return Err(FriProofOfWork);
             }
+            public_coin.reseed_with_int(pow_nonce);
         }
 
-        let mut rng = public_coin.draw_rng();
         let lde_domain_size = air.trace_len() * air.lde_blowup_factor();
-        let query_positions = (0..options.num_queries)
-            .map(|_| rng.gen_range(0..lde_domain_size))
-            .collect::<Vec<usize>>();
+        let query_positions =
+            Vec::from_iter(public_coin.draw_queries(options.num_queries.into(), lde_domain_size));
 
         let base_trace_rows = trace_queries
             .base_trace_values
@@ -206,7 +233,7 @@ pub enum VerificationError {
     FriProofOfWork,
 }
 
-fn ood_constraint_evaluation<A: AirConfig>(
+pub fn ood_constraint_evaluation<A: AirConfig>(
     composition_coefficients: &[A::Fq],
     challenges: &Challenges<A::Fq>,
     hints: &Hints<A::Fq>,
@@ -228,7 +255,7 @@ fn ood_constraint_evaluation<A: AirConfig>(
         .as_fq()
 }
 
-fn verify_positions<D: Digest>(
+pub fn verify_positions<D: Digest>(
     commitment: &Output<D>,
     positions: &[usize],
     rows: &[&[impl CanonicalSerialize]],
@@ -239,9 +266,10 @@ fn verify_positions<D: Digest>(
         let expected_leaf = &proof[0];
         let mut row_bytes = Vec::with_capacity(row.compressed_size());
         row.serialize_compressed(&mut row_bytes).unwrap();
-        let actual_leaf = D::new_with_prefix(&row_bytes).finalize();
+        let actual_leaf = D::digest(&row_bytes);
 
         if *expected_leaf != actual_leaf {
+            println!("WTF");
             return Err(merkle::Error::InvalidProof);
         }
 
@@ -252,7 +280,7 @@ fn verify_positions<D: Digest>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn deep_composition_evaluations<A: AirConfig>(
+pub fn deep_composition_evaluations<A: AirConfig>(
     air: &Air<A>,
     query_positions: &[usize],
     composition_coeffs: &DeepCompositionCoeffs<A::Fq>,

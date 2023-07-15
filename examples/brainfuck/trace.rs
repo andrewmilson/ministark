@@ -22,7 +22,7 @@ use ministark::utils::GpuAllocator;
 use ministark::utils::GpuVec;
 // use ministark::constraint::Challenge as _;
 use ministark::Matrix;
-use ministark::Witness;
+use ministark::Trace;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
 
@@ -61,7 +61,7 @@ impl BrainfuckTrace {
     }
 }
 
-impl Witness for BrainfuckTrace {
+impl Trace for BrainfuckTrace {
     type Fp = Fp;
     type Fq = Fq3;
 

@@ -209,35 +209,3 @@ fn build_merkle_nodes<D: Digest>(leaf_nodes: &[Output<D>]) -> Vec<Output<D>> {
 
     nodes
 }
-
-// pub trait ElementCRHScheme<F: Field>: CRHScheme {
-//     fn evaluate_elements(parameters: &Self::Parameters, input: &[F])
-//         -> Result<Self::Output, Error>;
-// }
-
-// trait MT {
-//     type Commitment;
-// }
-
-// #[derive(Clone)]
-// pub struct Sha256Sponge(Sha256);
-
-// impl CryptographicSponge for Sha256Sponge {
-//     type Config = ();
-
-//     fn new(_: &Self::Config) -> Self {
-//         Sha256Sponge(Sha256::new())
-//     }
-
-//     fn absorb(&mut self, input: &impl ark_sponge::Absorb) {
-//         self.0.update(input.to_sponge_bytes_as_vec())
-//     }
-
-//     fn squeeze_bytes(&mut self, num_bytes: usize) -> Vec<u8> {
-//         self.
-//     }
-
-//     fn squeeze_bits(&mut self, num_bits: usize) -> Vec<bool> {
-//         todo!()
-//     }
-// }

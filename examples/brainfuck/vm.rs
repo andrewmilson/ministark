@@ -11,7 +11,7 @@ use ark_ff::One;
 use ark_ff::Zero;
 use ministark::Matrix;
 
-type Fp = <BrainfuckTrace as ministark::Witness>::Fp;
+type Fp = <BrainfuckTrace as ministark::Trace>::Fp;
 
 /// Opcodes determined by the lexer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

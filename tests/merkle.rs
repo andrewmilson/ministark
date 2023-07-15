@@ -7,7 +7,7 @@ fn merkle_verify() {
     let leaf_values = [1u32, 2, 3, 4, 5, 6, 7, 8];
     let leaf_nodes = leaf_values
         .iter()
-        .map(|&v| Sha256::new_with_prefix(v.to_le_bytes()).finalize())
+        .map(|&v| Sha256::digest(v.to_le_bytes()))
         .collect();
     let tree = MerkleTree::<Sha256>::new(leaf_nodes).unwrap();
     let commitment = tree.root();
@@ -22,7 +22,7 @@ fn merkle_verify_large_tree() {
     let leaf_values = (0..1 << 10).collect::<Vec<usize>>();
     let leaf_nodes = leaf_values
         .iter()
-        .map(|&v| Sha256::new_with_prefix(v.to_le_bytes()).finalize())
+        .map(|&v| Sha256::digest(v.to_le_bytes()))
         .collect();
     let tree = MerkleTree::<Sha256>::new(leaf_nodes).unwrap();
     let commitment = tree.root();

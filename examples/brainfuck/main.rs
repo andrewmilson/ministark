@@ -3,11 +3,12 @@
 use air::BrainfuckAirConfig;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use ministark::random::PublicCoinImpl;
 use ministark::Proof;
 use ministark::ProofOptions;
 use ministark::Provable;
+use ministark::Trace;
 use ministark::Verifiable;
-use ministark::Witness;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
 use sha2::Sha256;
@@ -59,6 +60,7 @@ impl Verifiable for ExecutionInfo {
     type Fq = Fq3;
     type AirConfig = BrainfuckAirConfig;
     type Digest = Sha256;
+    type PublicCoin = PublicCoinImpl<Sha256, Fq3>;
 
     fn get_public_inputs(&self) -> Self {
         self.clone()
@@ -67,6 +69,11 @@ impl Verifiable for ExecutionInfo {
 
 impl Provable for ExecutionInfo {
     type Witness = BrainfuckTrace;
+    type Trace = BrainfuckTrace;
+
+    fn generate_trace(&self, witness: BrainfuckTrace) -> BrainfuckTrace {
+        witness
+    }
 }
 
 fn main() {

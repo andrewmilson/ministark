@@ -1,12 +1,10 @@
 use crate::challenges::Challenges;
-use crate::composer::DeepCompositionCoeffs;
 use crate::constraints::AlgebraicItem;
 use crate::constraints::CompositionConstraint;
 use crate::constraints::CompositionItem;
 use crate::constraints::Constraint;
 use crate::expression::Expr;
 use crate::hints::Hints;
-use crate::random::PublicCoin;
 use crate::utils::FieldVariant;
 use crate::utils::GpuVec;
 use crate::Matrix;
@@ -15,14 +13,13 @@ use crate::StarkExtensionOf;
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 use ark_ff::FftField;
-use ark_ff::UniformRand;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use core::ops::Range;
-use digest::Digest;
 use ministark_gpu::GpuFftField;
+use num_traits::Pow;
+use std::time::Instant;
 
 pub trait AirConfig: Send + Sync + Sized + 'static {
     const NUM_BASE_COLUMNS: usize;
@@ -44,6 +41,44 @@ pub trait AirConfig: Send + Sync + Sized + 'static {
 
     fn domain_offset() -> Self::Fp {
         Self::Fp::GENERATOR
+    }
+
+    /// Combines multiple constraints into a single constraint (the composition
+    /// constraint). Constraints are composed with verifiers randomness.
+    /// This verifier randomness is expressed symbolically.
+    /// <https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab>
+    fn composition_constraint(
+        trace_len: usize,
+        constraints: &[Constraint<FieldVariant<Self::Fp, Self::Fq>>],
+    ) -> CompositionConstraint<FieldVariant<Self::Fp, Self::Fq>> {
+        let ce_blowup_factor = constraints
+            .iter()
+            .map(|c| c.blowup_factor(trace_len))
+            .max()
+            .unwrap();
+        let composition_degree = trace_len * ce_blowup_factor - 1;
+        let trace_degree = trace_len - 1;
+        let x = Expr::Leaf(CompositionItem::Item(AlgebraicItem::X));
+        let mut composition_coeff = (0..).map(|i| Expr::Leaf(CompositionItem::CompositionCoeff(i)));
+        let expr = constraints
+            .iter()
+            .map(|constraint| {
+                let (numerator_degree, denominator_degree) = constraint.degree(trace_degree);
+                let evaluation_degree = numerator_degree - denominator_degree;
+                assert!(evaluation_degree <= composition_degree);
+                let degree_adjustment = composition_degree - evaluation_degree;
+                // TODO: if degree_adjustment is 0 then we only need one challenge
+                let constraint = constraint.map_leaves(&mut |&leaf| CompositionItem::Item(leaf));
+                let alpha = composition_coeff.next().unwrap();
+                let beta = composition_coeff.next().unwrap();
+                &constraint * (x.clone().pow(degree_adjustment) * alpha + beta)
+            })
+            .sum::<Expr<CompositionItem<FieldVariant<Self::Fp, Self::Fq>>>>();
+        // TODO: remove log and timing
+        let now = Instant::now();
+        let expr = expr.reuse_shared_nodes();
+        println!("Reuse took: {:?}", now.elapsed());
+        CompositionConstraint::new(expr)
     }
 
     // TODO: maybe move this into a constraint evaluator
@@ -78,7 +113,8 @@ pub trait AirConfig: Send + Sync + Sized + 'static {
         //     extension_trace_lde,
         // );
         // #[cfg(not(feature = "gpu"))]
-        return crate::eval_cpu::eval::<Self::Fp, Self::Fq>(
+        // return crate::eval_cpu::eval::<Self::Fp, Self::Fq>(
+        crate::eval_cpu::eval::<Self::Fp, Self::Fq>(
             &eval_expr,
             challenges,
             hints,
@@ -86,7 +122,7 @@ pub trait AirConfig: Send + Sync + Sized + 'static {
             &x_lde,
             base_trace_lde,
             extension_trace_lde,
-        );
+        )
     }
 }
 
@@ -97,6 +133,7 @@ pub fn trace_domain<A: AirConfig>(trace_len: usize) -> Radix2EvaluationDomain<A:
 pub struct Air<AC: AirConfig> {
     constraints: Vec<Constraint<FieldVariant<AC::Fp, AC::Fq>>>,
     composition_constraint: CompositionConstraint<FieldVariant<AC::Fp, AC::Fq>>,
+    ce_blowup_factor: usize,
     trace_len: usize,
     options: ProofOptions,
     public_inputs: AC::PublicInputs,
@@ -105,12 +142,14 @@ pub struct Air<AC: AirConfig> {
 impl<C: AirConfig> Air<C> {
     pub fn new(trace_len: usize, public_inputs: C::PublicInputs, options: ProofOptions) -> Self {
         let constraints = C::constraints(trace_len);
-        let composition_constraint = CompositionConstraint::new(&constraints, trace_len);
-        assert!(composition_constraint.ce_blowup_factor() <= options.lde_blowup_factor.into());
+        let composition_constraint = C::composition_constraint(trace_len, &constraints);
+        let ce_blowup_factor = composition_constraint.blowup_factor(trace_len);
+        assert!(ce_blowup_factor <= options.lde_blowup_factor.into());
 
         Self {
             constraints,
             composition_constraint,
+            ce_blowup_factor,
             trace_len,
             options,
             public_inputs,
@@ -130,7 +169,7 @@ impl<C: AirConfig> Air<C> {
     }
 
     pub const fn ce_blowup_factor(&self) -> usize {
-        self.composition_constraint.ce_blowup_factor()
+        self.ce_blowup_factor
     }
 
     /// Returns a degree that all constraint polynomials must be normalized to.
@@ -139,7 +178,7 @@ impl<C: AirConfig> Air<C> {
         ce_domain_size - 1
     }
 
-    pub fn gen_challenges(&self, public_coin: &mut PublicCoin<impl Digest>) -> Challenges<C::Fq> {
+    pub fn num_challenges(&self) -> usize {
         let mut num_challenges = 0;
         for constraint in &self.constraints {
             constraint.traverse(&mut |node| {
@@ -148,60 +187,21 @@ impl<C: AirConfig> Air<C> {
                 }
             });
         }
-
-        if num_challenges == 0 {
-            Challenges::default()
-        } else {
-            let mut rng = public_coin.draw_rng();
-            Challenges::new(&mut rng, num_challenges)
-        }
+        num_challenges
     }
 
     pub fn gen_hints(&self, challenges: &Challenges<C::Fq>) -> Hints<C::Fq> {
         C::gen_hints(self.trace_len(), self.public_inputs(), challenges)
     }
 
-    pub fn gen_composition_constraint_coeffs(
-        &self,
-        public_coin: &mut PublicCoin<impl Digest>,
-    ) -> Vec<C::Fq> {
-        let mut rng = public_coin.draw_rng();
+    pub fn num_composition_constraint_coeffs(&self) -> usize {
         let mut num_coeffs = 0;
         self.composition_constraint.traverse(&mut |node| {
             if let Expr::Leaf(CompositionItem::CompositionCoeff(i)) = node {
                 num_coeffs = num_coeffs.max(i + 1);
             }
         });
-        (0..num_coeffs).map(|_| C::Fq::rand(&mut rng)).collect()
-    }
-
-    // TODO: make this generic
-    /// Output is of the form `(trace_coeffs, composition_coeffs,
-    /// degree_adjustment_coeffs)`
-    pub fn gen_deep_composition_coeffs(
-        &self,
-        public_coin: &mut PublicCoin<impl Digest>,
-    ) -> DeepCompositionCoeffs<C::Fq> {
-        let mut rng = public_coin.draw_rng();
-
-        // execution trace coeffs
-        let mut execution_trace_coeffs = Vec::new();
-        for _ in self.trace_arguments() {
-            execution_trace_coeffs.push(C::Fq::rand(&mut rng));
-        }
-
-        // composition trace coeffs
-        let num_composition_trace_cols = self.ce_blowup_factor();
-        let mut composition_trace_coeffs = Vec::new();
-        for _ in 0..num_composition_trace_cols {
-            composition_trace_coeffs.push(C::Fq::rand(&mut rng));
-        }
-
-        DeepCompositionCoeffs {
-            execution_trace: execution_trace_coeffs,
-            composition_trace: composition_trace_coeffs,
-            degree: (C::Fq::rand(&mut rng), C::Fq::rand(&mut rng)),
-        }
+        num_coeffs
     }
 
     pub fn trace_domain(&self) -> Radix2EvaluationDomain<C::Fp> {

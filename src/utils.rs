@@ -21,6 +21,7 @@ use core::ptr::NonNull;
 use num_traits::Pow;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::iter::zip;
 
 #[cfg(feature = "std")]
 pub struct Timer<'a> {
@@ -136,7 +137,7 @@ pub fn divide_out_point_into<
     c: &Fq,
 ) {
     let mut remainder = Fq::zero();
-    for (coefficient, target) in src_coeffs.iter().rev().zip(dst_coeffs.iter_mut().rev()) {
+    for (coefficient, target) in zip(src_coeffs, dst_coeffs).rev() {
         // TODO: see if there is a perf difference using references
         *target += remainder * c;
         remainder *= z;

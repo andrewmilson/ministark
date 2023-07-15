@@ -238,7 +238,7 @@ impl<F: Field> Matrix<F> {
                     row_bytes.clear();
                     self.read_row(offset + i, &mut row_buffer);
                     row_buffer.serialize_compressed(&mut row_bytes).unwrap();
-                    *row_hash = D::new_with_prefix(&row_bytes).finalize();
+                    *row_hash = D::digest(&row_bytes);
                 }
             });
 

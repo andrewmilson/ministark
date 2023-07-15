@@ -48,12 +48,12 @@ impl<T> Expr<T> {
         use Expr::*;
         match self {
             // Tree types are recursed first
-            Neg(a) => a.as_ref().read().unwrap().traverse(f),
+            Neg(a) | Pow(a, _) => a.as_ref().read().unwrap().traverse(f),
             Add(a, b) | Mul(a, b) | Div(a, b) => {
                 a.as_ref().read().unwrap().traverse(f);
                 b.as_ref().read().unwrap().traverse(f);
             }
-            _ => {}
+            Leaf(_) => {}
         }
 
         f(self);

@@ -9,13 +9,14 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 
-/// STARK witness
-pub trait Witness {
+/// STARK execution trace
+#[allow(clippy::len_without_is_empty)]
+pub trait Trace {
     type Fp: FftField;
     type Fq: Field<BasePrimeField = Self::Fp>;
 
     /// Returns the number of rows in this execution trace.
-    fn trace_len(&self) -> usize {
+    fn len(&self) -> usize {
         self.base_columns().num_rows()
     }
 

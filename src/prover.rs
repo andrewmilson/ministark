@@ -4,18 +4,18 @@ use crate::channel::ProverChannel;
 use crate::composer::DeepPolyComposer;
 use crate::fri::FriProver;
 use crate::hints::Hints;
+use crate::random::draw_multiple;
+use crate::trace::Queries;
 use crate::utils::GpuAllocator;
 use crate::utils::GpuVec;
-use crate::witness::Queries;
 use crate::Air;
 use crate::Matrix;
 use crate::Proof;
 use crate::ProofOptions;
+use crate::Trace;
 use crate::Verifiable;
-use crate::Witness;
 use alloc::vec::Vec;
 use ark_poly::EvaluationDomain;
-use sha2::Sha256;
 use std::time::Instant;
 
 /// Errors that can occur during the proving stage
@@ -26,33 +26,48 @@ pub enum ProvingError {
 }
 
 pub trait Provable: Verifiable {
-    type Witness: Witness<Fp = Self::Fp, Fq = Self::Fq>;
+    type Trace: Trace<Fp = Self::Fp, Fq = Self::Fq>;
+    type Witness;
 
+    fn generate_trace(&self, witness: Self::Witness) -> Self::Trace;
+
+    #[allow(clippy::too_many_lines)]
     async fn generate_proof(
         &self,
         options: ProofOptions,
         witness: Self::Witness,
     ) -> Result<Proof<Self::Fp, Self::Fq>, ProvingError> {
         let now = Instant::now();
-        let air = Air::new(witness.trace_len(), self.get_public_inputs(), options);
-        let mut channel = ProverChannel::<Self::AirConfig, Sha256>::new(&air);
+        let trace = self.generate_trace(witness);
+        println!(
+            "Generated execution trace (cols={}, rows={}) in {:.0?}",
+            trace.base_columns().num_cols(),
+            trace.base_columns().num_rows(),
+            now.elapsed(),
+        );
+
+        let now = Instant::now();
+        let air = Air::new(trace.len(), self.get_public_inputs(), options);
+        let public_coin = self.gen_public_coin(&air);
+        let mut channel = ProverChannel::new(&air, public_coin);
         println!("Init air: {:?}", now.elapsed());
 
         let now = Instant::now();
         let trace_xs = air.trace_domain();
         let lde_xs = air.lde_domain();
-        let base_trace = witness.base_columns();
+        let base_trace = trace.base_columns();
         assert_eq!(Self::AirConfig::NUM_BASE_COLUMNS, base_trace.num_cols());
         let base_trace_polys = base_trace.interpolate(trace_xs);
         let base_trace_lde = base_trace_polys.evaluate(lde_xs);
-        let base_trace_lde_tree = base_trace_lde.commit_to_rows::<Sha256>();
+        let base_trace_lde_tree = base_trace_lde.commit_to_rows::<Self::Digest>();
         channel.commit_base_trace(base_trace_lde_tree.root());
-        let challenges = air.gen_challenges(&mut channel.public_coin);
+        let num_challenges = air.num_challenges();
+        let challenges = Challenges::new(draw_multiple(&mut channel.public_coin, num_challenges));
         let hints = air.gen_hints(&challenges);
         println!("Base trace: {:?}", now.elapsed());
 
         let now = Instant::now();
-        let extension_trace = witness.build_extension_columns(&challenges);
+        let extension_trace = trace.build_extension_columns(&challenges);
         let num_extension_cols = extension_trace.as_ref().map_or(0, Matrix::num_cols);
         assert_eq!(Self::AirConfig::NUM_EXTENSION_COLUMNS, num_extension_cols);
         let extension_trace_polys = extension_trace.as_ref().map(|t| t.interpolate(trace_xs));
@@ -68,8 +83,8 @@ pub trait Provable: Verifiable {
         drop((base_trace, extension_trace));
 
         let now = Instant::now();
-        let composition_constraint_coeffs =
-            air.gen_composition_constraint_coeffs(&mut channel.public_coin);
+        let num_composition_coeffs = air.num_composition_constraint_coeffs();
+        let composition_coeffs = draw_multiple(&mut channel.public_coin, num_composition_coeffs);
         let x_lde = lde_xs.elements().collect::<Vec<_>>();
         println!("X lde: {:?}", now.elapsed());
         let now = Instant::now();
@@ -77,7 +92,7 @@ pub trait Provable: Verifiable {
             air.composition_constraint(),
             &challenges,
             &hints,
-            &composition_constraint_coeffs,
+            &composition_coeffs,
             air.lde_blowup_factor(),
             x_lde.to_vec_in(GpuAllocator),
             &base_trace_lde,
@@ -100,9 +115,11 @@ pub trait Provable: Verifiable {
         println!("Constraint composition polys: {:?}", now.elapsed());
 
         let now = Instant::now();
+
+        let z = channel.get_ood_point();
         let mut deep_poly_composer = DeepPolyComposer::new(
             &air,
-            channel.get_ood_point(),
+            z,
             &base_trace_polys,
             extension_trace_polys.as_ref(),
             composition_trace_polys,
@@ -110,13 +127,14 @@ pub trait Provable: Verifiable {
         let (execution_trace_oods, composition_trace_oods) = deep_poly_composer.get_ood_evals();
         channel.send_execution_trace_ood_evals(execution_trace_oods);
         channel.send_composition_trace_ood_evals(composition_trace_oods);
-        let deep_coeffs = air.gen_deep_composition_coeffs(&mut channel.public_coin);
+
+        let deep_coeffs = self.gen_deep_coeffs(&mut channel.public_coin, &air);
         let deep_composition_poly = deep_poly_composer.into_deep_poly(deep_coeffs);
         let deep_composition_lde = deep_composition_poly.into_evaluations(lde_xs);
         println!("Deep composition: {:?}", now.elapsed());
 
         let now = Instant::now();
-        let mut fri_prover = FriProver::<Self::Fq, Sha256>::new(options.into_fri_options());
+        let mut fri_prover = FriProver::<Self::Fq, Self::Digest>::new(options.into_fri_options());
         #[cfg(feature = "std")]
         let now = std::time::Instant::now();
         fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
@@ -125,7 +143,8 @@ pub trait Provable: Verifiable {
 
         channel.grind_fri_commitments();
 
-        let query_positions = channel.get_fri_query_positions();
+        println!("Public coin: {:?}", channel.public_coin);
+        let query_positions = Vec::from_iter(channel.get_fri_query_positions());
         let fri_proof = fri_prover.into_proof(&query_positions);
         println!("FRI: {:?}", now.elapsed());
 

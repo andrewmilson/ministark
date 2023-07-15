@@ -8,13 +8,14 @@ use ministark::constraints::AlgebraicItem;
 use ministark::constraints::Constraint;
 use ministark::constraints::ExecutionTraceColumn;
 use ministark::hints::Hints;
+use ministark::random::PublicCoinImpl;
 use ministark::utils::FieldVariant;
 use ministark::utils::GpuAllocator;
 use ministark::Matrix;
 use ministark::ProofOptions;
 use ministark::Provable;
+use ministark::Trace;
 use ministark::Verifiable;
-use ministark::Witness;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use num_traits::Pow;
 use sha2::Sha256;
@@ -28,11 +29,11 @@ impl FibTrace {
     }
 }
 
-impl Witness for FibTrace {
+impl Trace for FibTrace {
     type Fp = Fp;
     type Fq = Fp;
 
-    fn trace_len(&self) -> usize {
+    fn len(&self) -> usize {
         self.0.num_rows()
     }
 
@@ -144,6 +145,7 @@ impl Verifiable for FibClaim {
     type Fq = Fp;
     type AirConfig = FibAirConfig;
     type Digest = Sha256;
+    type PublicCoin = PublicCoinImpl<Sha256, Fp>;
 
     fn get_public_inputs(&self) -> Fp {
         self.0
@@ -152,6 +154,11 @@ impl Verifiable for FibClaim {
 
 impl Provable for FibClaim {
     type Witness = FibTrace;
+    type Trace = FibTrace;
+
+    fn generate_trace(&self, witness: FibTrace) -> Self::Trace {
+        witness
+    }
 }
 
 fn gen_trace(n: usize) -> FibTrace {
@@ -207,7 +214,7 @@ fn main() {
     let options = ProofOptions::new(32, 4, 8, 8, 64);
 
     let now = Instant::now();
-    let trace = gen_trace(1048576 * 32);
+    let trace = gen_trace(1048576 * 16);
     println!("Trace generated in: {:?}", now.elapsed());
 
     let claim = FibClaim(trace.last_value());
