@@ -98,12 +98,8 @@ pub trait Verifiable {
         public_coin.reseed_with_hash(&composition_trace_commitment);
 
         let z = public_coin.draw();
-        {
-            let mut bytes = Vec::new();
-            execution_trace_ood_evals
-                .serialize_compressed(&mut bytes)
-                .unwrap();
-            public_coin.reseed_with_hash(&Self::Digest::digest(&bytes));
+        for eval in &execution_trace_ood_evals {
+            public_coin.reseed_with_field_element(eval);
         }
         // execution trace ood evaluation map
         let trace_ood_eval_map = air
@@ -120,12 +116,8 @@ pub trait Verifiable {
             z,
         );
 
-        {
-            let mut bytes = Vec::new();
-            composition_trace_ood_evals
-                .serialize_compressed(&mut bytes)
-                .unwrap();
-            public_coin.reseed_with_hash(&Self::Digest::digest(&bytes));
+        for eval in &composition_trace_ood_evals {
+            public_coin.reseed_with_field_element(eval);
         }
         let provided_ood_constraint_evaluation = horner_evaluate(&composition_trace_ood_evals, &z);
 

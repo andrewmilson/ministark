@@ -16,7 +16,6 @@ use crate::Trace;
 use crate::Verifiable;
 use alloc::vec::Vec;
 use ark_poly::EvaluationDomain;
-use std::time::Instant;
 
 /// Errors that can occur during the proving stage
 #[derive(Debug)]
@@ -37,22 +36,11 @@ pub trait Provable: Verifiable {
         options: ProofOptions,
         witness: Self::Witness,
     ) -> Result<Proof<Self::Fp, Self::Fq>, ProvingError> {
-        let now = Instant::now();
         let trace = self.generate_trace(witness);
-        println!(
-            "Generated execution trace (cols={}, rows={}) in {:.0?}",
-            trace.base_columns().num_cols(),
-            trace.base_columns().num_rows(),
-            now.elapsed(),
-        );
-
-        let now = Instant::now();
         let air = Air::new(trace.len(), self.get_public_inputs(), options);
         let public_coin = self.gen_public_coin(&air);
         let mut channel = ProverChannel::new(&air, public_coin);
-        println!("Init air: {:?}", now.elapsed());
 
-        let now = Instant::now();
         let trace_xs = air.trace_domain();
         let lde_xs = air.lde_domain();
         let base_trace = trace.base_columns();
@@ -64,9 +52,7 @@ pub trait Provable: Verifiable {
         let num_challenges = air.num_challenges();
         let challenges = Challenges::new(draw_multiple(&mut channel.public_coin, num_challenges));
         let hints = air.gen_hints(&challenges);
-        println!("Base trace: {:?}", now.elapsed());
 
-        let now = Instant::now();
         let extension_trace = trace.build_extension_columns(&challenges);
         let num_extension_cols = extension_trace.as_ref().map_or(0, Matrix::num_cols);
         assert_eq!(Self::AirConfig::NUM_EXTENSION_COLUMNS, num_extension_cols);
@@ -76,18 +62,14 @@ pub trait Provable: Verifiable {
         if let Some(t) = extension_trace_tree.as_ref() {
             channel.commit_extension_trace(t.root());
         }
-        println!("Extension trace: {:?}", now.elapsed());
 
         #[cfg(debug_assertions)]
         self.validate_constraints(&challenges, &hints, base_trace, extension_trace.as_ref());
         drop((base_trace, extension_trace));
 
-        let now = Instant::now();
         let num_composition_coeffs = air.num_composition_constraint_coeffs();
         let composition_coeffs = draw_multiple(&mut channel.public_coin, num_composition_coeffs);
         let x_lde = lde_xs.elements().collect::<Vec<_>>();
-        println!("X lde: {:?}", now.elapsed());
-        let now = Instant::now();
         let composition_evals = Self::AirConfig::eval_constraint(
             air.composition_constraint(),
             &challenges,
@@ -98,8 +80,6 @@ pub trait Provable: Verifiable {
             &base_trace_lde,
             extension_trace_lde.as_ref(),
         );
-        println!("Constraint eval: {:?}", now.elapsed());
-        let now = Instant::now();
         let composition_poly = composition_evals.into_polynomials(air.lde_domain());
         let composition_trace_cols = air.ce_blowup_factor();
         let composition_trace_polys = Matrix::from_rows(
@@ -112,9 +92,6 @@ pub trait Provable: Verifiable {
         let composition_trace_lde = composition_trace_polys.evaluate(air.lde_domain());
         let composition_trace_lde_tree = composition_trace_lde.commit_to_rows();
         channel.commit_composition_trace(composition_trace_lde_tree.root());
-        println!("Constraint composition polys: {:?}", now.elapsed());
-
-        let now = Instant::now();
 
         let z = channel.get_ood_point();
         let mut deep_poly_composer = DeepPolyComposer::new(
@@ -131,22 +108,14 @@ pub trait Provable: Verifiable {
         let deep_coeffs = self.gen_deep_coeffs(&mut channel.public_coin, &air);
         let deep_composition_poly = deep_poly_composer.into_deep_poly(deep_coeffs);
         let deep_composition_lde = deep_composition_poly.into_evaluations(lde_xs);
-        println!("Deep composition: {:?}", now.elapsed());
 
-        let now = Instant::now();
         let mut fri_prover = FriProver::<Self::Fq, Self::Digest>::new(options.into_fri_options());
-        #[cfg(feature = "std")]
-        let now = std::time::Instant::now();
         fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
-        #[cfg(feature = "std")]
-        println!("yo {:?}", now.elapsed());
 
         channel.grind_fri_commitments();
 
-        println!("Public coin: {:?}", channel.public_coin);
         let query_positions = Vec::from_iter(channel.get_fri_query_positions());
         let fri_proof = fri_prover.into_proof(&query_positions);
-        println!("FRI: {:?}", now.elapsed());
 
         let queries = Queries::new(
             &base_trace_lde,
