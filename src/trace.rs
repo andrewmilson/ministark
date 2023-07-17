@@ -1,5 +1,5 @@
 use crate::challenges::Challenges;
-use crate::merkle;
+use crate::merkle::MatrixMerkleTree;
 use crate::merkle::MerkleTree;
 use crate::Matrix;
 use alloc::vec::Vec;
@@ -7,11 +7,10 @@ use ark_ff::FftField;
 use ark_ff::Field;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use digest::Digest;
 
 /// STARK execution trace
 #[allow(clippy::len_without_is_empty)]
-pub trait Trace {
+pub trait Trace: Send + Sync {
     type Fp: FftField;
     type Fq: Field<BasePrimeField = Self::Fp>;
 
@@ -34,24 +33,43 @@ pub trait Trace {
     }
 }
 
+// #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
+// pub struct Queries<S: Stark> {
+//     pub base_trace_values: Vec<S::Fp>,
+//     pub extension_trace_values: Vec<S::Fq>,
+//     pub composition_trace_values: Vec<S::Fq>,
+//     pub base_trace_proofs: Vec<<S::MerkleTree as MerkleTree>::Proof>,
+//     pub extension_trace_proofs: Vec<<S::MerkleTree as MerkleTree>::Proof>,
+//     pub composition_trace_proofs: Vec<<S::MerkleTree as MerkleTree>::Proof>,
+// }
+
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct Queries<Fp: Field, Fq: Field> {
+pub struct Queries<
+    Fp: Field,
+    Fq: Field,
+    MerkleProof: CanonicalDeserialize + CanonicalSerialize + Clone + Send + Sync,
+> {
     pub base_trace_values: Vec<Fp>,
     pub extension_trace_values: Vec<Fq>,
     pub composition_trace_values: Vec<Fq>,
-    pub base_trace_proofs: Vec<merkle::Proof>,
-    pub extension_trace_proofs: Vec<merkle::Proof>,
-    pub composition_trace_proofs: Vec<merkle::Proof>,
+    pub base_trace_proofs: Vec<MerkleProof>,
+    pub extension_trace_proofs: Vec<MerkleProof>,
+    pub composition_trace_proofs: Vec<MerkleProof>,
 }
 
-impl<Fp: Field, Fq: Field> Queries<Fp, Fq> {
-    pub fn new<D: Digest>(
+impl<
+        Fp: Field,
+        Fq: Field,
+        MerkleProof: CanonicalDeserialize + CanonicalSerialize + Clone + Send + Sync,
+    > Queries<Fp, Fq, MerkleProof>
+{
+    pub fn new<M: MerkleTree<Proof = MerkleProof> + MatrixMerkleTree<Fp> + MatrixMerkleTree<Fq>>(
         base_trace_lde: &Matrix<Fp>,
         extension_trace_lde: Option<&Matrix<Fq>>,
         composition_trace_lde: &Matrix<Fq>,
-        base_commitment: &MerkleTree<D>,
-        extension_commitment: Option<&MerkleTree<D>>,
-        composition_commitment: &MerkleTree<D>,
+        base_tree: &M,
+        extension_tree: Option<&M>,
+        composition_tree: &M,
         positions: &[usize],
     ) -> Self {
         let mut base_trace_values = Vec::new();
@@ -64,25 +82,24 @@ impl<Fp: Field, Fq: Field> Queries<Fp, Fq> {
             // execution trace
             let base_trace_row = base_trace_lde.get_row(position).unwrap();
             base_trace_values.extend(base_trace_row);
-            let base_proof = base_commitment.prove(position).unwrap();
+            let base_proof = MatrixMerkleTree::<Fp>::prove_row(base_tree, position).unwrap();
             base_trace_proofs.push(base_proof);
 
             if let Some(extension_trace_lde) = extension_trace_lde {
                 // TODO: suport ark DomainCoeff on evaluate_at
                 let extension_trace_row = extension_trace_lde.get_row(position).unwrap();
                 extension_trace_values.extend(extension_trace_row);
-                let extension_proof = extension_commitment
-                    .as_ref()
-                    .unwrap()
-                    .prove(position)
-                    .unwrap();
+                let extension_tree = extension_tree.unwrap();
+                let extension_proof =
+                    MatrixMerkleTree::<Fp>::prove_row(extension_tree, position).unwrap();
                 extension_trace_proofs.push(extension_proof);
             }
 
             // composition trace
             let composition_trace_row = composition_trace_lde.get_row(position).unwrap();
             composition_trace_values.extend(composition_trace_row);
-            let composition_proof = composition_commitment.prove(position).unwrap();
+            let composition_proof =
+                MatrixMerkleTree::<Fp>::prove_row(composition_tree, position).unwrap();
             composition_trace_proofs.push(composition_proof);
         }
         Self {

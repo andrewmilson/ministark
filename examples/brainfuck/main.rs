@@ -3,12 +3,12 @@
 use air::BrainfuckAirConfig;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use ministark::merkle::MatrixMerkleTreeImpl;
 use ministark::random::PublicCoinImpl;
+use ministark::stark::Stark;
 use ministark::Proof;
 use ministark::ProofOptions;
-use ministark::Provable;
 use ministark::Trace;
-use ministark::Verifiable;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use ministark_gpu::fields::p18446744069414584321::ark::Fq3;
 use sha2::Sha256;
@@ -55,21 +55,19 @@ pub struct ExecutionInfo {
     pub output: Vec<u8>,
 }
 
-impl Verifiable for ExecutionInfo {
+impl Stark for ExecutionInfo {
     type Fp = Fp;
     type Fq = Fq3;
     type AirConfig = BrainfuckAirConfig;
     type Digest = Sha256;
     type PublicCoin = PublicCoinImpl<Sha256, Fq3>;
+    type MerkleTree = MatrixMerkleTreeImpl<Sha256>;
+    type Witness = BrainfuckTrace;
+    type Trace = BrainfuckTrace;
 
     fn get_public_inputs(&self) -> Self {
         self.clone()
     }
-}
-
-impl Provable for ExecutionInfo {
-    type Witness = BrainfuckTrace;
-    type Trace = BrainfuckTrace;
 
     fn generate_trace(&self, witness: BrainfuckTrace) -> BrainfuckTrace {
         witness
@@ -127,7 +125,7 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output
     };
 
     let now = Instant::now();
-    let proof = pollster::block_on(execution_info.generate_proof(options, trace)).unwrap();
+    let proof = pollster::block_on(execution_info.prove(options, trace)).unwrap();
     println!("Proof generated in: {:.0?}", now.elapsed());
     let security_level_bits = proof.conjectured_security_level();
     println!("Proof security (conjectured): {security_level_bits}bit",);
@@ -152,8 +150,10 @@ fn verify(
 ) {
     let source_code = fs::read_to_string(source_code_path).unwrap();
     let proof_bytes = fs::read(proof_path).unwrap();
-    let (execution_info, proof): (ExecutionInfo, Proof<Fp, Fq3>) =
-        <_>::deserialize_compressed(proof_bytes.as_slice()).unwrap();
+    let (execution_info, proof): (
+        ExecutionInfo,
+        Proof<Fp, Fq3, Sha256, MatrixMerkleTreeImpl<Sha256>>,
+    ) = <_>::deserialize_compressed(proof_bytes.as_slice()).unwrap();
     assert_eq!(input.as_bytes(), execution_info.input);
     assert_eq!(output.as_bytes(), execution_info.output);
     assert_eq!(source_code, execution_info.source_code);

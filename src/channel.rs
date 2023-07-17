@@ -1,75 +1,75 @@
-use crate::air::AirConfig;
 use crate::fri;
 use crate::fri::FriProof;
+use crate::merkle::MerkleTree;
 use crate::random::PublicCoin;
+use crate::stark::Stark;
 use crate::trace::Queries;
 use crate::Air;
 use crate::Proof;
 use alloc::vec::Vec;
 use digest::generic_array::GenericArray;
-use digest::Digest;
 use digest::Output;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 
-pub struct ProverChannel<'a, A: AirConfig, D: Digest, C: PublicCoin> {
-    air: &'a Air<A>,
-    pub public_coin: C,
-    base_trace_commitment: Output<D>,
-    extension_trace_commitment: Option<Output<D>>,
-    composition_trace_commitment: Output<D>,
-    fri_layer_commitments: Vec<Output<D>>,
-    execution_trace_ood_evals: Vec<A::Fq>,
-    composition_trace_ood_evals: Vec<A::Fq>,
+pub struct ProverChannel<'a, S: Stark> {
+    air: &'a Air<S::AirConfig>,
+    pub public_coin: S::PublicCoin,
+    base_trace_commitment: Output<S::Digest>,
+    extension_trace_commitment: Option<Output<S::Digest>>,
+    composition_trace_commitment: Output<S::Digest>,
+    fri_layer_commitments: Vec<Output<S::Digest>>,
+    fri_remainder_coeffs: Vec<S::Fq>,
+    execution_trace_ood_evals: Vec<S::Fq>,
+    composition_trace_ood_evals: Vec<S::Fq>,
     pow_nonce: u64,
 }
 
 // impl<'a, A: Air, D: Digest> ProverChannel<'a, A, D> {
-impl<'a, A: AirConfig, D: Digest, C: PublicCoin<Field = A::Fq, Digest = D>>
-    ProverChannel<'a, A, D, C>
-{
-    pub fn new(air: &'a Air<A>, public_coin: C) -> Self {
+impl<'a, S: Stark> ProverChannel<'a, S> {
+    pub fn new(air: &'a Air<S::AirConfig>, public_coin: S::PublicCoin) -> Self {
         ProverChannel {
             air,
             public_coin,
             extension_trace_commitment: None,
             base_trace_commitment: GenericArray::default(),
             composition_trace_commitment: GenericArray::default(),
-            execution_trace_ood_evals: Vec::default(),
-            composition_trace_ood_evals: Vec::default(),
-            fri_layer_commitments: Vec::default(),
+            execution_trace_ood_evals: Vec::new(),
+            composition_trace_ood_evals: Vec::new(),
+            fri_layer_commitments: Vec::new(),
+            fri_remainder_coeffs: Vec::new(),
             pow_nonce: 0,
         }
     }
 
-    pub fn commit_base_trace(&mut self, commitment: &Output<D>) {
+    pub fn commit_base_trace(&mut self, commitment: &Output<S::Digest>) {
         self.public_coin.reseed_with_hash(commitment);
         self.base_trace_commitment = commitment.clone();
     }
 
-    pub fn commit_extension_trace(&mut self, commitment: &Output<D>) {
+    pub fn commit_extension_trace(&mut self, commitment: &Output<S::Digest>) {
         self.public_coin.reseed_with_hash(commitment);
         self.extension_trace_commitment = Some(commitment.clone());
     }
 
-    pub fn commit_composition_trace(&mut self, commitment: &Output<D>) {
+    pub fn commit_composition_trace(&mut self, commitment: &Output<S::Digest>) {
         self.public_coin.reseed_with_hash(commitment);
         self.composition_trace_commitment = commitment.clone();
     }
 
-    pub fn get_ood_point(&mut self) -> C::Field {
+    pub fn get_ood_point(&mut self) -> S::Fq {
         self.public_coin.draw()
     }
 
-    pub fn send_execution_trace_ood_evals(&mut self, evals: Vec<A::Fq>) {
+    pub fn send_execution_trace_ood_evals(&mut self, evals: Vec<S::Fq>) {
         for eval in &evals {
             self.public_coin.reseed_with_field_element(eval);
         }
         self.execution_trace_ood_evals = evals;
     }
 
-    pub fn send_composition_trace_ood_evals(&mut self, evals: Vec<A::Fq>) {
+    pub fn send_composition_trace_ood_evals(&mut self, evals: Vec<S::Fq>) {
         for eval in &evals {
             self.public_coin.reseed_with_field_element(eval);
         }
@@ -108,15 +108,15 @@ impl<'a, A: AirConfig, D: Digest, C: PublicCoin<Field = A::Fq, Digest = D>>
 
     pub fn build_proof(
         self,
-        trace_queries: Queries<A::Fp, A::Fq>,
-        fri_proof: FriProof<A::Fq>,
-    ) -> Proof<A::Fp, A::Fq> {
+        trace_queries: Queries<S::Fp, S::Fq, <S::MerkleTree as MerkleTree>::Proof>,
+        fri_proof: FriProof<S::Fq, S::Digest, S::MerkleTree>,
+    ) -> Proof<S::Fp, S::Fq, S::Digest, S::MerkleTree> {
         Proof {
             options: self.air.options(),
             trace_len: self.air.trace_len(),
-            base_trace_commitment: self.base_trace_commitment.to_vec(),
-            extension_trace_commitment: self.extension_trace_commitment.map(|o| o.to_vec()),
-            composition_trace_commitment: self.composition_trace_commitment.to_vec(),
+            base_trace_commitment: self.base_trace_commitment.into(),
+            extension_trace_commitment: self.extension_trace_commitment.map(|o| o.into()),
+            composition_trace_commitment: self.composition_trace_commitment.into(),
             execution_trace_ood_evals: self.execution_trace_ood_evals,
             composition_trace_ood_evals: self.composition_trace_ood_evals,
             pow_nonce: self.pow_nonce,
@@ -127,18 +127,22 @@ impl<'a, A: AirConfig, D: Digest, C: PublicCoin<Field = A::Fq, Digest = D>>
 }
 
 // FRI prover channel implementation
-impl<'a, A: AirConfig, D: Digest, C: PublicCoin<Field = A::Fq, Digest = D>> fri::ProverChannel
-    for ProverChannel<'a, A, D, C>
-{
-    type Digest = D;
-    type Field = A::Fq;
+impl<'a, S: Stark> fri::ProverChannel for ProverChannel<'a, S> {
+    type Digest = S::Digest;
+    type Field = S::Fq;
 
-    fn commit_fri_layer(&mut self, commitment: &Output<D>) {
+    fn commit_fri_layer(&mut self, commitment: &Output<S::Digest>) {
         self.public_coin.reseed_with_hash(commitment);
         self.fri_layer_commitments.push(commitment.clone());
     }
 
-    fn draw_fri_alpha(&mut self) -> A::Fq {
+    fn commit_remainder(&mut self, remainder_coeffs: &[Self::Field]) {
+        self.public_coin
+            .reseed_with_field_elements(remainder_coeffs);
+        self.fri_remainder_coeffs = remainder_coeffs.to_vec();
+    }
+
+    fn draw_fri_alpha(&mut self) -> S::Fq {
         self.public_coin.draw()
     }
 }

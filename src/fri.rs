@@ -1,8 +1,12 @@
 use crate::merkle;
+use crate::merkle::MatrixMerkleTree;
+use crate::merkle::MerkleTree;
 use crate::random::PublicCoin;
 use crate::utils::interleave;
 use crate::utils::GpuAllocator;
 use crate::utils::GpuVec;
+use crate::utils::SerdeOutput;
+use crate::Matrix;
 use alloc::vec::Vec;
 use ark_ff::FftField;
 use ark_ff::Field;
@@ -20,6 +24,8 @@ use ministark_gpu::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use snafu::Snafu;
+use std::iter::zip;
+use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]
 pub struct FriOptions {
@@ -61,95 +67,89 @@ impl FriOptions {
     where
         F::FftField: FftField,
     {
+        // TODO: Can specify a domain offset in the air which might cause issues with
+        // having this a constant
         F::FftField::GENERATOR
     }
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct FriProof<F: Field> {
-    pub layers: Vec<FriProofLayer<F>>,
-    pub remainder: Vec<F>,
-    pub remainder_commitment: Vec<u8>,
+pub struct FriProof<F: Field, D: Digest, M: MerkleTree> {
+    pub layers: Vec<LayerProof<F, D, M>>,
+    pub remainder_coeffs: Vec<F>,
 }
 
-impl<F: GpuField + Field> FriProof<F>
+impl<F: GpuField + Field, D: Digest, M: MerkleTree<Root = Output<D>>> FriProof<F, D, M>
 where
     F::FftField: FftField,
 {
-    pub fn new(
-        layers: Vec<FriProofLayer<F>>,
-        remainder_commitment: Vec<u8>,
-        remainder: Vec<F>,
-    ) -> Self {
+    pub fn new(layers: Vec<LayerProof<F, D, M>>, remainder_coeffs: Vec<F>) -> Self {
         Self {
             layers,
-            remainder,
-            remainder_commitment,
+            remainder_coeffs,
         }
     }
 }
 
-struct FriLayer<F: GpuField, D: Digest> {
-    tree: merkle::MerkleTree<D>,
-    evaluations: Vec<F>,
+struct FriLayer<F: GpuField, M: MerkleTree> {
+    tree: M,
+    evaluations: Matrix<F>,
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct FriProofLayer<F: Field> {
-    pub values: Vec<F>,
-    pub proofs: Vec<merkle::Proof>,
-    pub commitment: Vec<u8>,
+pub struct LayerProof<F: Field, D: Digest, M: MerkleTree> {
+    pub flattenend_rows: Vec<F>,
+    pub proofs: Vec<M::Proof>,
+    pub commitment: SerdeOutput<D>,
 }
 
-impl<F: GpuField + Field> FriProofLayer<F>
+impl<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = Output<D>>> LayerProof<F, D, M>
 where
     F::FftField: FftField,
 {
     pub fn new<const N: usize>(
-        values: Vec<[F; N]>,
-        proofs: Vec<merkle::Proof>,
-        commitment: Vec<u8>,
+        rows: Vec<[F; N]>,
+        proofs: Vec<M::Proof>,
+        commitment: Output<D>,
     ) -> Self {
-        let values = values.into_iter().flatten().collect();
+        let flattenend_rows = rows.into_iter().flatten().collect();
+        let commitment = SerdeOutput::new(commitment);
         Self {
-            values,
+            flattenend_rows,
             proofs,
             commitment,
         }
     }
 
-    pub fn verify<D: Digest, const N: usize>(
-        &self,
-        positions: &[usize],
-    ) -> Result<(), merkle::Error> {
-        let commitment = Output::<D>::from_slice(&self.commitment);
+    pub fn verify<const N: usize>(&self, positions: &[usize]) -> Result<(), merkle::Error> {
+        let commitment = &self.commitment;
         // TODO: could check raminder is empty but not critical
         // TODO: could check positions has the same len as other vecs but not critical
-        let (chunks, _remainder) = &self.values.as_chunks::<N>();
-        // zip chains could be dangerous
+        let (rows, _remainder) = &self.flattenend_rows.as_chunks::<N>();
+        // zip chains could be dangerous e.g. 2 positions but only 1 proof then loop
+        // stops after first iteration
         for (i, position) in positions.iter().enumerate() {
-            let proof = self.proofs[i].parse::<D>();
-            let expected_leaf = &proof[0];
-            let mut chunk_bytes = Vec::with_capacity(chunks.compressed_size());
-            chunks.serialize_compressed(&mut chunk_bytes).unwrap();
-            let actual_leaf = D::digest(chunk_bytes);
-
-            if *expected_leaf != actual_leaf {
-                return Err(merkle::Error::InvalidProof);
-            }
-
-            merkle::MerkleTree::<D>::verify(commitment, &proof, *position / 4)?;
+            let proof = &self.proofs[i];
+            let row = &rows[i];
+            let row_idx = position / N;
+            M::verify_row(commitment, row_idx, row, proof)?;
         }
         Ok(())
     }
 }
 
-pub struct FriProver<F: GpuField, D: Digest> {
+pub struct FriProver<F: GpuField, D: Digest, M: MerkleTree> {
     options: FriOptions,
-    layers: Vec<FriLayer<F, D>>,
+    layers: Vec<FriLayer<F, M>>,
+    remainder_coeffs: Vec<F>,
+    _phantom: PhantomData<D>,
 }
 
-impl<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest> FriProver<F, D>
+impl<
+        F: GpuField + Field + DomainCoeff<F::FftField>,
+        D: Digest,
+        M: MatrixMerkleTree<F, Root = Output<D>>,
+    > FriProver<F, D, M>
 where
     F::FftField: FftField,
 {
@@ -157,42 +157,44 @@ where
         Self {
             options,
             layers: Vec::new(),
+            remainder_coeffs: Vec::new(),
+            _phantom: PhantomData,
         }
     }
 
-    pub fn into_proof(self, positions: &[usize]) -> FriProof<F> {
+    pub fn into_proof(self, positions: &[usize]) -> FriProof<F, D, M> {
         let folding_factor = self.options.folding_factor;
-        let (last_layer, initial_layers) = self.layers.split_last().unwrap();
-        let mut domain_size = self.layers[0].evaluations.len();
+        // let (last_layer, initial_layers) = self.layers.split_last().unwrap();
+        let mut domain_size = self.layers[0].evaluations.num_rows() * folding_factor;
         let mut proof_layers = Vec::new();
         let mut positions = positions.to_vec();
-        for layer in initial_layers {
+        for layer in &self.layers {
             let num_eval_chunks = domain_size / folding_factor;
             positions = fold_positions(&positions, num_eval_chunks);
             domain_size = num_eval_chunks;
 
             proof_layers.push(match folding_factor {
-                2 => query_layer::<F, D, 2>(layer, &positions),
-                4 => query_layer::<F, D, 4>(layer, &positions),
-                6 => query_layer::<F, D, 6>(layer, &positions),
-                8 => query_layer::<F, D, 8>(layer, &positions),
-                16 => query_layer::<F, D, 16>(layer, &positions),
+                2 => query_layer::<F, D, M, 2>(layer, &positions),
+                4 => query_layer::<F, D, M, 4>(layer, &positions),
+                6 => query_layer::<F, D, M, 6>(layer, &positions),
+                8 => query_layer::<F, D, M, 8>(layer, &positions),
+                16 => query_layer::<F, D, M, 16>(layer, &positions),
                 _ => unimplemented!("folding factor {folding_factor} is not supported"),
             });
         }
 
-        // layers store interlaved evaluations so they need to be un-interleaved
-        let remainder_commitment = last_layer.tree.root().to_vec();
-        let last_evals = &last_layer.evaluations;
-        let mut remainder = vec![F::zero(); last_evals.len()];
-        let num_eval_chunks = last_evals.len() / folding_factor;
-        for i in 0..num_eval_chunks {
-            for j in 0..folding_factor {
-                remainder[i + num_eval_chunks * j] = last_evals[i * folding_factor + j];
-            }
-        }
+        // // layers store interlaved evaluations so they need to be un-interleaved
+        // let remainder_commitment = last_layer.tree.root().to_vec();
+        // let last_evals = &last_layer.evaluations;
+        // let mut remainder = vec![F::zero(); last_evals.len()];
+        // let num_eval_chunks = last_evals.len() / folding_factor;
+        // for i in 0..num_eval_chunks {
+        //     for j in 0..folding_factor {
+        //         remainder[i + num_eval_chunks * j] = last_evals[i * folding_factor +
+        // j];     }
+        // }
 
-        FriProof::new(proof_layers, remainder_commitment, remainder)
+        FriProof::new(proof_layers, self.remainder_coeffs)
     }
 
     pub fn build_layers(
@@ -203,7 +205,7 @@ where
         assert!(self.layers.is_empty());
         // let codeword = evaluations.0[0];
 
-        for _ in 0..=self.options.num_layers(evaluations.len()) {
+        for _ in 0..self.options.num_layers(evaluations.len()) {
             evaluations = match self.options.folding_factor {
                 2 => self.build_layer::<2>(channel, evaluations),
                 4 => self.build_layer::<4>(channel, evaluations),
@@ -212,6 +214,8 @@ where
                 folding_factor => unreachable!("folding factor {folding_factor} not supported"),
             }
         }
+
+        self.set_remainder(channel, &evaluations);
     }
 
     /// Builds a single layer of the FRI protocol
@@ -228,15 +232,8 @@ where
         // evaluations i.e. [[LHS0, RHS0], [LHS1, RHS1], ...] LHS_i and RHS_i
         // only require a single merkle path for their decommitment.
         let interleaved_evals: Vec<[F; N]> = interleave(&evaluations);
-        let hashed_evals = ark_std::cfg_iter!(interleaved_evals)
-            .map(|chunk| {
-                let mut buff = Vec::with_capacity(chunk.compressed_size());
-                chunk.serialize_compressed(&mut buff).unwrap();
-                D::digest(&buff)
-            })
-            .collect();
-
-        let evals_merkle_tree = merkle::MerkleTree::new(hashed_evals).unwrap();
+        let matrix = Matrix::from_arrays(&interleaved_evals);
+        let evals_merkle_tree = M::from_matrix(&matrix);
         channel.commit_fri_layer(evals_merkle_tree.root());
 
         let alpha = channel.draw_fri_alpha();
@@ -249,10 +246,28 @@ where
 
         self.layers.push(FriLayer {
             tree: evals_merkle_tree,
-            evaluations: interleaved_evals.into_flattened(),
+            evaluations: matrix,
         });
 
         evaluations
+    }
+
+    fn set_remainder(
+        &mut self,
+        channel: &mut impl ProverChannel<Field = F, Digest = D>,
+        evaluations: &GpuVec<F>,
+    ) {
+        let domain_size = evaluations.len();
+        assert!(domain_size.is_power_of_two());
+        assert!(domain_size <= self.options.max_remainder_size);
+        let domain_offset = self.options.domain_offset::<F>();
+        let domain = Radix2EvaluationDomain::new_coset(domain_size, domain_offset).unwrap();
+        let coeffs = domain.ifft(evaluations);
+        let max_degree = domain_size / self.options.blowup_factor - 1;
+        let (remainder_coeffs, zero_coeffs) = coeffs.split_at(max_degree + 1);
+        assert!(zero_coeffs.iter().all(F::is_zero));
+        channel.commit_remainder(remainder_coeffs);
+        self.remainder_coeffs = remainder_coeffs.to_vec();
     }
 }
 
@@ -280,25 +295,29 @@ pub enum VerificationError {
     },
 }
 
-pub struct FriVerifier<F: GpuField + Field, D: Digest>
+pub struct FriVerifier<F: GpuField + Field, D: Digest, M: MerkleTree<Root = Output<D>>>
 where
     F::FftField: FftField,
 {
     options: FriOptions,
     layer_commitments: Vec<Output<D>>,
     layer_alphas: Vec<F>,
-    proof: FriProof<F>,
+    proof: FriProof<F, D, M>,
     domain: Radix2EvaluationDomain<F::FftField>,
 }
 
-impl<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest> FriVerifier<F, D>
+impl<
+        F: GpuField + Field + DomainCoeff<F::FftField>,
+        D: Digest,
+        M: MatrixMerkleTree<F, Root = Output<D>>,
+    > FriVerifier<F, D, M>
 where
     F::FftField: FftField,
 {
     pub fn new(
         public_coin: &mut impl PublicCoin<Field = F, Digest = D>,
         options: FriOptions,
-        proof: FriProof<F>,
+        proof: FriProof<F, D, M>,
         max_poly_degree: usize,
     ) -> Result<Self, VerificationError> {
         let folding_factor = options.folding_factor;
@@ -312,11 +331,10 @@ where
         for (i, layer) in proof.layers.iter().enumerate() {
             // TODO: batch merkle tree proofs
             // get the merkle root from the first merkle path
-            let layer_commitment = Output::<D>::from_slice(&layer.commitment).clone();
-            public_coin.reseed_with_hash(&layer_commitment);
+            public_coin.reseed_with_hash(&layer.commitment);
             let alpha = public_coin.draw();
             layer_alphas.push(alpha);
-            layer_commitments.push(layer_commitment);
+            layer_commitments.push(layer.commitment.clone().into());
 
             if i != proof.layers.len() - 1 && layer_codeword_len % folding_factor != 0 {
                 return Err(VerificationError::CodewordTruncation {
@@ -329,11 +347,18 @@ where
             layer_codeword_len /= folding_factor;
         }
 
-        let remainder_root = Output::<D>::from_slice(&proof.remainder_commitment).clone();
-        public_coin.reseed_with_hash(&remainder_root);
-        let remainder_alpha = public_coin.draw();
-        layer_alphas.push(remainder_alpha);
-        layer_commitments.push(remainder_root);
+        println!("remainder alpha {}", layer_alphas.last().unwrap());
+        public_coin.reseed_with_field_elements(&proof.remainder_coeffs);
+
+        // TODO: add back in
+        // let remainder_root =
+        // Output::<D>::from_slice(&proof.remainder_commitment).clone();
+        // let remainder_root =
+        // Output::<D>::from_slice(&proof.remainder_commitment).clone();
+        // public_coin.reseed_with_hash(&remainder_root);
+        // let remainder_alpha = public_coin.draw();
+        // layer_alphas.push(remainder_alpha);
+        // layer_commitments.push(remainder_root);
 
         Ok(Self {
             options,
@@ -360,47 +385,35 @@ where
         let mut domain_size = self.domain.size();
         let mut domain_generator = self.domain.group_gen();
 
-        // verify all layers
-        for i in 0..self.options.num_layers(domain_size) {
+        // verify all layers except remainder
+        for i in 0..self.options.num_layers(domain_size).saturating_sub(1) {
             let folded_positions = fold_positions(&positions, domain_size / N);
             let layer_alpha = layer_alphas.next().unwrap();
             let layer_commitment = layer_commitments.next().unwrap();
 
             // TODO: change assert to error. Check remainder
             let layer = layers.next().unwrap();
-            let (chunks, _) = &layer.values.as_chunks::<N>();
-            assert_eq!(chunks.len(), folded_positions.len());
+            let (rows, _) = &layer.flattenend_rows.as_chunks::<N>();
+            assert_eq!(rows.len(), folded_positions.len());
 
             // verify the layer values against the layer's commitment
             for (j, position) in folded_positions.iter().enumerate() {
-                let proof = layer.proofs[j].parse::<D>();
-                let expected_leaf = &proof[0];
-                let chunk = chunks[j];
-                let mut chunk_bytes = Vec::with_capacity(chunk.compressed_size());
-                chunk.serialize_compressed(&mut chunk_bytes).unwrap();
-                let actual_leaf = D::digest(&chunk_bytes);
-
-                if *expected_leaf != actual_leaf {
-                    return Err(VerificationError::LayerCommitmentInvalid { layer: i });
-                }
-
-                merkle::MerkleTree::<D>::verify(&layer_commitment, &proof, *position)
+                let proof = &layer.proofs[j];
+                let row = &rows[j];
+                M::verify_row(&layer_commitment, *position, row, proof)
                     .map_err(|_| VerificationError::LayerCommitmentInvalid { layer: i })?;
             }
 
-            let query_values = get_query_values(chunks, &positions, &folded_positions, domain_size);
+            let query_values = get_query_values(rows, &positions, &folded_positions, domain_size);
             if evaluations != query_values {
                 return Err(VerificationError::InvalidDegreeRespectingProjection { layer: i });
             }
 
-            let polys = chunks
-                .iter()
-                .zip(&folded_positions)
-                .map(|(chunk, position)| {
-                    let offset = domain_offset * domain_generator.pow([*position as u64]);
-                    let domain = folding_domain.get_coset(offset).unwrap();
-                    DensePolynomial::from_coefficients_vec(domain.ifft(chunk))
-                });
+            let polys = rows.iter().zip(&folded_positions).map(|(chunk, position)| {
+                let offset = domain_offset * domain_generator.pow([*position as u64]);
+                let domain = folding_domain.get_coset(offset).unwrap();
+                DensePolynomial::from_coefficients_vec(domain.ifft(chunk))
+            });
 
             // prepare for next layer
             evaluations = polys.map(|poly| poly.evaluate(&layer_alpha)).collect();
@@ -409,17 +422,21 @@ where
             domain_size /= N;
         }
 
-        for (position, evaluation) in positions.into_iter().zip(evaluations) {
-            if self.proof.remainder[position] != evaluation {
-                return Err(VerificationError::InvalidRemainderDegreeRespectingProjection);
-            }
-        }
+        // TODO: add back in
+        // for (position, evaluation) in positions.into_iter().zip(evaluations)
+        // {     if self.proof.remainder[position] != evaluation {
+        //         return
+        // Err(VerificationError::InvalidRemainderDegreeRespectingProjection);
+        //     }
+        // }
 
-        verify_remainder::<F, D, N>(
-            &layer_commitments.next().unwrap(),
-            self.proof.remainder,
-            domain_size - 1,
-        )
+        // TODO: add back in
+        // verify_remainder::<F, D, N>(
+        //     &layer_commitments.next().unwrap(),
+        //     self.proof.remainder,
+        //     domain_size - 1,
+        // )
+        Ok(())
     }
 
     pub fn verify(self, positions: &[usize], evaluations: &[F]) -> Result<(), VerificationError> {
@@ -446,42 +463,46 @@ fn verify_remainder<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest, c
 where
     F::FftField: FftField,
 {
-    if max_degree >= remainder_evals.len() {
-        return Err(VerificationError::RemainderTooSmall);
-    }
+    todo!()
 
-    let interleaved_evals: Vec<[F; N]> = interleave(&remainder_evals);
-    let hashed_evals = interleaved_evals
-        .into_iter()
-        .map(|chunk| {
-            let mut buff = Vec::with_capacity(chunk.compressed_size());
-            chunk.serialize_compressed(&mut buff).unwrap();
-            D::digest(&buff)
-        })
-        .collect();
-    let remainder_merkle_tree = merkle::MerkleTree::<D>::new(hashed_evals).unwrap();
+    // if max_degree >= remainder_evals.len() {
+    //     return Err(VerificationError::RemainderTooSmall);
+    // }
 
-    if commitment != remainder_merkle_tree.root() {
-        return Err(VerificationError::RemainderCommitmentInvalid);
-    }
+    // let interleaved_evals: Vec<[F; N]> = interleave(&remainder_evals);
+    // let hashed_evals = interleaved_evals
+    //     .into_iter()
+    //     .map(|chunk| {
+    //         let mut buff = Vec::with_capacity(chunk.compressed_size());
+    //         chunk.serialize_compressed(&mut buff).unwrap();
+    //         D::digest(&buff)
+    //     })
+    //     .collect();
+    // let remainder_merkle_tree =
+    // merkle::MerkleTree::<D>::new(hashed_evals).unwrap();
 
-    if max_degree == 0 {
-        if remainder_evals.array_windows().all(|[a, b]| a == b) {
-            Ok(())
-        } else {
-            Err(VerificationError::RemainderDegreeMismatch { degree: max_degree })
-        }
-    } else {
-        let domain = Radix2EvaluationDomain::new(remainder_evals.len()).unwrap();
-        domain.ifft_in_place(&mut remainder_evals);
-        let poly = DensePolynomial::from_coefficients_vec(remainder_evals);
+    // if commitment != remainder_merkle_tree.root() {
+    //     return Err(VerificationError::RemainderCommitmentInvalid);
+    // }
 
-        if poly.degree() > max_degree {
-            Err(VerificationError::RemainderDegreeMismatch { degree: max_degree })
-        } else {
-            Ok(())
-        }
-    }
+    // if max_degree == 0 {
+    //     if remainder_evals.array_windows().all(|[a, b]| a == b) {
+    //         Ok(())
+    //     } else {
+    //         Err(VerificationError::RemainderDegreeMismatch { degree:
+    // max_degree })     }
+    // } else {
+    //     let domain =
+    // Radix2EvaluationDomain::new(remainder_evals.len()).unwrap();
+    //     domain.ifft_in_place(&mut remainder_evals);
+    //     let poly = DensePolynomial::from_coefficients_vec(remainder_evals);
+
+    //     if poly.degree() > max_degree {
+    //         Err(VerificationError::RemainderDegreeMismatch { degree:
+    // max_degree })     } else {
+    //         Ok(())
+    //     }
+    // }
 }
 
 pub trait ProverChannel {
@@ -489,6 +510,8 @@ pub trait ProverChannel {
     type Field: GpuField;
 
     fn commit_fri_layer(&mut self, layer_root: &Output<Self::Digest>);
+
+    fn commit_remainder(&mut self, remainder_coeffs: &[Self::Field]);
 
     fn draw_fri_alpha(&mut self) -> Self::Field;
 }
@@ -638,10 +661,15 @@ fn get_query_values<F: Field, const N: usize>(
         .collect()
 }
 
-fn query_layer<F: GpuField + Field, D: Digest, const N: usize>(
-    layer: &FriLayer<F, D>,
+fn query_layer<
+    F: GpuField + Field,
+    D: Digest,
+    M: MatrixMerkleTree<F, Root = Output<D>>,
+    const N: usize,
+>(
+    layer: &FriLayer<F, M>,
     positions: &[usize],
-) -> FriProofLayer<F>
+) -> LayerProof<F, D, M>
 where
     F::FftField: FftField,
 {
@@ -650,15 +678,14 @@ where
         .map(|pos| {
             layer
                 .tree
-                .prove(*pos)
+                .prove_row(*pos)
                 .expect("failed to generate Merkle proof")
         })
-        .collect::<Vec<merkle::Proof>>();
-    let mut values: Vec<[F; N]> = Vec::new();
+        .collect();
+    let mut rows: Vec<[F; N]> = Vec::new();
     for &position in positions {
-        let i = position * N;
-        let chunk = &layer.evaluations[i..i + N];
-        values.push(chunk.try_into().unwrap());
+        let row = layer.evaluations.get_row(position).unwrap();
+        rows.push(row.try_into().unwrap());
     }
-    FriProofLayer::new(values, proofs, layer.tree.root().to_vec())
+    LayerProof::new(rows, proofs, layer.tree.root().clone())
 }

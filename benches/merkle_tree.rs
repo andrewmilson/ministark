@@ -7,14 +7,19 @@ use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use digest::Digest;
-use digest::Output;
-use ministark::merkle::MerkleTree;
+use ministark::merkle::MatrixMerkleTree;
+use ministark::merkle::MatrixMerkleTreeImpl;
+use ministark::utils::GpuAllocator;
+use ministark::Matrix;
 use ministark_gpu::GpuField;
 use sha2::Sha256;
 
 const BENCHMARK_TREE_DEPTH: [usize; 4] = [14, 15, 16, 17];
 
-fn build_merkle_tree_bench<F: GpuField + Field, D: Digest>(c: &mut Criterion, name: &str) {
+fn build_merkle_tree_bench<F: GpuField + Field, D: Digest + Send + Sync>(
+    c: &mut Criterion,
+    name: &str,
+) {
     let mut rng = ark_std::test_rng();
     let mut group = c.benchmark_group(name);
     group.sample_size(10);
@@ -22,23 +27,20 @@ fn build_merkle_tree_bench<F: GpuField + Field, D: Digest>(c: &mut Criterion, na
     for d in BENCHMARK_TREE_DEPTH {
         let n = 1 << d;
         let leaves: Vec<F> = (0..n).map(|_| F::rand(&mut rng)).collect();
-        let leaf_nodes = leaves
-            .iter()
-            .map(|leaf| {
-                let mut bytes = Vec::new();
-                leaf.serialize_compressed(&mut bytes).unwrap();
-                D::digest(&bytes)
-            })
-            .collect::<Vec<Output<D>>>();
+        let matrix = Matrix::new(vec![
+            leaves.to_vec_in(GpuAllocator),
+            leaves.to_vec_in(GpuAllocator),
+            leaves.to_vec_in(GpuAllocator),
+        ]);
 
-        group.bench_with_input(BenchmarkId::new("new", n), &n, |b, _| {
-            b.iter(|| MerkleTree::<D>::new(leaf_nodes.clone()))
+        group.bench_with_input(BenchmarkId::new("from_matrix", n), &n, |b, _| {
+            b.iter(|| MatrixMerkleTreeImpl::<D>::from_matrix(&matrix))
         });
     }
 }
 
 fn build_merkle_tree_benches(c: &mut Criterion) {
-    build_merkle_tree_bench::<Fp, Sha256>(c, "build merkle tree (sha256)");
+    build_merkle_tree_bench::<Fp, Sha256>(c, "Sha256");
 }
 
 criterion_group!(benches, build_merkle_tree_benches);

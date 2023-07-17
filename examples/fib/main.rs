@@ -8,14 +8,14 @@ use ministark::constraints::AlgebraicItem;
 use ministark::constraints::Constraint;
 use ministark::constraints::ExecutionTraceColumn;
 use ministark::hints::Hints;
+use ministark::merkle::MatrixMerkleTreeImpl;
 use ministark::random::PublicCoinImpl;
+use ministark::stark::Stark;
 use ministark::utils::FieldVariant;
 use ministark::utils::GpuAllocator;
 use ministark::Matrix;
 use ministark::ProofOptions;
-use ministark::Provable;
 use ministark::Trace;
-use ministark::Verifiable;
 use ministark_gpu::fields::p18446744069414584321::ark::Fp;
 use num_traits::Pow;
 use sha2::Sha256;
@@ -140,21 +140,19 @@ impl AirConfig for FibAirConfig {
 
 struct FibClaim(Fp);
 
-impl Verifiable for FibClaim {
+impl Stark for FibClaim {
     type Fp = Fp;
     type Fq = Fp;
     type AirConfig = FibAirConfig;
     type Digest = Sha256;
     type PublicCoin = PublicCoinImpl<Sha256, Fp>;
-
-    fn get_public_inputs(&self) -> Fp {
-        self.0
-    }
-}
-
-impl Provable for FibClaim {
+    type MerkleTree = MatrixMerkleTreeImpl<Sha256>;
     type Witness = FibTrace;
     type Trace = FibTrace;
+
+    fn get_public_inputs(&self) -> <Self::AirConfig as AirConfig>::PublicInputs {
+        self.0
+    }
 
     fn generate_trace(&self, witness: FibTrace) -> Self::Trace {
         witness
@@ -220,7 +218,7 @@ fn main() {
     let claim = FibClaim(trace.last_value());
 
     let now = Instant::now();
-    let proof = pollster::block_on(claim.generate_proof(options, trace)).expect("prover failed");
+    let proof = pollster::block_on(claim.prove(options, trace)).expect("prover failed");
     println!("Proof generated in: {:?}", now.elapsed());
 
     let now = Instant::now();

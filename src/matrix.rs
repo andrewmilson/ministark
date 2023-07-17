@@ -18,9 +18,10 @@ use core::ops::Deref;
 use core::ops::DerefMut;
 use core::ops::Index;
 use core::ops::IndexMut;
-use digest::generic_array::GenericArray;
 use digest::Digest;
+use digest::Output;
 use ministark_gpu::prelude::*;
+use ministark_gpu::utils::bit_reverse;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -43,6 +44,22 @@ impl<F: Field> Matrix<F> {
             debug_assert_eq!(row.len(), num_cols);
             for (col, value) in cols.iter_mut().zip(row) {
                 col.push(value);
+            }
+        }
+        Self::new(cols)
+    }
+
+    /// Creates a matrix from row-major list of arrays
+    pub fn from_arrays<const NUM_COLS: usize>(rows: &[[F; NUM_COLS]]) -> Self {
+        let num_rows = rows.len();
+        let num_cols = NUM_COLS;
+        let mut cols = (0..num_cols)
+            .map(|_| Vec::with_capacity_in(num_rows, GpuAllocator))
+            .collect::<Vec<GpuVec<F>>>();
+        // TODO: parallelise
+        for row in rows {
+            for (col, value) in cols.iter_mut().zip(row) {
+                col.push(*value);
             }
         }
         Self::new(cols)
@@ -213,10 +230,10 @@ impl<F: Field> Matrix<F> {
         self.clone().into_evaluations(domain)
     }
 
-    pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {
+    // TODO: remove
+    pub fn hash_rows<D: Digest>(&self) -> Vec<Output<D>> {
         let num_rows = self.num_rows();
-
-        let mut row_hashes = vec![GenericArray::default(); num_rows];
+        let mut row_hashes = vec![Output::<D>::default(); num_rows];
 
         #[cfg(not(feature = "parallel"))]
         let chunk_size = row_hashes.len();
@@ -242,8 +259,12 @@ impl<F: Field> Matrix<F> {
                 }
             });
 
-        MerkleTree::new(row_hashes).expect("failed to construct Merkle tree")
+        row_hashes
     }
+
+    // pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {
+    //     MerkleTree::new(self.hash_rows::<D>()).expect("failed to construct Merkle
+    // tree") }
 
     pub fn evaluate_at<T: Field + for<'a> Add<&'a F, Output = T>>(&self, x: T) -> Vec<T> {
         ark_std::cfg_iter!(self.0)
@@ -259,7 +280,7 @@ impl<F: Field> Matrix<F> {
         }
     }
 
-    fn read_row(&self, row_idx: usize, row: &mut [F]) {
+    pub fn read_row(&self, row_idx: usize, row: &mut [F]) {
         for (column, value) in self.0.iter().zip(row) {
             *value = column[row_idx];
         }
@@ -313,6 +334,12 @@ impl<F: Field> Matrix<F> {
         }
 
         Self::new(vec![accumulator])
+    }
+
+    pub fn bit_reverse_rows(&mut self) {
+        for col in &mut self.0 {
+            bit_reverse(col);
+        }
     }
 
     #[cfg(feature = "gpu")]

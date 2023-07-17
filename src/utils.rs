@@ -18,10 +18,13 @@ use core::ops::Div;
 use core::ops::Mul;
 use core::ops::Neg;
 use core::ptr::NonNull;
+use digest::Digest;
+use digest::Output;
 use num_traits::Pow;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::iter::zip;
+use std::ops::Deref;
 
 #[cfg(feature = "std")]
 pub struct Timer<'a> {
@@ -487,6 +490,75 @@ mod page_aligned_allocator {
         unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
             Global.deallocate(ptr, layout.align_to(PAGE_SIZE).unwrap().pad_to_align());
         }
+    }
+}
+
+/// Wrapper around a digest to implement serialize and deserialize traits
+pub struct SerdeOutput<D: Digest>(Output<D>);
+
+impl<D: Digest> From<SerdeOutput<D>> for Output<D> {
+    #[inline]
+    fn from(value: SerdeOutput<D>) -> Self {
+        value.0
+    }
+}
+
+impl<D: Digest> From<Output<D>> for SerdeOutput<D> {
+    #[inline]
+    fn from(value: Output<D>) -> Self {
+        SerdeOutput::new(value)
+    }
+}
+
+impl<D: Digest> SerdeOutput<D> {
+    #[inline]
+    pub const fn new(hash: Output<D>) -> Self {
+        Self(hash)
+    }
+}
+
+impl<D: Digest> Clone for SerdeOutput<D> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<D: Digest> CanonicalSerialize for SerdeOutput<D> {
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.0.serialize_with_mode(writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        (*self.0).serialized_size(compress)
+    }
+}
+
+impl<D: Digest> Valid for SerdeOutput<D> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        Ok(())
+    }
+}
+
+impl<D: Digest> CanonicalDeserialize for SerdeOutput<D> {
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let bytes = Vec::deserialize_with_mode(reader, compress, validate)?;
+        Ok(Self(Output::<D>::from_iter(bytes)))
+    }
+}
+
+impl<D: Digest> Deref for SerdeOutput<D> {
+    type Target = Output<D>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
