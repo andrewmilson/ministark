@@ -221,6 +221,16 @@ impl<F: Field> Matrix<F> {
         return self.into_evaluations_gpu(domain);
     }
 
+    pub fn into_bit_reversed_evaluations(self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
+        let mut evaluations = self.into_evaluations(domain);
+        evaluations.bit_reverse_rows();
+        evaluations
+    }
+
     /// Evaluates the columns of the matrix
     pub fn evaluate(&self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
     where
@@ -228,6 +238,14 @@ impl<F: Field> Matrix<F> {
         F::FftField: FftField,
     {
         self.clone().into_evaluations(domain)
+    }
+
+    pub fn bit_reversed_evaluate(&self, domain: Radix2EvaluationDomain<F::FftField>) -> Self
+    where
+        F: GpuField + DomainCoeff<F::FftField>,
+        F::FftField: FftField,
+    {
+        self.clone().into_bit_reversed_evaluations(domain)
     }
 
     // TODO: remove
@@ -337,9 +355,7 @@ impl<F: Field> Matrix<F> {
     }
 
     pub fn bit_reverse_rows(&mut self) {
-        for col in &mut self.0 {
-            bit_reverse(col);
-        }
+        ark_std::cfg_iter_mut!(self.0).for_each(|col| bit_reverse(col))
     }
 
     #[cfg(feature = "gpu")]

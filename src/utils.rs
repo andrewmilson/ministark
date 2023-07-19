@@ -23,6 +23,7 @@ use digest::Output;
 use num_traits::Pow;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::fmt::Debug;
 use std::iter::zip;
 use std::ops::Deref;
 
@@ -495,6 +496,18 @@ mod page_aligned_allocator {
 
 /// Wrapper around a digest to implement serialize and deserialize traits
 pub struct SerdeOutput<D: Digest>(Output<D>);
+
+impl<D: Digest> PartialEq for SerdeOutput<D> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<D: Digest> Debug for SerdeOutput<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("SerdeOutput").field(&self.0).finish()
+    }
+}
 
 impl<D: Digest> From<SerdeOutput<D>> for Output<D> {
     #[inline]

@@ -49,7 +49,7 @@ pub fn default_prove<S: Stark>(
     let base_trace = trace.base_columns();
     assert_eq!(S::AirConfig::NUM_BASE_COLUMNS, base_trace.num_cols());
     let base_trace_polys = base_trace.interpolate(trace_xs);
-    let base_trace_lde = base_trace_polys.evaluate(lde_xs);
+    let mut base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
     let base_trace_tree = S::MerkleTree::from_matrix(&base_trace_lde);
     channel.commit_base_trace(base_trace_tree.root());
     let num_challenges = air.num_challenges();
@@ -62,7 +62,9 @@ pub fn default_prove<S: Stark>(
     let num_extension_cols = extension_trace.as_ref().map_or(0, Matrix::num_cols);
     assert_eq!(S::AirConfig::NUM_EXTENSION_COLUMNS, num_extension_cols);
     let extension_trace_polys = extension_trace.as_ref().map(|t| t.interpolate(trace_xs));
-    let extension_trace_lde = extension_trace_polys.as_ref().map(|p| p.evaluate(lde_xs));
+    let mut extension_trace_lde = extension_trace_polys
+        .as_ref()
+        .map(|p| p.bit_reversed_evaluate(lde_xs));
     let extension_trace_tree = extension_trace_lde.as_ref().map(S::MerkleTree::from_matrix);
     if let Some(t) = extension_trace_tree.as_ref() {
         channel.commit_extension_trace(t.root());
@@ -79,6 +81,9 @@ pub fn default_prove<S: Stark>(
     let x_lde = lde_xs.elements().collect::<Vec<_>>();
     println!("X lde: {:?}", now.elapsed());
     let now = Instant::now();
+    // TODO: improve
+    base_trace_lde.bit_reverse_rows();
+    extension_trace_lde.as_mut().map(Matrix::bit_reverse_rows);
     let composition_evals = S::AirConfig::eval_constraint(
         air.composition_constraint(),
         &challenges,
@@ -89,6 +94,8 @@ pub fn default_prove<S: Stark>(
         &base_trace_lde,
         extension_trace_lde.as_ref(),
     );
+    base_trace_lde.bit_reverse_rows();
+    extension_trace_lde.as_mut().map(Matrix::bit_reverse_rows);
     println!("Constraint eval: {:?}", now.elapsed());
     let now = Instant::now();
     let composition_poly = composition_evals.into_polynomials(air.lde_domain());
@@ -100,7 +107,7 @@ pub fn default_prove<S: Stark>(
             .map(<[S::Fq]>::to_vec)
             .collect(),
     );
-    let composition_trace_lde = composition_trace_polys.evaluate(air.lde_domain());
+    let composition_trace_lde = composition_trace_polys.bit_reversed_evaluate(air.lde_domain());
     let composition_trace_tree = S::MerkleTree::from_matrix(&composition_trace_lde);
 
     channel.commit_composition_trace(composition_trace_tree.root());
@@ -121,7 +128,7 @@ pub fn default_prove<S: Stark>(
 
     let deep_coeffs = this.gen_deep_coeffs(&mut channel.public_coin, &air);
     let deep_composition_poly = deep_poly_composer.into_deep_poly(deep_coeffs);
-    let deep_composition_lde = deep_composition_poly.into_evaluations(lde_xs);
+    let deep_composition_lde = deep_composition_poly.into_bit_reversed_evaluations(lde_xs);
     println!("Deep composition: {:?}", now.elapsed());
 
     let now = Instant::now();

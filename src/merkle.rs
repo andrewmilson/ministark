@@ -10,6 +10,7 @@ use digest::Output;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use snafu::Snafu;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
 /// Merkle tree error
@@ -64,7 +65,41 @@ pub struct MerkleProof<C: MerkleTreeConfig> {
     leaf: C::Leaf,
 }
 
+impl<C: MerkleTreeConfig> Debug for MerkleProof<C>
+where
+    C::Leaf: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MerkleProof")
+            .field("path", &self.path)
+            .field("sibling", &self.sibling)
+            .field("leaf", &self.leaf)
+            .finish()
+    }
+}
+
+impl<C: MerkleTreeConfig> PartialEq for MerkleProof<C>
+where
+    C::Leaf: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        (&self.path, &self.leaf, &self.sibling) == (&other.path, &other.leaf, &other.sibling)
+    }
+}
+
 impl<C: MerkleTreeConfig> MerkleProof<C> {
+    pub fn new(leaf: C::Leaf, sibling: C::Leaf, path: Vec<SerdeOutput<C::Digest>>) -> Self {
+        Self {
+            path,
+            sibling,
+            leaf,
+        }
+    }
+
+    pub fn height(&self) -> usize {
+        self.path.len() + 1
+    }
+
     pub fn path(&self) -> &[SerdeOutput<C::Digest>] {
         &self.path
     }

@@ -20,7 +20,7 @@ use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
-use digest::Output;
+use ministark_gpu::utils::bit_reverse_index;
 use snafu::Snafu;
 
 #[allow(clippy::too_many_lines)]
@@ -237,10 +237,12 @@ pub fn deep_composition_evaluations<A: AirConfig>(
     let trace_domain = air.trace_domain();
     let g = trace_domain.group_gen();
     let g_inv = trace_domain.group_gen_inv();
+    let z_n = z.pow([air.ce_blowup_factor() as u64]);
     let lde_domain = air.lde_domain();
+    let lde_domain_size = lde_domain.size();
     let xs = query_positions
         .iter()
-        .map(|pos| lde_domain.element(*pos))
+        .map(|pos| lde_domain.element(bit_reverse_index(lde_domain_size, *pos)))
         .collect::<Vec<A::Fp>>();
 
     let mut evals = vec![A::Fq::zero(); query_positions.len()];
@@ -249,8 +251,8 @@ pub fn deep_composition_evaluations<A: AirConfig>(
     let base_column_range = 0..A::NUM_BASE_COLUMNS;
     let extension_column_range = A::NUM_BASE_COLUMNS..num_columns;
 
-    // add execution trace
     for (i, (&x, eval)) in xs.iter().zip(&mut evals).enumerate() {
+        // execution trace
         for (j, ((column, offset), ood_eval)) in execution_trace_ood_evals_map.iter().enumerate() {
             let trace_value = if base_column_range.contains(column) {
                 A::Fq::from(base_trace_rows[i][*column])
@@ -264,14 +266,11 @@ pub fn deep_composition_evaluations<A: AirConfig>(
             let shift = if *offset >= 0 { g } else { g_inv }.pow([offset.unsigned_abs() as u64]);
             *eval += alpha * (trace_value - ood_eval) / (A::Fq::from(x) - z * shift);
         }
-    }
 
-    // add composition trace
-    let z_n = z.pow([air.ce_blowup_factor() as u64]);
-    for ((&x, row), eval) in xs.iter().zip(composition_trace_rows).zip(&mut evals) {
-        for (i, value) in row.iter().enumerate() {
-            let alpha = composition_coeffs.composition_trace[i];
-            let ood_eval = composition_trace_ood_evals[i];
+        // composition trace
+        for (j, value) in composition_trace_rows[i].iter().enumerate() {
+            let alpha = composition_coeffs.composition_trace[j];
+            let ood_eval = composition_trace_ood_evals[j];
             *eval += alpha * (*value - ood_eval) / (A::Fq::from(x) - z_n);
         }
     }

@@ -115,7 +115,7 @@ impl<'a, S: Stark> ProverChannel<'a, S> {
             options: self.air.options(),
             trace_len: self.air.trace_len(),
             base_trace_commitment: self.base_trace_commitment.into(),
-            extension_trace_commitment: self.extension_trace_commitment.map(|o| o.into()),
+            extension_trace_commitment: self.extension_trace_commitment.map(Into::into),
             composition_trace_commitment: self.composition_trace_commitment.into(),
             execution_trace_ood_evals: self.execution_trace_ood_evals,
             composition_trace_ood_evals: self.composition_trace_ood_evals,
