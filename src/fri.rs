@@ -21,9 +21,12 @@ use ark_serialize::CanonicalSerialize;
 use digest::Digest;
 use digest::Output;
 use ministark_gpu::prelude::*;
+use ministark_gpu::utils::bit_reverse;
+use ministark_gpu::utils::bit_reverse_index;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use snafu::Snafu;
+use std::collections::BTreeSet;
 use std::iter::zip;
 use std::marker::PhantomData;
 
@@ -165,14 +168,10 @@ where
     pub fn into_proof(self, positions: &[usize]) -> FriProof<F, D, M> {
         let folding_factor = self.options.folding_factor;
         // let (last_layer, initial_layers) = self.layers.split_last().unwrap();
-        let mut domain_size = self.layers[0].evaluations.num_rows() * folding_factor;
         let mut proof_layers = Vec::new();
         let mut positions = positions.to_vec();
         for layer in &self.layers {
-            let num_eval_chunks = domain_size / folding_factor;
-            positions = fold_positions(&positions, num_eval_chunks);
-            domain_size = num_eval_chunks;
-
+            positions = fold_positions(&positions, folding_factor);
             proof_layers.push(match folding_factor {
                 2 => query_layer::<F, D, M, 2>(layer, &positions),
                 4 => query_layer::<F, D, M, 4>(layer, &positions),
@@ -205,12 +204,12 @@ where
         assert!(self.layers.is_empty());
         // let codeword = evaluations.0[0];
 
-        for _ in 0..self.options.num_layers(evaluations.len()) {
+        for i in 0..self.options.num_layers(evaluations.len()) {
             evaluations = match self.options.folding_factor {
-                2 => self.build_layer::<2>(channel, evaluations),
-                4 => self.build_layer::<4>(channel, evaluations),
-                8 => self.build_layer::<8>(channel, evaluations),
-                16 => self.build_layer::<16>(channel, evaluations),
+                2 => self.build_layer::<2>(channel, evaluations, i),
+                4 => self.build_layer::<4>(channel, evaluations, i),
+                8 => self.build_layer::<8>(channel, evaluations, i),
+                16 => self.build_layer::<16>(channel, evaluations, i),
                 folding_factor => unreachable!("folding factor {folding_factor} not supported"),
             }
         }
@@ -224,6 +223,7 @@ where
         &mut self,
         channel: &mut impl ProverChannel<Field = F, Digest = D>,
         mut evaluations: GpuVec<F>,
+        layer_idx: usize,
     ) -> GpuVec<F> {
         // Each layer requires decommitting to `folding_factor` many evaluations e.g.
         // `folding_factor = 2` decommits to an evaluation for LHS_i and RHS_i
@@ -231,25 +231,31 @@ where
         // committed to in their natural order. If we instead commit to interleaved
         // evaluations i.e. [[LHS0, RHS0], [LHS1, RHS1], ...] LHS_i and RHS_i
         // only require a single merkle path for their decommitment.
-        let interleaved_evals: Vec<[F; N]> = interleave(&evaluations);
-        let matrix = Matrix::from_arrays(&interleaved_evals);
+        // let interleaved_evals: Vec<[F; N]> = interleave(&evaluations);
+
+        // TODO: update docs with bit reversed evals
+        let (interleaved_evals, remainder) = evaluations.as_chunks::<N>();
+        assert!(remainder.is_empty());
+
+        let matrix = Matrix::from_arrays(interleaved_evals);
         let evals_merkle_tree = M::from_matrix(&matrix);
         channel.commit_fri_layer(evals_merkle_tree.root());
-
-        let alpha = channel.draw_fri_alpha();
-        evaluations = apply_drp(
-            evaluations,
-            self.options.domain_offset::<F>(),
-            alpha,
-            self.options.folding_factor,
-        );
 
         self.layers.push(FriLayer {
             tree: evals_merkle_tree,
             evaluations: matrix,
         });
 
-        evaluations
+        // return the next evaluations
+        apply_drp(
+            evaluations,
+            F::FftField::ONE,
+            // self.options
+            //     .domain_offset::<F>()
+            //     .pow([N.pow(layer_idx as u32) as u64]),
+            channel.draw_fri_alpha(),
+            self.options.folding_factor,
+        )
     }
 
     fn set_remainder(
@@ -302,7 +308,7 @@ where
 {
     options: FriOptions,
     layer_commitments: Vec<Output<D>>,
-    layer_alphas: Vec<F>,
+    pub layer_alphas: Vec<F>,
     proof: FriProof<F, D, M>,
     domain: Radix2EvaluationDomain<F::FftField>,
 }
@@ -388,7 +394,7 @@ where
 
         // verify all layers except remainder
         for i in 0..self.options.num_layers(domain_size).saturating_sub(1) {
-            let folded_positions = fold_positions(&positions, domain_size / N);
+            let folded_positions = fold_positions(&positions, N);
             let layer_alpha = layer_alphas.next().unwrap();
             let layer_commitment = layer_commitments.next().unwrap();
 
@@ -405,16 +411,33 @@ where
                     .map_err(|_| VerificationError::LayerCommitmentInvalid { layer: i })?;
             }
 
-            let query_values = get_query_values(rows, &positions, &folded_positions, domain_size);
+            let query_values = get_query_values(rows, &positions, &folded_positions);
             if evaluations != query_values {
                 return Err(VerificationError::InvalidDegreeRespectingProjection { layer: i });
             }
 
+            println!("wow it works");
+
             let polys = rows.iter().zip(&folded_positions).map(|(chunk, position)| {
-                let offset = domain_offset * domain_generator.pow([*position as u64]);
+                let bit_rev_position = bit_reverse_index(domain_size / N, *position);
+                // let offset = domain_offset.pow([N.pow(i as u32) as u64])
+                //     * domain_generator.pow([bit_rev_position as u64]);
+                let offset = domain_generator.pow([bit_rev_position as u64]);
                 let domain = folding_domain.get_coset(offset).unwrap();
-                DensePolynomial::from_coefficients_vec(domain.ifft(chunk))
+                let mut chunk = *chunk;
+                bit_reverse(&mut chunk);
+                let mut coeffs = domain.ifft(&chunk);
+                for coeff in &mut coeffs {
+                    *coeff *= F::from(N as u64);
+                }
+                DensePolynomial::from_coefficients_vec(coeffs)
             });
+
+            if i == 0 {
+                for position in &folded_positions {
+                    println!("folded pos is: {position}");
+                }
+            }
 
             // prepare for next layer
             evaluations = polys.map(|poly| poly.evaluate(&layer_alpha)).collect();
@@ -554,7 +577,7 @@ pub trait ProverChannel {
 //    └────────┴────┴────┴────┴────┘
 // ```
 pub fn apply_drp<F: GpuField + Field + DomainCoeff<F::FftField>>(
-    evals: GpuVec<F>,
+    mut evals: GpuVec<F>,
     domain_offset: F::FftField,
     alpha: F,
     folding_factor: usize,
@@ -564,7 +587,13 @@ where
 {
     let n = evals.len();
     let domain = Radix2EvaluationDomain::new_coset(n, domain_offset).unwrap();
-    let coeffs = ifft(evals, domain);
+    // TODO: integrate bit reverse into fft
+    bit_reverse(&mut evals);
+    let mut coeffs = ifft(evals, domain);
+    let fold_fact = F::from(folding_factor as u64);
+    for coeff in &mut coeffs {
+        *coeff *= fold_fact;
+    }
 
     let alpha_powers = (0..folding_factor)
         .map(|i| alpha.pow([i as u64]))
@@ -585,7 +614,9 @@ where
     let drp_domain = Radix2EvaluationDomain::new_coset(n / folding_factor, drp_offset).unwrap();
 
     // return the drp evals
-    fft(drp_coeffs, drp_domain)
+    let mut evals = fft(drp_coeffs, drp_domain);
+    bit_reverse(&mut evals);
+    evals
 }
 
 // requires ownership when the gpu feature is enabled
@@ -632,32 +663,39 @@ where
     evals.to_vec_in(GpuAllocator)
 }
 
-fn fold_positions(positions: &[usize], max: usize) -> Vec<usize> {
+/// # Panics
+/// Panics is positions are not all unique and sorted
+pub fn fold_positions(positions: &[usize], folding_factor: usize) -> Vec<usize> {
+    assert!(positions.array_windows().all(|[a, b]| a < b));
     let mut res = positions
         .iter()
-        .map(|pos| pos % max)
+        .map(|p| p / folding_factor)
         .collect::<Vec<usize>>();
-    res.sort_unstable();
     res.dedup();
     res
+    // let mut res = positions
+    //     .iter()
+    //     .map(|pos| pos % max)
+    //     .collect::<Vec<usize>>();
+    // res.sort_unstable();
+    // res.dedup();
+    // res
 }
 
 // from winterfell
-fn get_query_values<F: Field, const N: usize>(
+pub fn get_query_values<F: Field, const N: usize>(
     chunks: &[[F; N]],
     positions: &[usize],
     folded_positions: &[usize],
-    domain_size: usize,
 ) -> Vec<F> {
-    let stride_len = domain_size / N;
     positions
         .iter()
         .map(|position| {
             let i = folded_positions
                 .iter()
-                .position(|&v| v == position % stride_len)
+                .position(|&v| v == position / N)
                 .unwrap();
-            chunks[i][position / stride_len]
+            chunks[i][position % N]
         })
         .collect()
 }

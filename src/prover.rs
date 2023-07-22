@@ -17,6 +17,7 @@ use crate::ProofOptions;
 use crate::Trace;
 use alloc::vec::Vec;
 use ark_poly::EvaluationDomain;
+use ark_poly::Radix2EvaluationDomain;
 use std::time::Instant;
 
 #[allow(clippy::too_many_lines)]
@@ -128,6 +129,7 @@ pub fn default_prove<S: Stark>(
 
     let deep_coeffs = this.gen_deep_coeffs(&mut channel.public_coin, &air);
     let deep_composition_poly = deep_poly_composer.into_deep_poly(deep_coeffs);
+    // let deep_xs = Radix2EvaluationDomain::new(lde_xs.size());
     let deep_composition_lde = deep_composition_poly.into_bit_reversed_evaluations(lde_xs);
     println!("Deep composition: {:?}", now.elapsed());
 
