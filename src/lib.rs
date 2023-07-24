@@ -92,7 +92,7 @@ pub struct ProofOptions {
     pub lde_blowup_factor: u8,
     pub grinding_factor: u8,
     pub fri_folding_factor: u8,
-    pub fri_max_remainder_size: u8,
+    pub fri_max_remainder_coeffs: u8,
 }
 
 impl ProofOptions {
@@ -107,7 +107,7 @@ impl ProofOptions {
         lde_blowup_factor: u8,
         grinding_factor: u8,
         fri_folding_factor: u8,
-        fri_max_remainder_size: u8,
+        fri_max_remainder_coeffs: u8,
     ) -> Self {
         assert!(num_queries >= Self::MIN_NUM_QUERIES);
         assert!(num_queries <= Self::MAX_NUM_QUERIES);
@@ -120,7 +120,7 @@ impl ProofOptions {
             lde_blowup_factor,
             grinding_factor,
             fri_folding_factor,
-            fri_max_remainder_size,
+            fri_max_remainder_coeffs,
         }
     }
 
@@ -129,7 +129,7 @@ impl ProofOptions {
         FriOptions::new(
             self.lde_blowup_factor.into(),
             self.fri_folding_factor.into(),
-            self.fri_max_remainder_size.into(),
+            self.fri_max_remainder_coeffs.into(),
         )
     }
 }

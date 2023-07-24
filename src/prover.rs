@@ -16,8 +16,10 @@ use crate::Proof;
 use crate::ProofOptions;
 use crate::Trace;
 use alloc::vec::Vec;
+use ark_ff::Field;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
+use ministark_gpu::utils::bit_reverse;
 use std::time::Instant;
 
 #[allow(clippy::too_many_lines)]
@@ -41,6 +43,9 @@ pub fn default_prove<S: Stark>(
     let mut channel = ProverChannel::<S>::new(&air, public_coin);
     println!("Init air: {:?}", now.elapsed());
 
+    let lde_blowup_factor = air.lde_blowup_factor();
+    let ce_blowup_factor = air.ce_blowup_factor();
+
     // reverse engineering TODOs:
     // 1. don't create leaf hash if row is single item
     // 2. commit to out of order rows
@@ -51,6 +56,8 @@ pub fn default_prove<S: Stark>(
     assert_eq!(S::AirConfig::NUM_BASE_COLUMNS, base_trace.num_cols());
     let base_trace_polys = base_trace.interpolate(trace_xs);
     let mut base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
+    let base_trace_ce_lde =
+        reduduce_blowup_factor(&base_trace_lde, lde_blowup_factor, ce_blowup_factor);
     let base_trace_tree = S::MerkleTree::from_matrix(&base_trace_lde);
     channel.commit_base_trace(base_trace_tree.root());
     let num_challenges = air.num_challenges();
@@ -66,6 +73,9 @@ pub fn default_prove<S: Stark>(
     let mut extension_trace_lde = extension_trace_polys
         .as_ref()
         .map(|p| p.bit_reversed_evaluate(lde_xs));
+    let extension_trace_ce_lde = extension_trace_lde
+        .as_ref()
+        .map(|t| reduduce_blowup_factor(t, lde_blowup_factor, ce_blowup_factor));
     let extension_trace_tree = extension_trace_lde.as_ref().map(S::MerkleTree::from_matrix);
     if let Some(t) = extension_trace_tree.as_ref() {
         channel.commit_extension_trace(t.root());
@@ -79,27 +89,24 @@ pub fn default_prove<S: Stark>(
     let now = Instant::now();
     let num_composition_coeffs = air.num_composition_constraint_coeffs();
     let composition_coeffs = draw_multiple(&mut channel.public_coin, num_composition_coeffs);
-    let x_lde = lde_xs.elements().collect::<Vec<_>>();
+    let ce_lde_xs = air.ce_domain();
+    let x_lde = ce_lde_xs.elements().collect::<Vec<_>>();
     println!("X lde: {:?}", now.elapsed());
     let now = Instant::now();
     // TODO: improve
-    base_trace_lde.bit_reverse_rows();
-    extension_trace_lde.as_mut().map(Matrix::bit_reverse_rows);
     let composition_evals = S::AirConfig::eval_constraint(
         air.composition_constraint(),
         &challenges,
         &hints,
         &composition_coeffs,
-        air.lde_blowup_factor(),
+        air.ce_blowup_factor(),
         x_lde.to_vec_in(GpuAllocator),
-        &base_trace_lde,
-        extension_trace_lde.as_ref(),
+        &base_trace_ce_lde,
+        extension_trace_ce_lde.as_ref(),
     );
-    base_trace_lde.bit_reverse_rows();
-    extension_trace_lde.as_mut().map(Matrix::bit_reverse_rows);
     println!("Constraint eval: {:?}", now.elapsed());
     let now = Instant::now();
-    let composition_poly = composition_evals.into_polynomials(air.lde_domain());
+    let composition_poly = composition_evals.into_polynomials(air.ce_domain());
     let composition_trace_cols = air.ce_blowup_factor();
     let composition_trace_polys = Matrix::from_rows(
         GpuVec::try_from(composition_poly)
@@ -161,4 +168,21 @@ pub fn default_prove<S: Stark>(
 pub enum ProvingError {
     Fail,
     // TODO
+}
+
+// TODO: this is a bit hacky fix
+fn reduduce_blowup_factor<F: Field>(
+    bit_rev_matrix: &Matrix<F>,
+    from_blowup: usize,
+    to_blowup: usize,
+) -> Matrix<F> {
+    let degree_bound = bit_rev_matrix.num_rows() / from_blowup;
+    let n = degree_bound * to_blowup;
+    let mut columns = Vec::new();
+    for column in &bit_rev_matrix.0 {
+        let mut column = column[0..n].to_vec_in(GpuAllocator);
+        bit_reverse(&mut column);
+        columns.push(column);
+    }
+    Matrix::new(columns)
 }

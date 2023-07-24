@@ -216,6 +216,14 @@ impl<C: AirConfig> Air<C> {
         Radix2EvaluationDomain::new_coset(trace_len * lde_blowup_factor, offset).unwrap()
     }
 
+    /// Constraint evaluation domain
+    pub fn ce_domain(&self) -> Radix2EvaluationDomain<C::Fp> {
+        let offset = C::domain_offset();
+        let trace_len = self.trace_len();
+        let blowup_factor = self.ce_blowup_factor();
+        Radix2EvaluationDomain::new_coset(trace_len * blowup_factor, offset).unwrap()
+    }
+
     /// Low degree extension domain
     #[inline]
     pub const fn lde_blowup_factor(&self) -> usize {

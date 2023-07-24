@@ -33,7 +33,7 @@ use std::marker::PhantomData;
 #[derive(Clone, Copy)]
 pub struct FriOptions {
     folding_factor: usize,
-    max_remainder_size: usize,
+    max_remainder_coeffs: usize,
     blowup_factor: usize,
 }
 
@@ -41,18 +41,18 @@ impl FriOptions {
     pub const fn new(
         blowup_factor: usize,
         folding_factor: usize,
-        max_remainder_size: usize,
+        max_remainder_coeffs: usize,
     ) -> Self {
         Self {
             folding_factor,
-            max_remainder_size,
+            max_remainder_coeffs,
             blowup_factor,
         }
     }
 
     pub const fn num_layers(&self, mut domain_size: usize) -> usize {
         let mut num_layers = 0;
-        while domain_size > self.max_remainder_size {
+        while domain_size > self.max_remainder_coeffs * self.blowup_factor {
             domain_size /= self.folding_factor;
             num_layers += 1;
         }
@@ -60,7 +60,7 @@ impl FriOptions {
     }
 
     pub const fn remainder_size(&self, mut domain_size: usize) -> usize {
-        while domain_size > self.max_remainder_size {
+        while domain_size > self.max_remainder_coeffs * self.blowup_factor {
             domain_size /= self.folding_factor;
         }
         domain_size
@@ -265,7 +265,7 @@ where
     ) {
         let domain_size = evaluations.len();
         assert!(domain_size.is_power_of_two());
-        assert!(domain_size <= self.options.max_remainder_size);
+        assert!(domain_size <= self.options.max_remainder_coeffs * self.options.blowup_factor);
         let domain = Radix2EvaluationDomain::new(domain_size).unwrap();
         bit_reverse(&mut evaluations);
         let coeffs = domain.ifft(&evaluations);
