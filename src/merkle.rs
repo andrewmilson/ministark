@@ -54,6 +54,10 @@ pub trait MerkleTreeConfig: Send + Sync + Sized + 'static {
 
     fn hash_leaves(l0: &Self::Leaf, l1: &Self::Leaf) -> Output<Self::Digest>;
 
+    // TODO: remove. This functionality can be achived with a custom digest impl
+    fn pre_process_node_hash(_hash: &mut Output<Self::Digest>) {}
+
+    // TODO: remove this from trait in favour of pre_process_node_hash
     fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Output<Self::Digest>> {
         build_merkle_nodes_default::<Self>(leaves)
     }
@@ -253,6 +257,7 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
         } else {
             C::hash_leaves(&proof.sibling, &proof.leaf)
         };
+        C::pre_process_node_hash(&mut running_hash);
 
         index >>= 1;
         for node in &proof.path {
@@ -264,7 +269,9 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
                 hasher.update(&**node);
                 hasher.update(running_hash);
             }
-            running_hash = hasher.finalize();
+            let mut hash = hasher.finalize();
+            C::pre_process_node_hash(&mut hash);
+            running_hash = hash;
             index >>= 1;
         }
 
@@ -429,7 +436,8 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
                 for j in (0..batch_size).step_by(2) {
                     let lhs = &leaves[leaf_offset + j];
                     let rhs = &leaves[leaf_offset + j + 1];
-                    let hash = C::hash_leaves(lhs, rhs);
+                    let mut hash = C::hash_leaves(lhs, rhs);
+                    C::pre_process_node_hash(&mut hash);
                     nodes[(n + leaf_offset + j) / 2] = hash;
                 }
 
@@ -441,7 +449,9 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
                         let mut hasher = C::Digest::new();
                         hasher.update(&nodes[k * 2]);
                         hasher.update(&nodes[k * 2 + 1]);
-                        nodes[k] = hasher.finalize();
+                        let mut hash = hasher.finalize();
+                        C::pre_process_node_hash(&mut hash);
+                        nodes[k] = hash;
                     }
                     start_idx /= 2;
                     batch_size /= 2;
@@ -455,7 +465,9 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
         let mut hasher = C::Digest::new();
         hasher.update(&nodes[i * 2]);
         hasher.update(&nodes[i * 2 + 1]);
-        nodes[i] = hasher.finalize();
+        let mut hash = hasher.finalize();
+        C::pre_process_node_hash(&mut hash);
+        nodes[i] = hash;
     }
 
     nodes
@@ -468,7 +480,9 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
 
     // generate first layer of nodes from leaf nodes
     for i in 0..n / 2 {
-        nodes[n / 2 + i] = C::hash_leaves(&leaves[i * 2], &leaves[i * 2 + 1]);
+        let mut hash = C::hash_leaves(&leaves[i * 2], &leaves[i * 2 + 1]);
+        C::pre_process_node_hash(&mut hash);
+        nodes[n / 2 + i] = hash;
     }
 
     // generate remaining nodes
@@ -476,7 +490,9 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
         let mut hasher = C::Digest::new();
         hasher.update(&nodes[i * 2]);
         hasher.update(&nodes[i * 2 + 1]);
-        nodes[i] = hasher.finalize();
+        let mut hash = hasher.finalize();
+        C::pre_process_node_hash(&mut hash);
+        nodes[i] = hash;
     }
 
     nodes

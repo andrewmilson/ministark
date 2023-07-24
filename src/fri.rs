@@ -214,7 +214,7 @@ where
             }
         }
 
-        self.set_remainder(channel, &evaluations);
+        self.set_remainder(channel, evaluations);
     }
 
     /// Builds a single layer of the FRI protocol
@@ -261,18 +261,17 @@ where
     fn set_remainder(
         &mut self,
         channel: &mut impl ProverChannel<Field = F, Digest = D>,
-        evaluations: &GpuVec<F>,
+        mut evaluations: GpuVec<F>,
     ) {
         let domain_size = evaluations.len();
         assert!(domain_size.is_power_of_two());
         assert!(domain_size <= self.options.max_remainder_size);
-        let domain_offset = self.options.domain_offset::<F>();
-        let domain = Radix2EvaluationDomain::new_coset(domain_size, domain_offset).unwrap();
-        let coeffs = domain.ifft(evaluations);
+        let domain = Radix2EvaluationDomain::new(domain_size).unwrap();
+        bit_reverse(&mut evaluations);
+        let coeffs = domain.ifft(&evaluations);
         let max_degree = domain_size / self.options.blowup_factor - 1;
         let (remainder_coeffs, zero_coeffs) = coeffs.split_at(max_degree + 1);
-        // TODO;
-        // assert!(zero_coeffs.iter().all(F::is_zero));
+        assert!(zero_coeffs.iter().all(F::is_zero));
         channel.commit_remainder(remainder_coeffs);
         self.remainder_coeffs = remainder_coeffs.to_vec();
     }
