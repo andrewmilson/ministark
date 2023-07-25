@@ -7,12 +7,14 @@ use ministark::air::AirConfig;
 use ministark::constraints::AlgebraicItem;
 use ministark::constraints::Constraint;
 use ministark::constraints::ExecutionTraceColumn;
+use ministark::hash::Sha256HashFn;
 use ministark::hints::Hints;
 use ministark::merkle::MatrixMerkleTreeImpl;
 use ministark::random::PublicCoinImpl;
 use ministark::stark::Stark;
 use ministark::utils::FieldVariant;
 use ministark::utils::GpuAllocator;
+use ministark::utils::SerdeOutput;
 use ministark::Matrix;
 use ministark::ProofOptions;
 use ministark::Trace;
@@ -144,9 +146,10 @@ impl Stark for FibClaim {
     type Fp = Fp;
     type Fq = Fp;
     type AirConfig = FibAirConfig;
-    type Digest = Sha256;
-    type PublicCoin = PublicCoinImpl<Sha256, Fp>;
-    type MerkleTree = MatrixMerkleTreeImpl<Sha256>;
+    type Digest = SerdeOutput<Sha256>;
+    type HashFn = Sha256HashFn;
+    type PublicCoin = PublicCoinImpl<Fp, Sha256HashFn>;
+    type MerkleTree = MatrixMerkleTreeImpl<Sha256HashFn>;
     type Witness = FibTrace;
     type Trace = FibTrace;
 

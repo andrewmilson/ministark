@@ -24,7 +24,8 @@
     const_trait_impl,
     cow_is_borrowed,
     exclusive_range_pattern,
-    vec_into_raw_parts
+    vec_into_raw_parts,
+    return_position_impl_trait_in_trait
 )]
 
 // TODO: make some of these modules private
@@ -40,6 +41,7 @@ pub mod eval_cpu;
 pub mod eval_gpu;
 pub mod expression;
 pub mod fri;
+pub mod hash;
 pub mod hints;
 pub mod matrix;
 pub mod merkle;
@@ -67,9 +69,9 @@ use core::ops::Mul;
 use core::ops::MulAssign;
 use core::ops::Sub;
 use core::ops::SubAssign;
-use digest::Digest;
 use fri::FriOptions;
 use fri::FriProof;
+use hash::Digest;
 pub use matrix::Matrix;
 use merkle::MerkleTree;
 use ministark_gpu::GpuAdd;
@@ -145,9 +147,9 @@ pub struct Proof<
 > {
     pub options: ProofOptions,
     pub trace_len: usize,
-    pub base_trace_commitment: SerdeOutput<D>,
-    pub extension_trace_commitment: Option<SerdeOutput<D>>,
-    pub composition_trace_commitment: SerdeOutput<D>,
+    pub base_trace_commitment: D,
+    pub extension_trace_commitment: Option<D>,
+    pub composition_trace_commitment: D,
     pub fri_proof: FriProof<Fq, D, M>,
     pub pow_nonce: u64,
     pub trace_queries: Queries<Fp, Fq, M::Proof>,

@@ -7,8 +7,6 @@ use crate::trace::Queries;
 use crate::Air;
 use crate::Proof;
 use alloc::vec::Vec;
-use digest::generic_array::GenericArray;
-use digest::Output;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::collections::BTreeSet;
@@ -16,10 +14,10 @@ use std::collections::BTreeSet;
 pub struct ProverChannel<'a, S: Stark> {
     air: &'a Air<S::AirConfig>,
     pub public_coin: S::PublicCoin,
-    base_trace_commitment: Output<S::Digest>,
-    extension_trace_commitment: Option<Output<S::Digest>>,
-    composition_trace_commitment: Output<S::Digest>,
-    fri_layer_commitments: Vec<Output<S::Digest>>,
+    base_trace_commitment: S::Digest,
+    extension_trace_commitment: Option<S::Digest>,
+    composition_trace_commitment: S::Digest,
+    fri_layer_commitments: Vec<S::Digest>,
     fri_remainder_coeffs: Vec<S::Fq>,
     execution_trace_ood_evals: Vec<S::Fq>,
     composition_trace_ood_evals: Vec<S::Fq>,
@@ -33,8 +31,8 @@ impl<'a, S: Stark> ProverChannel<'a, S> {
             air,
             public_coin,
             extension_trace_commitment: None,
-            base_trace_commitment: GenericArray::default(),
-            composition_trace_commitment: GenericArray::default(),
+            base_trace_commitment: S::Digest::default(),
+            composition_trace_commitment: S::Digest::default(),
             execution_trace_ood_evals: Vec::new(),
             composition_trace_ood_evals: Vec::new(),
             fri_layer_commitments: Vec::new(),
@@ -43,18 +41,18 @@ impl<'a, S: Stark> ProverChannel<'a, S> {
         }
     }
 
-    pub fn commit_base_trace(&mut self, commitment: &Output<S::Digest>) {
-        self.public_coin.reseed_with_hash(commitment);
+    pub fn commit_base_trace(&mut self, commitment: &S::Digest) {
+        self.public_coin.reseed_with_digest(commitment);
         self.base_trace_commitment = commitment.clone();
     }
 
-    pub fn commit_extension_trace(&mut self, commitment: &Output<S::Digest>) {
-        self.public_coin.reseed_with_hash(commitment);
+    pub fn commit_extension_trace(&mut self, commitment: &S::Digest) {
+        self.public_coin.reseed_with_digest(commitment);
         self.extension_trace_commitment = Some(commitment.clone());
     }
 
-    pub fn commit_composition_trace(&mut self, commitment: &Output<S::Digest>) {
-        self.public_coin.reseed_with_hash(commitment);
+    pub fn commit_composition_trace(&mut self, commitment: &S::Digest) {
+        self.public_coin.reseed_with_digest(commitment);
         self.composition_trace_commitment = commitment.clone();
     }
 
@@ -131,8 +129,8 @@ impl<'a, S: Stark> fri::ProverChannel for ProverChannel<'a, S> {
     type Digest = S::Digest;
     type Field = S::Fq;
 
-    fn commit_fri_layer(&mut self, commitment: &Output<S::Digest>) {
-        self.public_coin.reseed_with_hash(commitment);
+    fn commit_fri_layer(&mut self, commitment: &S::Digest) {
+        self.public_coin.reseed_with_digest(commitment);
         self.fri_layer_commitments.push(commitment.clone());
     }
 

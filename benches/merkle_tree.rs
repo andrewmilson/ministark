@@ -6,17 +6,17 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
-use digest::Digest;
+use ministark::hash::ElementHashFn;
+use ministark::hash::Sha256HashFn;
 use ministark::merkle::MatrixMerkleTree;
 use ministark::merkle::MatrixMerkleTreeImpl;
 use ministark::utils::GpuAllocator;
 use ministark::Matrix;
 use ministark_gpu::GpuField;
-use sha2::Sha256;
 
 const BENCHMARK_TREE_DEPTH: [usize; 4] = [14, 15, 16, 17];
 
-fn build_merkle_tree_bench<F: GpuField + Field, D: Digest + Send + Sync>(
+fn build_merkle_tree_bench<F: GpuField + Field, H: ElementHashFn<F>>(
     c: &mut Criterion,
     name: &str,
 ) {
@@ -34,13 +34,13 @@ fn build_merkle_tree_bench<F: GpuField + Field, D: Digest + Send + Sync>(
         ]);
 
         group.bench_with_input(BenchmarkId::new("from_matrix", n), &n, |b, _| {
-            b.iter(|| MatrixMerkleTreeImpl::<D>::from_matrix(&matrix))
+            b.iter(|| MatrixMerkleTreeImpl::<H>::from_matrix(&matrix))
         });
     }
 }
 
 fn build_merkle_tree_benches(c: &mut Criterion) {
-    build_merkle_tree_bench::<Fp, Sha256>(c, "Sha256");
+    build_merkle_tree_bench::<Fp, Sha256HashFn>(c, "Sha256");
 }
 
 criterion_group!(benches, build_merkle_tree_benches);

@@ -1,3 +1,4 @@
+use crate::hash::Digest;
 use alloc::vec::Vec;
 use ark_ff::FftField;
 use ark_ff::Field;
@@ -18,8 +19,6 @@ use core::ops::Div;
 use core::ops::Mul;
 use core::ops::Neg;
 use core::ptr::NonNull;
-use digest::Digest;
-use digest::Output;
 use num_traits::Pow;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -495,48 +494,64 @@ mod page_aligned_allocator {
 }
 
 /// Wrapper around a digest to implement serialize and deserialize traits
-pub struct SerdeOutput<D: Digest>(Output<D>);
+pub struct SerdeOutput<D: digest::Digest>(digest::Output<D>);
 
-impl<D: Digest> PartialEq for SerdeOutput<D> {
+impl<D: digest::Digest> Default for SerdeOutput<D> {
+    fn default() -> Self {
+        Self(digest::Output::<D>::default())
+    }
+}
+
+impl<D: digest::Digest> Digest for SerdeOutput<D> {
+    fn as_bytes(&self) -> [u8; 32] {
+        let mut res = [0; 32];
+        res.copy_from_slice(&self.0);
+        res
+    }
+}
+
+impl<D: digest::Digest> Eq for SerdeOutput<D> {}
+
+impl<D: digest::Digest> PartialEq for SerdeOutput<D> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl<D: Digest> Debug for SerdeOutput<D> {
+impl<D: digest::Digest> Debug for SerdeOutput<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("SerdeOutput").field(&self.0).finish()
     }
 }
 
-impl<D: Digest> From<SerdeOutput<D>> for Output<D> {
+impl<D: digest::Digest> From<SerdeOutput<D>> for digest::Output<D> {
     #[inline]
     fn from(value: SerdeOutput<D>) -> Self {
         value.0
     }
 }
 
-impl<D: Digest> From<Output<D>> for SerdeOutput<D> {
+impl<D: digest::Digest> From<digest::Output<D>> for SerdeOutput<D> {
     #[inline]
-    fn from(value: Output<D>) -> Self {
+    fn from(value: digest::Output<D>) -> Self {
         SerdeOutput::new(value)
     }
 }
 
-impl<D: Digest> SerdeOutput<D> {
+impl<D: digest::Digest> SerdeOutput<D> {
     #[inline]
-    pub const fn new(hash: Output<D>) -> Self {
+    pub const fn new(hash: digest::Output<D>) -> Self {
         Self(hash)
     }
 }
 
-impl<D: Digest> Clone for SerdeOutput<D> {
+impl<D: digest::Digest> Clone for SerdeOutput<D> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<D: Digest> CanonicalSerialize for SerdeOutput<D> {
+impl<D: digest::Digest> CanonicalSerialize for SerdeOutput<D> {
     fn serialize_with_mode<W: ark_serialize::Write>(
         &self,
         writer: W,
@@ -550,25 +565,25 @@ impl<D: Digest> CanonicalSerialize for SerdeOutput<D> {
     }
 }
 
-impl<D: Digest> Valid for SerdeOutput<D> {
+impl<D: digest::Digest> Valid for SerdeOutput<D> {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         Ok(())
     }
 }
 
-impl<D: Digest> CanonicalDeserialize for SerdeOutput<D> {
+impl<D: digest::Digest> CanonicalDeserialize for SerdeOutput<D> {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         reader: R,
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
         let bytes = Vec::deserialize_with_mode(reader, compress, validate)?;
-        Ok(Self(Output::<D>::from_iter(bytes)))
+        Ok(Self(digest::Output::<D>::from_iter(bytes)))
     }
 }
 
-impl<D: Digest> Deref for SerdeOutput<D> {
-    type Target = Output<D>;
+impl<D: digest::Digest> Deref for SerdeOutput<D> {
+    type Target = digest::Output<D>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

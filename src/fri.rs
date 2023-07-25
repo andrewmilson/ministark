@@ -1,11 +1,10 @@
+use crate::hash::Digest;
 use crate::merkle;
 use crate::merkle::MatrixMerkleTree;
 use crate::merkle::MerkleTree;
 use crate::random::PublicCoin;
-use crate::utils::interleave;
 use crate::utils::GpuAllocator;
 use crate::utils::GpuVec;
-use crate::utils::SerdeOutput;
 use crate::Matrix;
 use alloc::vec::Vec;
 use ark_ff::FftField;
@@ -18,16 +17,12 @@ use ark_poly::Polynomial;
 use ark_poly::Radix2EvaluationDomain;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use digest::Digest;
-use digest::Output;
 use ministark_gpu::prelude::*;
 use ministark_gpu::utils::bit_reverse;
 use ministark_gpu::utils::bit_reverse_index;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use snafu::Snafu;
-use std::collections::BTreeSet;
-use std::iter::zip;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]
@@ -82,7 +77,7 @@ pub struct FriProof<F: Field, D: Digest, M: MerkleTree> {
     pub remainder_coeffs: Vec<F>,
 }
 
-impl<F: GpuField + Field, D: Digest, M: MerkleTree<Root = Output<D>>> FriProof<F, D, M>
+impl<F: GpuField + Field, D: Digest, M: MerkleTree<Root = D>> FriProof<F, D, M>
 where
     F::FftField: FftField,
 {
@@ -103,22 +98,16 @@ struct FriLayer<F: GpuField, M: MerkleTree> {
 pub struct LayerProof<F: Field, D: Digest, M: MerkleTree> {
     pub flattenend_rows: Vec<F>,
     pub proofs: Vec<M::Proof>,
-    pub commitment: SerdeOutput<D>,
+    pub commitment: D,
 }
 
-impl<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = Output<D>>> LayerProof<F, D, M>
+impl<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = D>> LayerProof<F, D, M>
 where
     F::FftField: FftField,
 {
-    pub fn new<const N: usize>(
-        rows: Vec<[F; N]>,
-        proofs: Vec<M::Proof>,
-        commitment: Output<D>,
-    ) -> Self {
-        let flattenend_rows = rows.into_iter().flatten().collect();
-        let commitment = SerdeOutput::new(commitment);
+    pub fn new<const N: usize>(rows: Vec<[F; N]>, proofs: Vec<M::Proof>, commitment: D) -> Self {
         Self {
-            flattenend_rows,
+            flattenend_rows: rows.into_iter().flatten().collect(),
             proofs,
             commitment,
         }
@@ -151,7 +140,7 @@ pub struct FriProver<F: GpuField, D: Digest, M: MerkleTree> {
 impl<
         F: GpuField + Field + DomainCoeff<F::FftField>,
         D: Digest,
-        M: MatrixMerkleTree<F, Root = Output<D>>,
+        M: MatrixMerkleTree<F, Root = D>,
     > FriProver<F, D, M>
 where
     F::FftField: FftField,
@@ -301,12 +290,12 @@ pub enum VerificationError {
     },
 }
 
-pub struct FriVerifier<F: GpuField + Field, D: Digest, M: MerkleTree<Root = Output<D>>>
+pub struct FriVerifier<F: GpuField + Field, D: Digest, M: MerkleTree<Root = D>>
 where
     F::FftField: FftField,
 {
     options: FriOptions,
-    layer_commitments: Vec<Output<D>>,
+    layer_commitments: Vec<D>,
     pub layer_alphas: Vec<F>,
     proof: FriProof<F, D, M>,
     domain: Radix2EvaluationDomain<F::FftField>,
@@ -315,7 +304,7 @@ where
 impl<
         F: GpuField + Field + DomainCoeff<F::FftField>,
         D: Digest,
-        M: MatrixMerkleTree<F, Root = Output<D>>,
+        M: MatrixMerkleTree<F, Root = D>,
     > FriVerifier<F, D, M>
 where
     F::FftField: FftField,
@@ -337,7 +326,7 @@ where
         for (i, layer) in proof.layers.iter().enumerate() {
             // TODO: batch merkle tree proofs
             // get the merkle root from the first merkle path
-            public_coin.reseed_with_hash(&layer.commitment);
+            public_coin.reseed_with_digest(&layer.commitment);
             let alpha = public_coin.draw();
             layer_alphas.push(alpha);
             layer_commitments.push(layer.commitment.clone().into());
@@ -479,7 +468,7 @@ where
 }
 
 fn verify_remainder<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest, const N: usize>(
-    commitment: &Output<D>,
+    commitment: &D,
     mut remainder_evals: Vec<F>,
     max_degree: usize,
 ) -> Result<(), VerificationError>
@@ -532,7 +521,7 @@ pub trait ProverChannel {
     type Digest: Digest;
     type Field: GpuField;
 
-    fn commit_fri_layer(&mut self, layer_root: &Output<Self::Digest>);
+    fn commit_fri_layer(&mut self, layer_root: &Self::Digest);
 
     fn commit_remainder(&mut self, remainder_coeffs: &[Self::Field]);
 
@@ -699,12 +688,7 @@ pub fn get_query_values<F: Field, const N: usize>(
         .collect()
 }
 
-fn query_layer<
-    F: GpuField + Field,
-    D: Digest,
-    M: MatrixMerkleTree<F, Root = Output<D>>,
-    const N: usize,
->(
+fn query_layer<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = D>, const N: usize>(
     layer: &FriLayer<F, M>,
     positions: &[usize],
 ) -> LayerProof<F, D, M>
