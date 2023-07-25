@@ -408,10 +408,10 @@ fn hash_rows<F: Field, H: ElementHashFn<F>>(matrix: &Matrix<F>) -> Vec<H::Digest
 }
 
 #[cfg(feature = "parallel")]
-fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Output<C::Digest>> {
+fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C::Digest> {
     let n = leaves.len();
     let num_subtrees = core::cmp::min(rayon::current_num_threads().next_power_of_two(), n / 2);
-    let mut nodes = vec![Output::<C::Digest>::default(); n];
+    let mut nodes = vec![C::Digest::default(); n];
 
     // code adapted from winterfell
     rayon::scope(|s| {
@@ -434,11 +434,13 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
                 let mut start_idx = n / 4 + batch_size * i;
                 while start_idx >= num_subtrees {
                     for k in (start_idx..(start_idx + batch_size)).rev() {
-                        let mut hasher = C::Digest::new();
-                        hasher.update(&nodes[k * 2]);
-                        hasher.update(&nodes[k * 2 + 1]);
-                        let mut hash = hasher.finalize();
+                        let mut hash = C::HashFn::merge(&nodes[k * 2], &nodes[k * 2 + 1]);
                         C::pre_process_node_hash(&mut hash);
+                        // let mut hasher = C::Digest::new();
+                        // hasher.update(&nodes[k * 2]);
+                        // hasher.update(&nodes[k * 2 + 1]);
+                        // let mut hash = hasher.finalize();
+                        // C::pre_process_node_hash(&mut hash);
                         nodes[k] = hash;
                     }
                     start_idx /= 2;
@@ -450,11 +452,13 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
 
     // finish the tip of the tree
     for i in (1..num_subtrees).rev() {
-        let mut hasher = C::Digest::new();
-        hasher.update(&nodes[i * 2]);
-        hasher.update(&nodes[i * 2 + 1]);
-        let mut hash = hasher.finalize();
+        let mut hash = C::HashFn::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
         C::pre_process_node_hash(&mut hash);
+        // let mut hasher = C::Digest::new();
+        // hasher.update();
+        // hasher.update();
+        // let mut hash = hasher.finalize();
+        // C::pre_process_node_hash(&mut hash);
         nodes[i] = hash;
     }
 

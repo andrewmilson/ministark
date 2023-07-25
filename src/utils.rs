@@ -25,6 +25,7 @@ use rayon::prelude::*;
 use std::fmt::Debug;
 use std::iter::zip;
 use std::ops::Deref;
+use std::ops::DerefMut;
 
 #[cfg(feature = "std")]
 pub struct Timer<'a> {
@@ -587,6 +588,12 @@ impl<D: digest::Digest> Deref for SerdeOutput<D> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<D: digest::Digest> DerefMut for SerdeOutput<D> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
