@@ -58,6 +58,7 @@ pub fn default_prove<S: Stark>(
     let mut base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
     let base_trace_ce_lde =
         reduduce_blowup_factor(&base_trace_lde, lde_blowup_factor, ce_blowup_factor);
+    println!("made it herre");
     let base_trace_tree = S::MerkleTree::from_matrix(&base_trace_lde);
     channel.commit_base_trace(base_trace_tree.root());
     let num_challenges = air.num_challenges();

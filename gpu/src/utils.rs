@@ -29,8 +29,7 @@ pub fn fill_twiddles<F: ark_ff::FftField>(dst: &mut [F], root: F) {
         });
 }
 
-#[cfg(not(feature = "parallel"))]
-pub fn bit_reverse<T>(v: &mut [T]) {
+pub fn bit_reverse_serial<T>(v: &mut [T]) {
     assert!(v.len().is_power_of_two());
     let n = v.len();
     for i in 0..n {
@@ -41,12 +40,22 @@ pub fn bit_reverse<T>(v: &mut [T]) {
     }
 }
 
+#[cfg(not(feature = "parallel"))]
+pub fn bit_reverse<T>(v: &mut [T]) {
+    bit_reverse_serial(v);
+}
+
 /// From winterfell STARK library
 #[cfg(feature = "parallel")]
 pub fn bit_reverse<T: Send>(v: &mut [T]) {
+    const PARALLEL_THRESHOLD: usize = 1 << 16;
+    if v.len() <= PARALLEL_THRESHOLD {
+        return bit_reverse_serial(v);
+    }
     assert!(v.len().is_power_of_two());
     let n = v.len();
     let num_batches = rayon::current_num_threads().next_power_of_two();
+    assert!(num_batches <= PARALLEL_THRESHOLD);
     let batch_size = n / num_batches;
     rayon::scope(|s| {
         for batch_idx in 0..num_batches {

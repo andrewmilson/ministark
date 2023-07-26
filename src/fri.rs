@@ -411,32 +411,49 @@ where
             }
 
             let query_values = get_query_values(rows, &positions, &folded_positions);
+            // println!("evaluatinos: {:?}", evaluations);
+            // println!("query vals: {:?}", query_values);
+            assert_eq!(evaluations.len(), query_values.len());
+            for (i, (eval, query_val)) in zip(&evaluations, &query_values).enumerate() {
+                assert_eq!(eval, query_val, "mismatch at {i}");
+            }
+
             if evaluations != query_values {
                 return Err(VerificationError::InvalidDegreeRespectingProjection { layer: i });
             }
 
             println!("wow it works");
 
-            let polys = rows.iter().zip(&folded_positions).map(|(chunk, position)| {
-                let bit_rev_position = bit_reverse_index(domain_size / N, *position);
-                // let offset = domain_offset.pow([N.pow(i as u32) as u64])
-                //     * domain_generator.pow([bit_rev_position as u64]);
-                let offset = domain_generator.pow([bit_rev_position as u64]);
-                let domain = folding_domain.get_coset(offset).unwrap();
-                let mut chunk = *chunk;
-                bit_reverse(&mut chunk);
-                let mut coeffs = domain.ifft(&chunk);
-                for coeff in &mut coeffs {
-                    *coeff *= F::from(N as u64);
-                }
-                DensePolynomial::from_coefficients_vec(coeffs)
-            });
+            let mut i = 0;
+            let polys = rows
+                .iter()
+                .zip(&folded_positions)
+                .map(move |(chunk, position)| {
+                    let bit_rev_position = bit_reverse_index(domain_size / N, *position);
+                    // let offset = domain_offset.pow([N.pow(i as u32) as u64])
+                    //     * domain_generator.pow([bit_rev_position as u64]);
+                    let offset = domain_generator.pow([bit_rev_position as u64]);
+                    let domain = folding_domain.get_coset(offset).unwrap();
+                    let mut chunk = *chunk;
+                    if i == 0 {
+                        println!("chunk: {:?}", chunk);
+                        i = 1;
+                    }
+                    bit_reverse(&mut chunk);
+                    let mut coeffs = domain.ifft(&chunk);
+                    for coeff in &mut coeffs {
+                        *coeff *= F::from(N as u64);
+                    }
+                    DensePolynomial::from_coefficients_vec(coeffs)
+                });
 
             if i == 0 {
                 for position in &folded_positions {
                     println!("folded pos is: {position}");
                 }
             }
+
+            println!("LAY ALPHA: {layer_alpha}");
 
             // prepare for next layer
             evaluations = polys.map(|poly| poly.evaluate(&layer_alpha)).collect();
