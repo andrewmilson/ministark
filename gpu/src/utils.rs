@@ -48,8 +48,8 @@ pub fn bit_reverse<T>(v: &mut [T]) {
 /// From winterfell STARK library
 #[cfg(feature = "parallel")]
 pub fn bit_reverse<T: Send>(v: &mut [T]) {
-    const PARALLEL_THRESHOLD: usize = 1 << 16;
-    if v.len() <= PARALLEL_THRESHOLD {
+    const PARALLEL_THRESHOLD: usize = 1 << 17;
+    if v.len() < PARALLEL_THRESHOLD {
         return bit_reverse_serial(v);
     }
     assert!(v.len().is_power_of_two());
