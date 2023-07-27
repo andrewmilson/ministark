@@ -47,19 +47,19 @@ pub fn default_verify<S: Stark>(
     let air = Air::new(trace_len, this.get_public_inputs(), options);
     let mut public_coin = this.gen_public_coin(&air);
 
-    public_coin.reseed_with_hash(&base_trace_commitment);
+    public_coin.reseed_with_digest(&base_trace_commitment);
     let num_challenges = air.num_challenges();
     let challenges = Challenges::new(draw_multiple(&mut public_coin, num_challenges));
     let hints = air.gen_hints(&challenges);
 
     let extension_trace_commitment = extension_trace_commitment.map(|commitment| {
-        public_coin.reseed_with_hash(&commitment);
+        public_coin.reseed_with_digest(&commitment);
         commitment
     });
 
     let num_composition_coeffs = air.num_composition_constraint_coeffs();
     let composition_coeffs = draw_multiple(&mut public_coin, num_composition_coeffs);
-    public_coin.reseed_with_hash(&composition_trace_commitment);
+    public_coin.reseed_with_digest(&composition_trace_commitment);
 
     let z = public_coin.draw();
     for eval in &execution_trace_ood_evals {

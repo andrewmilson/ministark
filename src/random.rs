@@ -1,7 +1,8 @@
+use crate::hash::Digest;
+use crate::hash::ElementHashFn;
+use crate::hash::HashFn;
 use alloc::vec::Vec;
 use ark_ff::Field;
-use digest::Digest;
-use digest::Output;
 use rand::Rng;
 use rand::RngCore;
 use std::collections::BTreeSet;
@@ -11,11 +12,12 @@ use std::marker::PhantomData;
 /// `PublicCoin` trait adapted from Winterfell
 pub trait PublicCoin: Sync + Debug {
     type Digest: Digest;
+    type HashFn: HashFn + ElementHashFn<Self::Field>;
     type Field: Field;
 
-    fn new(digest: Output<Self::Digest>) -> Self;
+    fn new(digest: Self::Digest) -> Self;
 
-    fn reseed_with_hash(&mut self, val: &Output<Self::Digest>);
+    fn reseed_with_digest(&mut self, val: &Self::Digest);
 
     fn reseed_with_field_element(&mut self, val: &Self::Field);
 
@@ -35,14 +37,14 @@ pub trait PublicCoin: Sync + Debug {
     fn verify_proof_of_work(&self, proof_of_work_bits: u8, nonce: u64) -> bool;
 }
 
-pub struct PublicCoinImpl<D: Digest, F: Field> {
-    pub seed: Output<D>,
-    counter: usize,
+pub struct PublicCoinImpl<F: Field, H: HashFn> {
+    pub seed: H::Digest,
+    counter: u64,
     bytes: Vec<u8>,
     _phantom: PhantomData<F>,
 }
 
-impl<D: Digest, F: Field> Debug for PublicCoinImpl<D, F> {
+impl<F: Field, H: HashFn> Debug for PublicCoinImpl<F, H> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PublicCoinImpl")
             .field("seed", &self.seed)
@@ -52,24 +54,22 @@ impl<D: Digest, F: Field> Debug for PublicCoinImpl<D, F> {
     }
 }
 
-impl<D: Digest, F: Field> PublicCoinImpl<D, F> {
+impl<F: Field, H: HashFn> PublicCoinImpl<F, H> {
     /// Updates the state by incrementing the counter and returns hash(seed ||
     /// counter)
-    fn gen_next(&mut self) -> Output<D> {
+    fn gen_next(&mut self) -> H::Digest {
         self.counter += 1;
         self.bytes = Vec::new();
-        let mut hasher = D::new();
-        hasher.update(&self.seed);
-        hasher.update(self.counter.to_be_bytes());
-        hasher.finalize()
+        H::merge_with_int(&self.seed, self.counter)
     }
 }
 
-impl<D: Digest, F: Field> PublicCoin for PublicCoinImpl<D, F> {
-    type Digest = D;
+impl<F: Field, H: ElementHashFn<F>> PublicCoin for PublicCoinImpl<F, H> {
+    type Digest = H::Digest;
+    type HashFn = H;
     type Field = F;
 
-    fn new(digest: Output<D>) -> Self {
+    fn new(digest: H::Digest) -> Self {
         Self {
             seed: digest,
             counter: 0,
@@ -78,40 +78,28 @@ impl<D: Digest, F: Field> PublicCoin for PublicCoinImpl<D, F> {
         }
     }
 
-    fn reseed_with_hash(&mut self, val: &Output<D>) {
-        let mut hasher = D::new();
-        hasher.update(&self.seed);
-        hasher.update(val);
-        self.seed = hasher.finalize();
+    fn reseed_with_digest(&mut self, val: &H::Digest) {
+        self.seed = H::merge(&self.seed, val);
         self.counter = 0;
         self.bytes = Vec::new();
     }
 
     fn reseed_with_field_element(&mut self, val: &Self::Field) {
-        let mut val_bytes = Vec::new();
-        val.serialize_uncompressed(&mut val_bytes).unwrap();
-        let mut hasher = D::new();
-        hasher.update(&self.seed);
-        hasher.update(val_bytes);
-        self.seed = hasher.finalize();
+        let val_digest = H::hash_elements([*val]);
+        self.seed = H::merge(&self.seed, &val_digest);
         self.counter = 0;
         self.bytes = Vec::new();
     }
 
     fn reseed_with_int(&mut self, val: u64) {
-        let mut hasher = D::new();
-        hasher.update(&self.seed);
-        hasher.update(val.to_be_bytes());
-        self.seed = hasher.finalize();
+        self.seed = H::merge_with_int(&self.seed, val);
         self.counter = 0;
         self.bytes = Vec::new();
     }
 
     fn verify_proof_of_work(&self, proof_of_work_bits: u8, nonce: u64) -> bool {
-        let mut hasher = D::new();
-        hasher.update(&self.seed);
-        hasher.update(nonce.to_be_bytes());
-        leading_zeros(&hasher.finalize()) >= u32::from(proof_of_work_bits)
+        let digest = H::merge_with_int(&self.seed, nonce);
+        leading_zeros(&digest.as_bytes()) >= u32::from(proof_of_work_bits)
     }
 
     fn draw(&mut self) -> F {
@@ -123,18 +111,18 @@ impl<D: Digest, F: Field> PublicCoin for PublicCoinImpl<D, F> {
     }
 }
 
-impl<D: Digest, F: Field> Iterator for PublicCoinImpl<D, F> {
+impl<F: Field, H: HashFn> Iterator for PublicCoinImpl<F, H> {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.bytes.is_empty() {
-            self.bytes = self.gen_next().to_vec();
+            self.bytes = self.gen_next().as_bytes().to_vec();
         }
         self.bytes.pop()
     }
 }
 
-impl<D: Digest, F: Field> RngCore for PublicCoinImpl<D, F> {
+impl<F: Field, H: HashFn> RngCore for PublicCoinImpl<F, H> {
     fn next_u32(&mut self) -> u32 {
         let mut bytes = [0; 4];
         self.fill_bytes(&mut bytes);

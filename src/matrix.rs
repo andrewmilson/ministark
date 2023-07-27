@@ -1,5 +1,5 @@
 use crate::constraints::ExecutionTraceColumn;
-use crate::merkle::MerkleTree;
+use crate::hash::ElementHashFn;
 use crate::utils::horner_evaluate;
 use crate::utils::GpuAllocator;
 use crate::utils::GpuVec;
@@ -11,15 +11,12 @@ use ark_ff::Field;
 use ark_poly::domain::DomainCoeff;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
-use ark_serialize::CanonicalSerialize;
 use core::cmp::Ordering;
 use core::ops::Add;
 use core::ops::Deref;
 use core::ops::DerefMut;
 use core::ops::Index;
 use core::ops::IndexMut;
-use digest::Digest;
-use digest::Output;
 use ministark_gpu::prelude::*;
 use ministark_gpu::utils::bit_reverse;
 #[cfg(feature = "parallel")]
@@ -249,9 +246,9 @@ impl<F: Field> Matrix<F> {
     }
 
     // TODO: remove
-    pub fn hash_rows<D: Digest>(&self) -> Vec<Output<D>> {
+    pub fn hash_rows<H: ElementHashFn<F>>(&self) -> Vec<H::Digest> {
         let num_rows = self.num_rows();
-        let mut row_hashes = vec![Output::<D>::default(); num_rows];
+        let mut row_hashes = vec![H::Digest::default(); num_rows];
 
         #[cfg(not(feature = "parallel"))]
         let chunk_size = row_hashes.len();
@@ -267,13 +264,10 @@ impl<F: Field> Matrix<F> {
                 let offset = chunk_size * chunk_offset;
 
                 let mut row_buffer = vec![F::zero(); self.num_cols()];
-                let mut row_bytes = Vec::with_capacity(row_buffer.compressed_size());
 
                 for (i, row_hash) in chunk.iter_mut().enumerate() {
-                    row_bytes.clear();
                     self.read_row(offset + i, &mut row_buffer);
-                    row_buffer.serialize_compressed(&mut row_bytes).unwrap();
-                    *row_hash = D::digest(&row_bytes);
+                    *row_hash = H::hash_elements(row_buffer.iter().copied());
                 }
             });
 

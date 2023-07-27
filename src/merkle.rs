@@ -1,12 +1,12 @@
-use crate::utils::SerdeOutput;
+use crate::hash::Digest;
+use crate::hash::ElementHashFn;
+use crate::hash::HashFn;
 use crate::Matrix;
 use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use ark_serialize::Valid;
-use digest::Digest;
-use digest::Output;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use snafu::Snafu;
@@ -50,21 +50,24 @@ pub trait MerkleTree: Clone {
 
 pub trait MerkleTreeConfig: Send + Sync + Sized + 'static {
     type Digest: Digest;
+    type HashFn: HashFn<Digest = Self::Digest>;
     type Leaf: CanonicalDeserialize + CanonicalSerialize + Clone + Send + Sync + Sized + 'static;
 
-    fn hash_leaves(l0: &Self::Leaf, l1: &Self::Leaf) -> Output<Self::Digest>;
+    fn hash_leaves(l0: &Self::Leaf, l1: &Self::Leaf) -> Self::Digest;
 
+    /// Pre-processes a node hash.
+    /// This can be used for applying a mask to the digest.
     // TODO: remove. This functionality can be achived with a custom digest impl
-    fn pre_process_node_hash(_hash: &mut Output<Self::Digest>) {}
+    fn pre_process_node_hash(_hash: &mut Self::Digest) {}
 
     // TODO: remove this from trait in favour of pre_process_node_hash
-    fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Output<Self::Digest>> {
+    fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Self::Digest> {
         build_merkle_nodes_default::<Self>(leaves)
     }
 }
 
 pub struct MerkleProof<C: MerkleTreeConfig> {
-    path: Vec<SerdeOutput<C::Digest>>,
+    path: Vec<C::Digest>,
     sibling: C::Leaf,
     leaf: C::Leaf,
 }
@@ -92,7 +95,7 @@ where
 }
 
 impl<C: MerkleTreeConfig> MerkleProof<C> {
-    pub fn new(leaf: C::Leaf, sibling: C::Leaf, path: Vec<SerdeOutput<C::Digest>>) -> Self {
+    pub fn new(leaf: C::Leaf, sibling: C::Leaf, path: Vec<C::Digest>) -> Self {
         Self {
             path,
             sibling,
@@ -104,7 +107,7 @@ impl<C: MerkleTreeConfig> MerkleProof<C> {
         self.path.len() + 1
     }
 
-    pub fn path(&self) -> &[SerdeOutput<C::Digest>] {
+    pub fn path(&self) -> &[C::Digest] {
         &self.path
     }
 
@@ -176,7 +179,7 @@ impl<C: MerkleTreeConfig> CanonicalDeserialize for MerkleProof<C> {
 /// +   +   +   +  <- leaves
 /// ```
 pub struct MerkleTreeImpl<C: MerkleTreeConfig> {
-    pub nodes: Vec<Output<C::Digest>>,
+    pub nodes: Vec<C::Digest>,
     pub leaves: Vec<C::Leaf>,
 }
 
@@ -213,9 +216,9 @@ impl<C: MerkleTreeConfig> MerkleTreeImpl<C> {
 
 impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
     type Proof = MerkleProof<C>;
-    type Root = Output<C::Digest>;
+    type Root = C::Digest;
 
-    fn root(&self) -> &Output<C::Digest> {
+    fn root(&self) -> &C::Digest {
         &self.nodes[1]
     }
 
@@ -235,7 +238,7 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
         let mut path = Vec::new();
         let mut index = (index + self.nodes.len()) >> 1;
         while index > 1 {
-            path.push(SerdeOutput::new(self.nodes[index ^ 1].clone()));
+            path.push(self.nodes[index ^ 1].clone());
             index >>= 1;
         }
 
@@ -246,11 +249,7 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
         })
     }
 
-    fn verify(
-        root: &Output<C::Digest>,
-        proof: &MerkleProof<C>,
-        mut index: usize,
-    ) -> Result<(), Error> {
+    fn verify(root: &C::Digest, proof: &MerkleProof<C>, mut index: usize) -> Result<(), Error> {
         // hash the leaves
         let mut running_hash = if index % 2 == 0 {
             C::hash_leaves(&proof.leaf, &proof.sibling)
@@ -261,15 +260,11 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
 
         index >>= 1;
         for node in &proof.path {
-            let mut hasher = C::Digest::new();
-            if index % 2 == 0 {
-                hasher.update(running_hash);
-                hasher.update(&**node);
+            let mut hash = if index % 2 == 0 {
+                C::HashFn::merge(&running_hash, &node)
             } else {
-                hasher.update(&**node);
-                hasher.update(running_hash);
-            }
-            let mut hash = hasher.finalize();
+                C::HashFn::merge(&node, &running_hash)
+            };
             C::pre_process_node_hash(&mut hash);
             running_hash = hash;
             index >>= 1;
@@ -296,31 +291,29 @@ pub trait MatrixMerkleTree<T>: MerkleTree + Sized {
     ) -> Result<(), Error>;
 }
 
-pub struct HashedLeafConfig<D: Digest>(PhantomData<D>);
+pub struct HashedLeafConfig<H: HashFn>(PhantomData<H>);
 
-impl<D: Digest> Clone for HashedLeafConfig<D> {
+impl<H: HashFn> Clone for HashedLeafConfig<H> {
     fn clone(&self) -> Self {
         Self(PhantomData)
     }
 }
 
-impl<D: Digest + Send + Sync + 'static> MerkleTreeConfig for HashedLeafConfig<D> {
-    type Digest = D;
-    type Leaf = SerdeOutput<D>;
+impl<H: HashFn> MerkleTreeConfig for HashedLeafConfig<H> {
+    type Digest = H::Digest;
+    type HashFn = H;
+    type Leaf = H::Digest;
 
-    fn hash_leaves(l0: &Self::Leaf, l1: &Self::Leaf) -> Output<Self::Digest> {
-        let mut hasher = D::new();
-        hasher.update(&**l0);
-        hasher.update(&**l1);
-        hasher.finalize()
+    fn hash_leaves(l0: &H::Digest, l1: &H::Digest) -> H::Digest {
+        H::merge(l0, l1)
     }
 }
 
-pub struct MatrixMerkleTreeImpl<D: Digest + Send + Sync + 'static> {
-    merkle_tree: MerkleTreeImpl<HashedLeafConfig<D>>,
+pub struct MatrixMerkleTreeImpl<H: HashFn> {
+    merkle_tree: MerkleTreeImpl<HashedLeafConfig<H>>,
 }
 
-impl<D: Digest + Send + Sync + 'static> Clone for MatrixMerkleTreeImpl<D> {
+impl<H: HashFn> Clone for MatrixMerkleTreeImpl<H> {
     fn clone(&self) -> Self {
         Self {
             merkle_tree: self.merkle_tree.clone(),
@@ -328,18 +321,18 @@ impl<D: Digest + Send + Sync + 'static> Clone for MatrixMerkleTreeImpl<D> {
     }
 }
 
-impl<D: Digest + Send + Sync + 'static> MatrixMerkleTreeImpl<D> {
-    fn new(leaves: Vec<Output<D>>) -> Result<Self, Error> {
-        let leaves = leaves.into_iter().map(SerdeOutput::new).collect();
+impl<H: HashFn> MatrixMerkleTreeImpl<H> {
+    fn new(leaves: Vec<H::Digest>) -> Result<Self, Error> {
+        assert!(leaves.len().is_power_of_two());
         Ok(Self {
             merkle_tree: MerkleTreeImpl::new(leaves)?,
         })
     }
 }
 
-impl<D: Digest + Send + Sync + 'static> MerkleTree for MatrixMerkleTreeImpl<D> {
-    type Proof = MerkleProof<HashedLeafConfig<D>>;
-    type Root = Output<D>;
+impl<H: HashFn> MerkleTree for MatrixMerkleTreeImpl<H> {
+    type Proof = MerkleProof<HashedLeafConfig<H>>;
+    type Root = H::Digest;
 
     fn root(&self) -> &Self::Root {
         self.merkle_tree.root()
@@ -354,9 +347,11 @@ impl<D: Digest + Send + Sync + 'static> MerkleTree for MatrixMerkleTreeImpl<D> {
     }
 }
 
-impl<D: Digest + Send + Sync + 'static, F: Field> MatrixMerkleTree<F> for MatrixMerkleTreeImpl<D> {
+impl<F: Field, H: ElementHashFn<F> + Send + Sync + 'static> MatrixMerkleTree<F>
+    for MatrixMerkleTreeImpl<H>
+{
     fn from_matrix(m: &Matrix<F>) -> Self {
-        Self::new(hash_rows::<D, F>(m)).unwrap()
+        Self::new(hash_rows::<F, H>(m)).unwrap()
     }
 
     fn prove_row(&self, row_idx: usize) -> Result<Self::Proof, Error> {
@@ -369,8 +364,8 @@ impl<D: Digest + Send + Sync + 'static, F: Field> MatrixMerkleTree<F> for Matrix
         row: &[F],
         proof: &Self::Proof,
     ) -> Result<(), Error> {
-        let row_hash = hash_row::<D, F>(row);
-        if *proof.leaf == row_hash {
+        let row_hash = H::hash_elements(row.iter().copied());
+        if proof.leaf == row_hash {
             <Self as MerkleTree>::verify(root, proof, row_idx)
         } else {
             Err(Error::InvalidProof)
@@ -378,20 +373,17 @@ impl<D: Digest + Send + Sync + 'static, F: Field> MatrixMerkleTree<F> for Matrix
     }
 }
 
-#[inline]
-fn hash_row_with_buffer<D: Digest, F: Field>(row: &[F], buffer: &mut Vec<u8>) -> Output<D> {
-    row.serialize_compressed(&mut *buffer).unwrap();
-    D::digest(buffer)
-}
+// #[inline]
+// fn hash_row_with_buffer<D: Digest, F: Field>(row: &[F], buffer: &mut Vec<u8>)
+// -> Output<D> {     row.serialize_compressed(&mut *buffer).unwrap();
+//     D::digest(buffer)
+// }
+// fn hash_row<F: Field, H: ElementHashFn<F>>(row: &[F]) -> H::Digest {
+// }
 
-fn hash_row<D: Digest, F: Field>(row: &[F]) -> Output<D> {
-    let mut buffer = Vec::new();
-    hash_row_with_buffer::<D, F>(row, &mut buffer)
-}
-
-fn hash_rows<D: Digest, F: Field>(matrix: &Matrix<F>) -> Vec<Output<D>> {
+fn hash_rows<F: Field, H: ElementHashFn<F>>(matrix: &Matrix<F>) -> Vec<H::Digest> {
     let num_rows = matrix.num_rows();
-    let mut row_hashes = vec![Output::<D>::default(); num_rows];
+    let mut row_hashes = vec![H::Digest::default(); num_rows];
 
     #[cfg(not(feature = "parallel"))]
     let chunk_size = row_hashes.len();
@@ -405,14 +397,10 @@ fn hash_rows<D: Digest, F: Field>(matrix: &Matrix<F>) -> Vec<Output<D>> {
         .enumerate()
         .for_each(|(chunk_offset, chunk)| {
             let offset = chunk_size * chunk_offset;
-
             let mut row_buffer = vec![F::zero(); matrix.num_cols()];
-            let mut row_bytes = Vec::with_capacity(row_buffer.compressed_size());
-
             for (i, row_hash) in chunk.iter_mut().enumerate() {
-                row_bytes.clear();
                 matrix.read_row(offset + i, &mut row_buffer);
-                *row_hash = hash_row_with_buffer::<D, F>(&row_buffer, &mut row_bytes);
+                *row_hash = H::hash_elements(row_buffer.iter().copied());
             }
         });
 
@@ -420,10 +408,10 @@ fn hash_rows<D: Digest, F: Field>(matrix: &Matrix<F>) -> Vec<Output<D>> {
 }
 
 #[cfg(feature = "parallel")]
-fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Output<C::Digest>> {
+fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C::Digest> {
     let n = leaves.len();
     let num_subtrees = core::cmp::min(rayon::current_num_threads().next_power_of_two(), n / 2);
-    let mut nodes = vec![Output::<C::Digest>::default(); n];
+    let mut nodes = vec![C::Digest::default(); n];
 
     // code adapted from winterfell
     rayon::scope(|s| {
@@ -446,11 +434,13 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
                 let mut start_idx = n / 4 + batch_size * i;
                 while start_idx >= num_subtrees {
                     for k in (start_idx..(start_idx + batch_size)).rev() {
-                        let mut hasher = C::Digest::new();
-                        hasher.update(&nodes[k * 2]);
-                        hasher.update(&nodes[k * 2 + 1]);
-                        let mut hash = hasher.finalize();
+                        let mut hash = C::HashFn::merge(&nodes[k * 2], &nodes[k * 2 + 1]);
                         C::pre_process_node_hash(&mut hash);
+                        // let mut hasher = C::Digest::new();
+                        // hasher.update(&nodes[k * 2]);
+                        // hasher.update(&nodes[k * 2 + 1]);
+                        // let mut hash = hasher.finalize();
+                        // C::pre_process_node_hash(&mut hash);
                         nodes[k] = hash;
                     }
                     start_idx /= 2;
@@ -462,11 +452,13 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
 
     // finish the tip of the tree
     for i in (1..num_subtrees).rev() {
-        let mut hasher = C::Digest::new();
-        hasher.update(&nodes[i * 2]);
-        hasher.update(&nodes[i * 2 + 1]);
-        let mut hash = hasher.finalize();
+        let mut hash = C::HashFn::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
         C::pre_process_node_hash(&mut hash);
+        // let mut hasher = C::Digest::new();
+        // hasher.update();
+        // hasher.update();
+        // let mut hash = hasher.finalize();
+        // C::pre_process_node_hash(&mut hash);
         nodes[i] = hash;
     }
 
@@ -474,9 +466,9 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
 }
 
 #[cfg(not(feature = "parallel"))]
-fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Output<C::Digest>> {
+fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C::Digest> {
     let n = leaves.len();
-    let mut nodes = vec![Output::<C::Digest>::default(); n];
+    let mut nodes = vec![C::Digest::default(); n];
 
     // generate first layer of nodes from leaf nodes
     for i in 0..n / 2 {
@@ -487,10 +479,7 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<Ou
 
     // generate remaining nodes
     for i in (1..n / 2).rev() {
-        let mut hasher = C::Digest::new();
-        hasher.update(&nodes[i * 2]);
-        hasher.update(&nodes[i * 2 + 1]);
-        let mut hash = hasher.finalize();
+        let mut hash = C::HashFn::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
         C::pre_process_node_hash(&mut hash);
         nodes[i] = hash;
     }
@@ -504,9 +493,10 @@ mod tests {
     use super::MerkleTree;
     use super::MerkleTreeConfig;
     use super::MerkleTreeImpl;
+    use crate::hash::HashFn;
+    use crate::hash::Sha256HashFn;
     use crate::utils::SerdeOutput;
     use digest::Digest;
-    use digest::Output;
     use sha2::Sha256;
 
     #[test]
@@ -553,28 +543,24 @@ mod tests {
     struct HashedLeafConfig;
 
     impl MerkleTreeConfig for HashedLeafConfig {
-        type Digest = Sha256;
+        type Digest = SerdeOutput<Sha256>;
+        type HashFn = Sha256HashFn;
         type Leaf = SerdeOutput<Sha256>;
 
-        fn hash_leaves(l0: &SerdeOutput<Sha256>, l1: &SerdeOutput<Sha256>) -> Output<Sha256> {
-            let mut hasher = Sha256::new();
-            hasher.update(&**l0);
-            hasher.update(&**l1);
-            hasher.finalize()
+        fn hash_leaves(l0: &SerdeOutput<Sha256>, l1: &SerdeOutput<Sha256>) -> SerdeOutput<Sha256> {
+            Sha256HashFn::merge(l0, l1)
         }
     }
 
     struct UnhashedLeafConfig;
 
     impl MerkleTreeConfig for UnhashedLeafConfig {
-        type Digest = Sha256;
+        type Digest = SerdeOutput<Sha256>;
+        type HashFn = Sha256HashFn;
         type Leaf = u32;
 
-        fn hash_leaves(l0: &u32, l1: &u32) -> Output<Sha256> {
-            let mut hasher = Sha256::new();
-            hasher.update(l0.to_be_bytes());
-            hasher.update(l1.to_be_bytes());
-            hasher.finalize()
+        fn hash_leaves(l0: &u32, l1: &u32) -> SerdeOutput<Sha256> {
+            Sha256HashFn::hash([l0.to_be_bytes(), l1.to_be_bytes()].concat())
         }
     }
 }

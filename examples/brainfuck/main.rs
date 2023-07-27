@@ -3,9 +3,11 @@
 use air::BrainfuckAirConfig;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use ministark::hash::Sha256HashFn;
 use ministark::merkle::MatrixMerkleTreeImpl;
 use ministark::random::PublicCoinImpl;
 use ministark::stark::Stark;
+use ministark::utils::SerdeOutput;
 use ministark::Proof;
 use ministark::ProofOptions;
 use ministark::Trace;
@@ -59,9 +61,10 @@ impl Stark for ExecutionInfo {
     type Fp = Fp;
     type Fq = Fq3;
     type AirConfig = BrainfuckAirConfig;
-    type Digest = Sha256;
-    type PublicCoin = PublicCoinImpl<Sha256, Fq3>;
-    type MerkleTree = MatrixMerkleTreeImpl<Sha256>;
+    type Digest = SerdeOutput<Sha256>;
+    type HashFn = Sha256HashFn;
+    type PublicCoin = PublicCoinImpl<Fq3, Sha256HashFn>;
+    type MerkleTree = MatrixMerkleTreeImpl<Sha256HashFn>;
     type Witness = BrainfuckTrace;
     type Trace = BrainfuckTrace;
 
@@ -152,7 +155,7 @@ fn verify(
     let proof_bytes = fs::read(proof_path).unwrap();
     let (execution_info, proof): (
         ExecutionInfo,
-        Proof<Fp, Fq3, Sha256, MatrixMerkleTreeImpl<Sha256>>,
+        Proof<Fp, Fq3, SerdeOutput<Sha256>, MatrixMerkleTreeImpl<Sha256HashFn>>,
     ) = <_>::deserialize_compressed(proof_bytes.as_slice()).unwrap();
     assert_eq!(input.as_bytes(), execution_info.input);
     assert_eq!(output.as_bytes(), execution_info.output);

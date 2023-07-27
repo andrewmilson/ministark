@@ -16,7 +16,8 @@ members = [ ]
 [features]
 default = [ ]
 std = [ "ministark-gpu/std" ]
-asm = [ "sha2/asm" ]
+asm = [ ]
+# asm = [ "sha2/asm" ]
 parallel = [ "dep:rayon", "ark-std/parallel", "ministark-gpu/parallel" ]
 
 # The gpu feature enables miniSTARK to use the GPU for proof generation.

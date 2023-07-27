@@ -2,6 +2,9 @@ use crate::air::AirConfig;
 use crate::challenges::Challenges;
 use crate::composer::DeepCompositionCoeffs;
 use crate::debug::default_validate_constraints;
+use crate::hash::Digest;
+use crate::hash::ElementHashFn;
+use crate::hash::HashFn;
 use crate::hints::Hints;
 use crate::merkle::MatrixMerkleTree;
 use crate::merkle::MerkleTree;
@@ -20,21 +23,24 @@ use crate::Trace;
 use alloc::vec::Vec;
 use ark_ff::FftField;
 use ark_serialize::CanonicalSerialize;
-use digest::Digest;
-use digest::Output;
 use ministark_gpu::GpuFftField;
 
 pub trait Stark: Sized + Send + Sync {
     type Fp: GpuFftField + FftField;
     type Fq: StarkExtensionOf<Self::Fp>;
     type AirConfig: AirConfig<Fp = Self::Fp, Fq = Self::Fq>;
-    type Digest: Digest;
-    type PublicCoin: PublicCoin<Digest = Self::Digest, Field = Self::Fq>;
-    type MerkleTree: MerkleTree<Root = Output<Self::Digest>>
+    type PublicCoin: PublicCoin<Digest = Self::Digest, HashFn = Self::HashFn, Field = Self::Fq>;
+    type MerkleTree: MerkleTree<Root = Self::Digest>
         + MatrixMerkleTree<Self::Fp>
         + MatrixMerkleTree<Self::Fq>;
     type Trace: Trace<Fp = Self::Fp, Fq = Self::Fq>;
+    type HashFn: HashFn<Digest = Self::Digest> + ElementHashFn<Self::Fp> + ElementHashFn<Self::Fq>;
+    type Digest: Digest;
     type Witness;
+    // type Hash: CanonicalSerialize + CanonicalDeserialize;
+    // type Hasher: CryptographicHasher<Self::Fp, Self::Hash>
+    //     + CryptographicHasher<Self::Fq, Self::Hash>
+    //     + CryptographicHasher<u8, Self::Hash>;
 
     fn get_public_inputs(&self) -> <Self::AirConfig as AirConfig>::PublicInputs;
 
@@ -43,7 +49,7 @@ pub trait Stark: Sized + Send + Sync {
         air.public_inputs().serialize_compressed(&mut seed).unwrap();
         air.trace_len().serialize_compressed(&mut seed).unwrap();
         air.options().serialize_compressed(&mut seed).unwrap();
-        PublicCoin::new(Self::Digest::digest(&seed))
+        PublicCoin::new(Self::HashFn::hash(seed))
     }
 
     fn gen_deep_coeffs(
