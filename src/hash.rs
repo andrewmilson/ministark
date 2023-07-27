@@ -4,7 +4,6 @@ use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use core::fmt::Debug;
 use digest::Digest as _;
-use num_traits::ops::bytes;
 use sha2::Sha256;
 
 /// NOTE: ever so slightly modified Hasher trait from Winterfell

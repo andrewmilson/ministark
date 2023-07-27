@@ -18,7 +18,6 @@ use crate::Trace;
 use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_poly::EvaluationDomain;
-use ark_poly::Radix2EvaluationDomain;
 use ministark_gpu::utils::bit_reverse;
 use std::time::Instant;
 
@@ -55,7 +54,7 @@ pub fn default_prove<S: Stark>(
     let base_trace = trace.base_columns();
     assert_eq!(S::AirConfig::NUM_BASE_COLUMNS, base_trace.num_cols());
     let base_trace_polys = base_trace.interpolate(trace_xs);
-    let mut base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
+    let base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
     let base_trace_ce_lde =
         reduduce_blowup_factor(&base_trace_lde, lde_blowup_factor, ce_blowup_factor);
     println!("made it herre");
@@ -71,7 +70,7 @@ pub fn default_prove<S: Stark>(
     let num_extension_cols = extension_trace.as_ref().map_or(0, Matrix::num_cols);
     assert_eq!(S::AirConfig::NUM_EXTENSION_COLUMNS, num_extension_cols);
     let extension_trace_polys = extension_trace.as_ref().map(|t| t.interpolate(trace_xs));
-    let mut extension_trace_lde = extension_trace_polys
+    let extension_trace_lde = extension_trace_polys
         .as_ref()
         .map(|p| p.bit_reversed_evaluate(lde_xs));
     let extension_trace_ce_lde = extension_trace_lde

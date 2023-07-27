@@ -23,6 +23,7 @@ use ministark_gpu::utils::bit_reverse_index;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use snafu::Snafu;
+use std::iter::zip;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]

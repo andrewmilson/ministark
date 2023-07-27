@@ -55,11 +55,6 @@ pub trait MerkleTreeConfig: Send + Sync + Sized + 'static {
 
     fn hash_leaves(l0: &Self::Leaf, l1: &Self::Leaf) -> Self::Digest;
 
-    /// Pre-processes a node hash.
-    /// This can be used for applying a mask to the digest.
-    // TODO: remove. This functionality can be achived with a custom digest impl
-    fn pre_process_node_hash(_hash: &mut Self::Digest) {}
-
     // TODO: remove this from trait in favour of pre_process_node_hash
     fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Self::Digest> {
         build_merkle_nodes_default::<Self>(leaves)
@@ -111,11 +106,11 @@ impl<C: MerkleTreeConfig> MerkleProof<C> {
         &self.path
     }
 
-    pub fn sibling(&self) -> &C::Leaf {
+    pub const fn sibling(&self) -> &C::Leaf {
         &self.sibling
     }
 
-    pub fn leaf(&self) -> &C::Leaf {
+    pub const fn leaf(&self) -> &C::Leaf {
         &self.leaf
     }
 }
@@ -256,17 +251,14 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
         } else {
             C::hash_leaves(&proof.sibling, &proof.leaf)
         };
-        C::pre_process_node_hash(&mut running_hash);
 
         index >>= 1;
         for node in &proof.path {
-            let mut hash = if index % 2 == 0 {
-                C::HashFn::merge(&running_hash, &node)
+            running_hash = if index % 2 == 0 {
+                C::HashFn::merge(&running_hash, node)
             } else {
-                C::HashFn::merge(&node, &running_hash)
+                C::HashFn::merge(node, &running_hash)
             };
-            C::pre_process_node_hash(&mut hash);
-            running_hash = hash;
             index >>= 1;
         }
 
@@ -424,9 +416,7 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C:
                 for j in (0..batch_size).step_by(2) {
                     let lhs = &leaves[leaf_offset + j];
                     let rhs = &leaves[leaf_offset + j + 1];
-                    let mut hash = C::hash_leaves(lhs, rhs);
-                    C::pre_process_node_hash(&mut hash);
-                    nodes[(n + leaf_offset + j) / 2] = hash;
+                    nodes[(n + leaf_offset + j) / 2] = C::hash_leaves(lhs, rhs);
                 }
 
                 // generate remaining nodes
@@ -434,14 +424,7 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C:
                 let mut start_idx = n / 4 + batch_size * i;
                 while start_idx >= num_subtrees {
                     for k in (start_idx..(start_idx + batch_size)).rev() {
-                        let mut hash = C::HashFn::merge(&nodes[k * 2], &nodes[k * 2 + 1]);
-                        C::pre_process_node_hash(&mut hash);
-                        // let mut hasher = C::Digest::new();
-                        // hasher.update(&nodes[k * 2]);
-                        // hasher.update(&nodes[k * 2 + 1]);
-                        // let mut hash = hasher.finalize();
-                        // C::pre_process_node_hash(&mut hash);
-                        nodes[k] = hash;
+                        nodes[k] = C::HashFn::merge(&nodes[k * 2], &nodes[k * 2 + 1]);
                     }
                     start_idx /= 2;
                     batch_size /= 2;
@@ -452,14 +435,7 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C:
 
     // finish the tip of the tree
     for i in (1..num_subtrees).rev() {
-        let mut hash = C::HashFn::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
-        C::pre_process_node_hash(&mut hash);
-        // let mut hasher = C::Digest::new();
-        // hasher.update();
-        // hasher.update();
-        // let mut hash = hasher.finalize();
-        // C::pre_process_node_hash(&mut hash);
-        nodes[i] = hash;
+        nodes[i] = C::HashFn::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
     }
 
     nodes
@@ -472,16 +448,12 @@ fn build_merkle_nodes_default<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C:
 
     // generate first layer of nodes from leaf nodes
     for i in 0..n / 2 {
-        let mut hash = C::hash_leaves(&leaves[i * 2], &leaves[i * 2 + 1]);
-        C::pre_process_node_hash(&mut hash);
-        nodes[n / 2 + i] = hash;
+        nodes[n / 2 + i] = C::hash_leaves(&leaves[i * 2], &leaves[i * 2 + 1]);
     }
 
     // generate remaining nodes
     for i in (1..n / 2).rev() {
-        let mut hash = C::HashFn::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
-        C::pre_process_node_hash(&mut hash);
-        nodes[i] = hash;
+        nodes[i] = C::HashFn::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
     }
 
     nodes

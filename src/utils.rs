@@ -535,7 +535,7 @@ impl<D: digest::Digest> From<SerdeOutput<D>> for digest::Output<D> {
 impl<D: digest::Digest> From<digest::Output<D>> for SerdeOutput<D> {
     #[inline]
     fn from(value: digest::Output<D>) -> Self {
-        SerdeOutput::new(value)
+        Self::new(value)
     }
 }
 

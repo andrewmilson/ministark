@@ -349,7 +349,7 @@ impl<F: Field> Matrix<F> {
     }
 
     pub fn bit_reverse_rows(&mut self) {
-        ark_std::cfg_iter_mut!(self.0).for_each(|col| bit_reverse(col))
+        ark_std::cfg_iter_mut!(self.0).for_each(|col| bit_reverse(col));
     }
 
     #[cfg(feature = "gpu")]
