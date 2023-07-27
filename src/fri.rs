@@ -435,10 +435,6 @@ where
                     let offset = domain_generator.pow([bit_rev_position as u64]);
                     let domain = folding_domain.get_coset(offset).unwrap();
                     let mut chunk = *chunk;
-                    if i == 0 {
-                        println!("chunk: {:?}", chunk);
-                        i = 1;
-                    }
                     bit_reverse(&mut chunk);
                     let mut coeffs = domain.ifft(&chunk);
                     for coeff in &mut coeffs {
@@ -452,8 +448,6 @@ where
                     println!("folded pos is: {position}");
                 }
             }
-
-            println!("LAY ALPHA: {layer_alpha}");
 
             // prepare for next layer
             evaluations = polys.map(|poly| poly.evaluate(&layer_alpha)).collect();
