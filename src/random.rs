@@ -19,12 +19,10 @@ pub trait PublicCoin: Sync + Debug {
 
     fn reseed_with_digest(&mut self, val: &Self::Digest);
 
-    fn reseed_with_field_element(&mut self, val: &Self::Field);
+    fn reseed_with_field_elements(&mut self, vals: &[Self::Field]);
 
-    fn reseed_with_field_elements(&mut self, vals: &[Self::Field]) {
-        for val in vals {
-            self.reseed_with_field_element(val);
-        }
+    fn reseed_with_field_element_vector(&mut self, vector: &[Self::Field]) {
+        self.reseed_with_field_elements(vector);
     }
 
     fn reseed_with_int(&mut self, val: u64);
@@ -42,6 +40,15 @@ pub struct PublicCoinImpl<F: Field, H: HashFn> {
     counter: u64,
     bytes: Vec<u8>,
     _phantom: PhantomData<F>,
+}
+
+impl<F: Field, H: ElementHashFn<F>> PublicCoinImpl<F, H> {
+    fn reseed_with_field_element(&mut self, val: &F) {
+        let val_digest = H::hash_elements([*val]);
+        self.seed = H::merge(&self.seed, &val_digest);
+        self.counter = 0;
+        self.bytes = Vec::new();
+    }
 }
 
 impl<F: Field, H: HashFn> Debug for PublicCoinImpl<F, H> {
@@ -84,11 +91,10 @@ impl<F: Field, H: ElementHashFn<F>> PublicCoin for PublicCoinImpl<F, H> {
         self.bytes = Vec::new();
     }
 
-    fn reseed_with_field_element(&mut self, val: &Self::Field) {
-        let val_digest = H::hash_elements([*val]);
-        self.seed = H::merge(&self.seed, &val_digest);
-        self.counter = 0;
-        self.bytes = Vec::new();
+    fn reseed_with_field_elements(&mut self, vals: &[Self::Field]) {
+        for val in vals {
+            self.reseed_with_field_element(val)
+        }
     }
 
     fn reseed_with_int(&mut self, val: u64) {

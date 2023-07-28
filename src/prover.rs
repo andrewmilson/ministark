@@ -131,8 +131,7 @@ pub fn default_prove<S: Stark>(
         composition_trace_polys,
     );
     let (execution_trace_oods, composition_trace_oods) = deep_poly_composer.get_ood_evals();
-    channel.send_execution_trace_ood_evals(execution_trace_oods);
-    channel.send_composition_trace_ood_evals(composition_trace_oods);
+    channel.send_ood_evals(execution_trace_oods, composition_trace_oods);
 
     let deep_coeffs = this.gen_deep_coeffs(&mut channel.public_coin, &air);
     let deep_composition_poly = deep_poly_composer.into_deep_poly(deep_coeffs);

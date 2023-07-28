@@ -59,6 +59,35 @@ pub trait MerkleTreeConfig: Send + Sync + Sized + 'static {
     fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Self::Digest> {
         build_merkle_nodes_default::<Self>(leaves)
     }
+
+    fn verify_proof(
+        root: &Self::Digest,
+        proof: &MerkleProof<Self>,
+        mut index: usize,
+    ) -> Result<(), Error> {
+        // hash the leaves
+        let mut running_hash = if index % 2 == 0 {
+            Self::hash_leaves(&proof.leaf, &proof.sibling)
+        } else {
+            Self::hash_leaves(&proof.sibling, &proof.leaf)
+        };
+
+        index >>= 1;
+        for node in &proof.path {
+            running_hash = if index % 2 == 0 {
+                Self::HashFn::merge(&running_hash, node)
+            } else {
+                Self::HashFn::merge(node, &running_hash)
+            };
+            index >>= 1;
+        }
+
+        if *root == running_hash {
+            Ok(())
+        } else {
+            Err(Error::InvalidProof)
+        }
+    }
 }
 
 pub struct MerkleProof<C: MerkleTreeConfig> {
@@ -244,29 +273,8 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
         })
     }
 
-    fn verify(root: &C::Digest, proof: &MerkleProof<C>, mut index: usize) -> Result<(), Error> {
-        // hash the leaves
-        let mut running_hash = if index % 2 == 0 {
-            C::hash_leaves(&proof.leaf, &proof.sibling)
-        } else {
-            C::hash_leaves(&proof.sibling, &proof.leaf)
-        };
-
-        index >>= 1;
-        for node in &proof.path {
-            running_hash = if index % 2 == 0 {
-                C::HashFn::merge(&running_hash, node)
-            } else {
-                C::HashFn::merge(node, &running_hash)
-            };
-            index >>= 1;
-        }
-
-        if *root == running_hash {
-            Ok(())
-        } else {
-            Err(Error::InvalidProof)
-        }
+    fn verify(root: &C::Digest, proof: &MerkleProof<C>, index: usize) -> Result<(), Error> {
+        C::verify_proof(root, proof, index)
     }
 }
 

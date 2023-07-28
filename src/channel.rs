@@ -60,18 +60,15 @@ impl<'a, S: Stark> ProverChannel<'a, S> {
         self.public_coin.draw()
     }
 
-    pub fn send_execution_trace_ood_evals(&mut self, evals: Vec<S::Fq>) {
-        for eval in &evals {
-            self.public_coin.reseed_with_field_element(eval);
-        }
-        self.execution_trace_ood_evals = evals;
-    }
-
-    pub fn send_composition_trace_ood_evals(&mut self, evals: Vec<S::Fq>) {
-        for eval in &evals {
-            self.public_coin.reseed_with_field_element(eval);
-        }
-        self.composition_trace_ood_evals = evals;
+    pub fn send_ood_evals(
+        &mut self,
+        execution_trace_oods: Vec<S::Fq>,
+        composition_trace_oods: Vec<S::Fq>,
+    ) {
+        let ood_evals = [execution_trace_oods.clone(), composition_trace_oods.clone()].concat();
+        self.public_coin.reseed_with_field_elements(&ood_evals);
+        self.execution_trace_ood_evals = execution_trace_oods;
+        self.composition_trace_ood_evals = composition_trace_oods;
     }
 
     pub fn grind_fri_commitments(&mut self) {
