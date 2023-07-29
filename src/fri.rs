@@ -344,7 +344,7 @@ where
         }
 
         println!("remainder alpha {}", layer_alphas.last().unwrap());
-        public_coin.reseed_with_field_elements(&proof.remainder_coeffs);
+        public_coin.reseed_with_field_element_vector(&proof.remainder_coeffs);
 
         // TODO: add back in
         // let remainder_root =

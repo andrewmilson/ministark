@@ -133,7 +133,7 @@ impl<'a, S: Stark> fri::ProverChannel for ProverChannel<'a, S> {
 
     fn commit_remainder(&mut self, remainder_coeffs: &[Self::Field]) {
         self.public_coin
-            .reseed_with_field_elements(remainder_coeffs);
+            .reseed_with_field_element_vector(remainder_coeffs);
         self.fri_remainder_coeffs = remainder_coeffs.to_vec();
     }
 
