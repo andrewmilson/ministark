@@ -93,7 +93,7 @@ impl<F: Field, H: ElementHashFn<F>> PublicCoin for PublicCoinImpl<F, H> {
 
     fn reseed_with_field_elements(&mut self, vals: &[Self::Field]) {
         for val in vals {
-            self.reseed_with_field_element(val)
+            self.reseed_with_field_element(val);
         }
     }
 

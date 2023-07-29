@@ -150,7 +150,7 @@ pub fn divide_out_point_into<
 }
 
 // TODO: change name/add description
-const GRINDING_CONTRIBUTION_FLOOR: usize = 80;
+const GRINDING_CONTRIBUTION_FLOOR: usize = 60;
 
 // taken from Winterfell
 // also https://github.com/starkware-libs/ethSTARK/blob/master/README.md#7-Measuring-Security
@@ -166,7 +166,7 @@ pub fn conjectured_security_level(
     grinding_factor: usize,
 ) -> usize {
     // compute max security we can get for a given field size
-    let field_security = field_bits - (lde_blowup_factor * trace_len).trailing_zeros() as usize;
+    let field_security = field_bits - (lde_blowup_factor * trace_len).ilog2() as usize;
 
     // compute security we get by executing multiple query rounds
     let security_per_query = lde_blowup_factor.ilog2() as usize;

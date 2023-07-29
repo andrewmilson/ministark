@@ -5,19 +5,24 @@ use crate::constraints::AlgebraicItem;
 use crate::constraints::CompositionItem;
 use crate::fri;
 use crate::fri::FriVerifier;
+use crate::hash::HashFn;
 use crate::hints::Hints;
 use crate::merkle;
 use crate::merkle::MatrixMerkleTree;
 use crate::random::draw_multiple;
 use crate::random::PublicCoin;
 use crate::stark::Stark;
+use crate::utils;
 use crate::utils::horner_evaluate;
 use crate::utils::FieldVariant;
 use crate::Air;
 use crate::Proof;
+use crate::ProofOptions;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
+use ark_ff::BigInteger;
 use ark_ff::Field;
+use ark_ff::PrimeField;
 use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 use ministark_gpu::utils::bit_reverse_index;
@@ -27,8 +32,13 @@ use snafu::Snafu;
 pub fn default_verify<S: Stark>(
     this: &S,
     proof: Proof<S::Fp, S::Fq, S::Digest, S::MerkleTree>,
+    required_security_bits: usize,
 ) -> Result<(), VerificationError> {
     use VerificationError::*;
+
+    if S::security_level(&proof) < required_security_bits {
+        return Err(InvalidProofSecurity);
+    }
 
     let Proof {
         options,
@@ -170,9 +180,28 @@ pub fn default_verify<S: Stark>(
     Ok(fri_verifier.verify(&query_positions, &deep_evaluations)?)
 }
 
+fn conjectured_security_level<F: Field>(
+    comitment_hash_fn_security: usize,
+    proof_options: ProofOptions,
+    trace_len: usize,
+) -> usize {
+    let base_field_bits = <F::BasePrimeField as PrimeField>::MODULUS.num_bits() as usize;
+    let field_bits = F::extension_degree() as usize * base_field_bits;
+    utils::conjectured_security_level(
+        field_bits,
+        comitment_hash_fn_security,
+        proof_options.lde_blowup_factor.into(),
+        trace_len,
+        proof_options.num_queries.into(),
+        proof_options.grinding_factor.into(),
+    )
+}
+
 /// Errors that are returned during verification of a STARK proof
 #[derive(Debug, Snafu)]
 pub enum VerificationError {
+    #[snafu(display("proof params do not satisfy security requirements"))]
+    InvalidProofSecurity,
     #[snafu(display("constraint evaluations at the out-of-domain point are inconsistent"))]
     InconsistentOodConstraintEvaluations,
     #[snafu(context(false))]

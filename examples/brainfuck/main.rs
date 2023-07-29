@@ -50,14 +50,16 @@ enum BrainfuckOptions {
     },
 }
 
+type BrainfuckProof = Proof<Fp, Fq3, SerdeOutput<Sha256>, MatrixMerkleTreeImpl<Sha256HashFn>>;
+
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct ExecutionInfo {
+pub struct BrainfuckClaim {
     pub source_code: String,
     pub input: Vec<u8>,
     pub output: Vec<u8>,
 }
 
-impl Stark for ExecutionInfo {
+impl Stark for BrainfuckClaim {
     type Fp = Fp;
     type Fq = Fq3;
     type AirConfig = BrainfuckAirConfig;
@@ -77,34 +79,38 @@ impl Stark for ExecutionInfo {
     }
 }
 
-fn main() {
-    // proof options for 128 bit security level
+const SECURITY_LEVEL: usize = 128;
+
+/// Proof options for 128 bit security level
+const OPTIONS: ProofOptions = {
     let num_queries = 29;
     let lde_blowup_factor = 16;
     let grinding_factor = 16;
-    let fri_folding_factor = 8;
-    let fri_max_remainder_size = 64;
-    let options = ProofOptions::new(
+    let fri_folding_factor = 16;
+    let fri_max_remainder_size = 8;
+    ProofOptions::new(
         num_queries,
         lde_blowup_factor,
         grinding_factor,
         fri_folding_factor,
         fri_max_remainder_size,
-    );
+    )
+};
 
+fn main() {
     // read command-line args
     match BrainfuckOptions::from_args() {
-        BrainfuckOptions::Prove { src, dst, input } => prove(options, src, input, dst),
+        BrainfuckOptions::Prove { src, dst, input } => prove(src, input, dst),
         BrainfuckOptions::Verify {
             src,
             proof,
             input,
             output,
-        } => verify(options, src, input, output, proof),
+        } => verify(src, input, output, proof),
     }
 }
 
-fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output_path: PathBuf) {
+fn prove(source_code_path: PathBuf, input: String, output_path: PathBuf) {
     let source_code = fs::read_to_string(source_code_path).unwrap();
     let mut output = Vec::new();
 
@@ -121,20 +127,20 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output
         String::from_utf8(output.clone()).unwrap()
     );
 
-    let execution_info = ExecutionInfo {
+    let claim = BrainfuckClaim {
         source_code,
         input: input.into_bytes(),
         output,
     };
 
     let now = Instant::now();
-    let proof = pollster::block_on(execution_info.prove(options, trace)).unwrap();
+    let proof = pollster::block_on(claim.prove(OPTIONS, trace)).unwrap();
     println!("Proof generated in: {:.0?}", now.elapsed());
-    let security_level_bits = proof.conjectured_security_level();
-    println!("Proof security (conjectured): {security_level_bits}bit",);
+    let security_level = BrainfuckClaim::security_level(&proof);
+    println!("Proof security (conjectured): {security_level}bit",);
 
     let mut proof_bytes = Vec::new();
-    (execution_info, proof)
+    (claim, proof)
         .serialize_compressed(&mut proof_bytes)
         .unwrap();
     println!("Proof size: {:?}KB", proof_bytes.len() / 1024);
@@ -144,25 +150,18 @@ fn prove(options: ProofOptions, source_code_path: PathBuf, input: String, output
     println!("Proof written to {}", output_path.as_path().display());
 }
 
-fn verify(
-    options: ProofOptions,
-    source_code_path: PathBuf,
-    input: String,
-    output: String,
-    proof_path: PathBuf,
-) {
+fn verify(source_code_path: PathBuf, input: String, output: String, proof_path: PathBuf) {
     let source_code = fs::read_to_string(source_code_path).unwrap();
     let proof_bytes = fs::read(proof_path).unwrap();
-    let (execution_info, proof): (
-        ExecutionInfo,
-        Proof<Fp, Fq3, SerdeOutput<Sha256>, MatrixMerkleTreeImpl<Sha256HashFn>>,
-    ) = <_>::deserialize_compressed(proof_bytes.as_slice()).unwrap();
+    let (execution_info, proof): (BrainfuckClaim, BrainfuckProof) =
+        <_>::deserialize_compressed(proof_bytes.as_slice()).unwrap();
     assert_eq!(input.as_bytes(), execution_info.input);
     assert_eq!(output.as_bytes(), execution_info.output);
     assert_eq!(source_code, execution_info.source_code);
-    assert_eq!(options, proof.options);
 
     let now = Instant::now();
-    execution_info.verify(proof).expect("verification failed");
+    execution_info
+        .verify(proof, SECURITY_LEVEL)
+        .expect("verification failed");
     println!("Proof verified in: {:?}", now.elapsed());
 }

@@ -56,10 +56,8 @@ pub mod verifier;
 extern crate alloc;
 pub use air::Air;
 use alloc::vec::Vec;
-use ark_ff::BigInteger;
 use ark_ff::FftField;
 use ark_ff::Field;
-use ark_ff::PrimeField;
 use ark_poly::domain::DomainCoeff;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
@@ -79,10 +77,8 @@ use ministark_gpu::GpuFftField;
 use ministark_gpu::GpuField;
 use ministark_gpu::GpuFrom;
 use ministark_gpu::GpuMul;
-use std::process::Output;
 use trace::Queries;
 pub use trace::Trace;
-use utils::SerdeOutput;
 
 // TODO: include ability to specify:
 // - base field
@@ -101,10 +97,10 @@ impl ProofOptions {
     pub const MIN_NUM_QUERIES: u8 = 1;
     pub const MAX_NUM_QUERIES: u8 = 128;
     pub const MIN_BLOWUP_FACTOR: u8 = 1;
-    pub const MAX_BLOWUP_FACTOR: u8 = 64;
-    pub const MAX_GRINDING_FACTOR: u8 = 32;
+    pub const MAX_BLOWUP_FACTOR: u8 = 32;
+    pub const MAX_GRINDING_FACTOR: u8 = 50;
 
-    pub fn new(
+    pub const fn new(
         num_queries: u8,
         lde_blowup_factor: u8,
         grinding_factor: u8,
@@ -155,22 +151,6 @@ pub struct Proof<
     pub trace_queries: Queries<Fp, Fq, M::Proof>,
     pub execution_trace_ood_evals: Vec<Fq>,
     pub composition_trace_ood_evals: Vec<Fq>,
-}
-
-impl<Fp: PrimeField, Fq: Field<BasePrimeField = Fp>, D: Digest, M: MerkleTree> Proof<Fp, Fq, D, M> {
-    pub fn conjectured_security_level(&self) -> usize {
-        let prime_field_bits = Fp::MODULUS.num_bits();
-        let fq_bits = Fq::extension_degree() * u64::from(prime_field_bits);
-        let sha256_collision_resistance_security = 128;
-        utils::conjectured_security_level(
-            usize::try_from(fq_bits).unwrap(),
-            sha256_collision_resistance_security,
-            self.options.lde_blowup_factor.into(),
-            self.trace_len,
-            self.options.num_queries.into(),
-            self.options.grinding_factor.into(),
-        )
-    }
 }
 
 pub trait StarkExtensionOf<Fp: GpuFftField + FftField>:

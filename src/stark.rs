@@ -21,7 +21,10 @@ use crate::ProofOptions;
 use crate::StarkExtensionOf;
 use crate::Trace;
 use alloc::vec::Vec;
+use ark_ff::BigInteger;
 use ark_ff::FftField;
+use ark_ff::Field;
+use ark_ff::PrimeField;
 use ark_serialize::CanonicalSerialize;
 use ministark_gpu::GpuFftField;
 
@@ -49,7 +52,7 @@ pub trait Stark: Sized + Send + Sync {
         air.public_inputs().serialize_compressed(&mut seed).unwrap();
         air.trace_len().serialize_compressed(&mut seed).unwrap();
         air.options().serialize_compressed(&mut seed).unwrap();
-        PublicCoin::new(Self::HashFn::hash(seed))
+        PublicCoin::new(Self::HashFn::hash_chunks([&*seed]))
     }
 
     fn gen_deep_coeffs(
@@ -88,11 +91,31 @@ pub trait Stark: Sized + Send + Sync {
         default_validate_constraints(self, challenges, hints, base_trace, extension_trace);
     }
 
+    fn security_level(proof: &Proof<Self::Fp, Self::Fq, Self::Digest, Self::MerkleTree>) -> usize {
+        // TODO: for some reason this does not work: <<<Self as Stark>::Fq as
+        // Field>::BasePrimeField as PrimeField>::MODULUS
+        let base_field_bits =
+            <<Self::Fp as Field>::BasePrimeField as PrimeField>::MODULUS.num_bits() as usize;
+        let extension_degree = usize::try_from(Self::Fq::extension_degree()).unwrap();
+        let field_bits = extension_degree * base_field_bits;
+        let comitment_hash_fn_security = Self::HashFn::COLLISION_RESISTANCE as usize;
+        let options = &proof.options;
+        crate::utils::conjectured_security_level(
+            field_bits,
+            comitment_hash_fn_security,
+            options.lde_blowup_factor.into(),
+            proof.trace_len,
+            options.num_queries.into(),
+            options.grinding_factor.into(),
+        )
+    }
+
     #[allow(clippy::too_many_lines)]
     fn verify(
         &self,
         proof: Proof<Self::Fp, Self::Fq, Self::Digest, Self::MerkleTree>,
+        required_security_bits: usize,
     ) -> Result<(), VerificationError> {
-        default_verify(self, proof)
+        default_verify(self, proof, required_security_bits)
     }
 }

@@ -6,7 +6,7 @@ use core::fmt::Debug;
 use digest::Digest as _;
 use sha2::Sha256;
 
-/// NOTE: ever so slightly modified Hasher trait from Winterfell
+/// NOTE: slightly modified Hasher trait from Winterfell
 pub trait HashFn: Send + Sync + 'static {
     /// Specifies a digest type returned by this hasher.
     type Digest: Digest;
@@ -16,6 +16,9 @@ pub trait HashFn: Send + Sync + 'static {
 
     /// Returns a hash of the provided sequence of bytes.
     fn hash(bytes: impl IntoIterator<Item = u8>) -> Self::Digest;
+
+    /// Returns a hash of the provided sequence of byte chunks.
+    fn hash_chunks<'a>(chunks: impl IntoIterator<Item = &'a [u8]>) -> Self::Digest;
 
     /// Returns a hash of two digests. This method is intended for use in
     /// construction of Merkle trees.
@@ -65,6 +68,12 @@ impl HashFn for Sha256HashFn {
         SerdeOutput::new(hasher.finalize())
     }
 
+    fn hash_chunks<'a>(slices: impl IntoIterator<Item = &'a [u8]>) -> SerdeOutput<Sha256> {
+        let mut hasher = Sha256::new();
+        slices.into_iter().for_each(|s| hasher.update(s));
+        SerdeOutput::new(hasher.finalize())
+    }
+
     fn merge(v0: &SerdeOutput<Sha256>, v1: &SerdeOutput<Sha256>) -> SerdeOutput<Sha256> {
         let mut hasher = Sha256::new();
         hasher.update(**v0);
@@ -86,6 +95,6 @@ impl<F: Field> ElementHashFn<F> for Sha256HashFn {
         for element in elements {
             element.serialize_uncompressed(&mut byte_buffer).unwrap();
         }
-        Self::hash(byte_buffer)
+        Self::hash_chunks([&*byte_buffer])
     }
 }

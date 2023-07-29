@@ -330,7 +330,7 @@ where
             public_coin.reseed_with_digest(&layer.commitment);
             let alpha = public_coin.draw();
             layer_alphas.push(alpha);
-            layer_commitments.push(layer.commitment.clone().into());
+            layer_commitments.push(layer.commitment.clone());
 
             if i != proof.layers.len() - 1 && layer_codeword_len % folding_factor != 0 {
                 return Err(VerificationError::CodewordTruncation {
@@ -370,9 +370,7 @@ where
         positions: &[usize],
         evaluations: &[F],
     ) -> Result<(), VerificationError> {
-        let domain_offset = self.domain.coset_offset();
         let folding_domain = Radix2EvaluationDomain::new(N).unwrap();
-
         let mut layers = self.proof.layers.into_iter();
         let mut layer_alphas = self.layer_alphas.into_iter();
         let mut layer_commitments = self.layer_commitments.into_iter();
@@ -412,9 +410,6 @@ where
                 return Err(VerificationError::InvalidDegreeRespectingProjection { layer: i });
             }
 
-            println!("wow it works");
-
-            let mut i = 0;
             let polys = rows
                 .iter()
                 .zip(&folded_positions)
@@ -432,12 +427,6 @@ where
                     }
                     DensePolynomial::from_coefficients_vec(coeffs)
                 });
-
-            if i == 0 {
-                for position in &folded_positions {
-                    println!("folded pos is: {position}");
-                }
-            }
 
             // prepare for next layer
             evaluations = polys.map(|poly| poly.evaluate(&layer_alpha)).collect();

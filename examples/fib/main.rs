@@ -211,9 +211,10 @@ fn gen_trace(n: usize) -> FibTrace {
     ]))
 }
 
-fn main() {
-    let options = ProofOptions::new(32, 4, 8, 8, 64);
+const SECURITY_LEVEL: usize = 30;
+const OPTIONS: ProofOptions = ProofOptions::new(32, 4, 8, 8, 64);
 
+fn main() {
     let now = Instant::now();
     let trace = gen_trace(1048576 * 16);
     println!("Trace generated in: {:?}", now.elapsed());
@@ -221,10 +222,12 @@ fn main() {
     let claim = FibClaim(trace.last_value());
 
     let now = Instant::now();
-    let proof = pollster::block_on(claim.prove(options, trace)).expect("prover failed");
+    let proof = pollster::block_on(claim.prove(OPTIONS, trace)).expect("prover failed");
     println!("Proof generated in: {:?}", now.elapsed());
 
     let now = Instant::now();
-    claim.verify(proof).expect("verification failed");
+    claim
+        .verify(proof, SECURITY_LEVEL)
+        .expect("verification failed");
     println!("Proof generated in: {:?}", now.elapsed());
 }

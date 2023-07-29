@@ -2,7 +2,7 @@ use crate::tables;
 use crate::tables::Challenge;
 use crate::tables::EvaluationArgumentHint;
 use crate::vm::compile;
-use crate::ExecutionInfo;
+use crate::BrainfuckClaim;
 use ark_ff::Field;
 use ark_ff::One;
 use ark_ff::Zero;
@@ -28,16 +28,16 @@ impl AirConfig for BrainfuckAirConfig {
 
     type Fp = Fp;
     type Fq = Fq3;
-    type PublicInputs = ExecutionInfo;
+    type PublicInputs = BrainfuckClaim;
 
     fn gen_hints(
         trace_len: usize,
-        execution_info: &ExecutionInfo,
+        execution_info: &BrainfuckClaim,
         challenges: &Challenges<Self::Fq>,
     ) -> Hints<Self::Fq> {
         use Challenge::*;
         use EvaluationArgumentHint::*;
-        let ExecutionInfo {
+        let BrainfuckClaim {
             source_code,
             input,
             output,

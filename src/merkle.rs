@@ -540,7 +540,9 @@ mod tests {
         type Leaf = u32;
 
         fn hash_leaves(l0: &u32, l1: &u32) -> SerdeOutput<Sha256> {
-            Sha256HashFn::hash([l0.to_be_bytes(), l1.to_be_bytes()].concat())
+            let l0_bytes = l0.to_be_bytes();
+            let l1_bytes = l1.to_be_bytes();
+            Sha256HashFn::hash_chunks([&l0_bytes[..], &l1_bytes[..]])
         }
     }
 }
