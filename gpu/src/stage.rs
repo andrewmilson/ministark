@@ -1,4 +1,4 @@
-#![cfg(apple_silicon)]
+#![cfg(all(target_arch = "aarch64", target_os = "macos"))]
 use super::GpuField;
 use crate::plan::get_planner;
 use crate::prelude::buffer_mut_no_copy;

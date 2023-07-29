@@ -10,10 +10,11 @@ pub mod macros;
 pub mod fields;
 pub mod plan;
 pub mod prelude;
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub mod stage;
 pub mod utils;
 
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub use metal;
 
 /// A trait to be implemented if the field can be used for FFTs on the GPU.

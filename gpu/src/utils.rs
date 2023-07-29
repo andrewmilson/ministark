@@ -79,7 +79,7 @@ pub fn bit_reverse<T: Send>(v: &mut [T]) {
 
 // Copies a cpu buffer to a gpu buffer
 // Never use on unified memory architechture devices (M1, M2 etc.)
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub fn copy_to_private_buffer<T: Sized>(
     command_queue: &metal::CommandQueue,
     v: &[T],
@@ -102,7 +102,7 @@ pub fn copy_to_private_buffer<T: Sized>(
 
 /// WARNING: keep the original data around or it will be freed.
 // TODO: see buffer_mut_no_copy comments
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &[T]) -> metal::Buffer {
     assert!(is_page_aligned(v));
     let byte_len = core::mem::size_of_val(v);
@@ -119,7 +119,7 @@ pub fn buffer_no_copy<T: Sized>(device: &metal::DeviceRef, v: &[T]) -> metal::Bu
 // the page size (as per doc requirements). Seems to work in practice (on M1 at least) if only the
 // pointer is aligned. Passing a slice if handy because passing a vec with any allocator requires
 // nightly allocator_api feature. https://developer.apple.com/documentation/metal/mtldevice/1433382-makebuffer
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut [T]) -> metal::Buffer {
     assert!(is_page_aligned(v));
     // TODO: once allocator_api stabilized check capacity is aligned to page size
@@ -135,7 +135,7 @@ pub fn buffer_mut_no_copy<T: Sized>(device: &metal::DeviceRef, v: &mut [T]) -> m
 
 // adapted form arkworks
 /// Multiply the `i`-th element of `coeffs` with `g^i`.
-#[cfg(all(apple_silicon, feature = "arkworks"))]
+#[cfg(all(target_arch = "aarch64", target_os = "macos", feature = "arkworks"))]
 pub(crate) fn distribute_powers<F: crate::GpuField + ark_ff::Field>(coeffs: &mut [F], g: F) {
     let n = coeffs.len();
     #[cfg(not(feature = "parallel"))]
@@ -156,7 +156,7 @@ pub(crate) fn distribute_powers<F: crate::GpuField + ark_ff::Field>(coeffs: &mut
 }
 
 /// Returns the max FFT size each threadgroup can compute
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub fn threadgroup_fft_size<F: crate::GpuField>(
     max_threadgroup_mem_length: usize,
     max_threads_per_threadgroup: usize,
@@ -179,17 +179,17 @@ pub fn threadgroup_fft_size<F: crate::GpuField>(
 }
 
 // Converts a reference to a void pointer
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub(crate) fn void_ptr<T>(v: &T) -> *const core::ffi::c_void {
     v as *const T as *const core::ffi::c_void
 }
 
 #[repr(C, align(16384))]
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 struct Page([u8; 16384]);
 
 /// Checks a slice is page aligned on
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub fn is_page_aligned<T>(v: &[T]) -> bool {
     v.as_ptr().align_offset(core::mem::align_of::<Page>()) == 0
 }
@@ -202,9 +202,9 @@ pub fn is_page_aligned<T>(v: &[T]) -> bool {
 /// # Safety
 /// Using values from the returned vector before initializing them will lead to
 /// undefined behavior.
-// #[cfg(apple_silicon)]
+// #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 #[allow(clippy::uninit_vec)]
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 pub unsafe fn page_aligned_uninit_vector<T>(length: usize) -> alloc::vec::Vec<T> {
     #[repr(C, align(16384))]
     struct Page([u8; 16384]);

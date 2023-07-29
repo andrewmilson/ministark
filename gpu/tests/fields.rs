@@ -1,4 +1,4 @@
-#![cfg(apple_silicon)]
+#![cfg(all(target_arch = "aarch64", target_os = "macos"))]
 #![feature(allocator_api)]
 
 use ark_ff::UniformRand;

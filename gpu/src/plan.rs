@@ -1,4 +1,4 @@
-#![cfg(apple_silicon)]
+#![cfg(all(target_arch = "aarch64", target_os = "macos"))]
 #[cfg(feature = "arkworks")]
 use crate::stage::BitReverseGpuStage;
 #[cfg(feature = "arkworks")]

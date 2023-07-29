@@ -447,16 +447,16 @@ pub struct GpuAllocator;
 
 unsafe impl Allocator for GpuAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        #[cfg(apple_silicon)]
+        #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
         return page_aligned_allocator::PageAlignedAllocator.allocate(layout);
-        #[cfg(not(apple_silicon))]
+        #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
         return ark_std::alloc::Global.allocate(layout);
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        #[cfg(apple_silicon)]
+        #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
         return page_aligned_allocator::PageAlignedAllocator.deallocate(ptr, layout);
-        #[cfg(not(apple_silicon))]
+        #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
         return ark_std::alloc::Global.deallocate(ptr, layout);
     }
 }
@@ -471,7 +471,7 @@ pub fn vec_to_gpu_vec<T>(v: Vec<T>) -> GpuVec<T> {
     unsafe { Vec::from_raw_parts_in(ptr, length, capacity, GpuAllocator) }
 }
 
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 mod page_aligned_allocator {
     use alloc::alloc::Global;
     use core::alloc::AllocError;

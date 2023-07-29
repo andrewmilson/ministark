@@ -4,7 +4,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 mod benches {
     use ark_ff::FftField;
     use ark_ff::Field;
@@ -77,7 +77,7 @@ mod benches {
     }
 }
 
-#[cfg(apple_silicon)]
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 fn fft_benches(c: &mut Criterion) {
     use ministark_gpu::fields::p18446744069414584321::ark::Fp as Fp64;
     use ministark_gpu::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp as Fp252;
@@ -85,7 +85,7 @@ fn fft_benches(c: &mut Criterion) {
     benches::fft_bench::<Fp252>(c, "FFT (252-bit prime field)");
 }
 
-#[cfg(not(apple_silicon))]
+#[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
 fn fft_benches(_c: &mut Criterion) {}
 
 criterion_group!(benches, fft_benches);
