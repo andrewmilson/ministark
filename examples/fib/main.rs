@@ -3,13 +3,16 @@
 use ark_ff::One;
 use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
+use ark_serialize::CanonicalSerialize;
 use ministark::air::AirConfig;
 use ministark::constraints::AlgebraicItem;
 use ministark::constraints::Constraint;
 use ministark::constraints::ExecutionTraceColumn;
+use ministark::hash::HashFn;
 use ministark::hash::Sha256HashFn;
 use ministark::hints::Hints;
 use ministark::merkle::MatrixMerkleTreeImpl;
+use ministark::random::PublicCoin;
 use ministark::random::PublicCoinImpl;
 use ministark::stark::Stark;
 use ministark::utils::FieldVariant;
@@ -147,7 +150,6 @@ impl Stark for FibClaim {
     type Fq = Fp;
     type AirConfig = FibAirConfig;
     type Digest = SerdeOutput<Sha256>;
-    type HashFn = Sha256HashFn;
     type PublicCoin = PublicCoinImpl<Fp, Sha256HashFn>;
     type MerkleTree = MatrixMerkleTreeImpl<Sha256HashFn>;
     type Witness = FibTrace;
@@ -159,6 +161,14 @@ impl Stark for FibClaim {
 
     fn generate_trace(&self, witness: FibTrace) -> Self::Trace {
         witness
+    }
+
+    fn gen_public_coin(&self, air: &ministark::Air<Self::AirConfig>) -> Self::PublicCoin {
+        let mut seed = Vec::new();
+        air.public_inputs().serialize_compressed(&mut seed).unwrap();
+        air.trace_len().serialize_compressed(&mut seed).unwrap();
+        air.options().serialize_compressed(&mut seed).unwrap();
+        PublicCoinImpl::new(Sha256HashFn::hash_chunks([&*seed]))
     }
 }
 
@@ -211,7 +221,7 @@ fn gen_trace(n: usize) -> FibTrace {
     ]))
 }
 
-const SECURITY_LEVEL: usize = 30;
+const SECURITY_LEVEL: u32 = 30;
 const OPTIONS: ProofOptions = ProofOptions::new(32, 4, 8, 8, 64);
 
 fn main() {

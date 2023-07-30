@@ -9,10 +9,21 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+// TODO: alternative approach
+// trait Seedable<T>: Sync + Debug {
+//     fn reseed(&mut self, v: &T);
+// }
+// trait PublicCoin:
+//     Seedable<Self::Field> + Seedable<&[Self::Field]> +
+// Seedable<FriRemainder<Self::Field>> + Seedable {
+//     type Field: Field;
+// }
+// Seedable<Self::Fp> + Seedable<Self::Fp> + Seedable<Self::Fq> +
+// Seedable<FriRemainder<Self::Fq>>
+
 /// `PublicCoin` trait adapted from Winterfell
 pub trait PublicCoin: Sync + Debug {
     type Digest: Digest;
-    type HashFn: HashFn + ElementHashFn<Self::Field>;
     type Field: Field;
 
     fn new(digest: Self::Digest) -> Self;
@@ -33,6 +44,8 @@ pub trait PublicCoin: Sync + Debug {
     fn draw_queries(&mut self, max_n: usize, domain_size: usize) -> BTreeSet<usize>;
 
     fn verify_proof_of_work(&self, proof_of_work_bits: u8, nonce: u64) -> bool;
+
+    fn security_level_bits() -> u32;
 }
 
 pub struct PublicCoinImpl<F: Field, H: HashFn> {
@@ -73,7 +86,6 @@ impl<F: Field, H: HashFn> PublicCoinImpl<F, H> {
 
 impl<F: Field, H: ElementHashFn<F>> PublicCoin for PublicCoinImpl<F, H> {
     type Digest = H::Digest;
-    type HashFn = H;
     type Field = F;
 
     fn new(digest: H::Digest) -> Self {
@@ -114,6 +126,10 @@ impl<F: Field, H: ElementHashFn<F>> PublicCoin for PublicCoinImpl<F, H> {
 
     fn draw_queries(&mut self, max_n: usize, domain_size: usize) -> BTreeSet<usize> {
         (0..max_n).map(|_| self.gen_range(0..domain_size)).collect()
+    }
+
+    fn security_level_bits() -> u32 {
+        H::COLLISION_RESISTANCE
     }
 }
 

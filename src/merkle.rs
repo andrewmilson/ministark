@@ -46,6 +46,9 @@ pub trait MerkleTree: Clone {
     ///
     /// This function returns an error if the proof fails verification.
     fn verify(root: &Self::Root, proof: &Self::Proof, index: usize) -> Result<(), Error>;
+
+    /// Returns the number of security bits
+    fn security_level_bits() -> u32;
 }
 
 pub trait MerkleTreeConfig: Send + Sync + Sized + 'static {
@@ -276,7 +279,31 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
     fn verify(root: &C::Digest, proof: &MerkleProof<C>, index: usize) -> Result<(), Error> {
         C::verify_proof(root, proof, index)
     }
+
+    fn security_level_bits() -> u32 {
+        C::HashFn::COLLISION_RESISTANCE
+    }
 }
+
+// adapted from plonky3 MMCS
+pub trait MatrixCommitment<T> {
+    type Proof: CanonicalSerialize + CanonicalDeserialize + Clone + Send + Sync;
+    type Commitment: CanonicalSerialize + CanonicalDeserialize + Clone + Send + Sync;
+
+    fn from_matrix(m: &Matrix<T>) -> Self;
+
+    fn prove_rows(&self, row_ids: &[usize]) -> Result<Self::Proof, Error>;
+
+    fn verify_rows(
+        commitment: &Self::Commitment,
+        row_ids: &[usize],
+        rows: &[&[T]],
+        proof: &Self::Proof,
+    ) -> Result<(), Error>;
+}
+
+// impl MatrixMerkleCommitment<T> {
+// }
 
 pub trait MatrixMerkleTree<T>: MerkleTree + Sized {
     fn from_matrix(m: &Matrix<T>) -> Self;
@@ -344,6 +371,10 @@ impl<H: HashFn> MerkleTree for MatrixMerkleTreeImpl<H> {
 
     fn verify(root: &Self::Root, proof: &Self::Proof, index: usize) -> Result<(), Error> {
         MerkleTreeImpl::verify(root, proof, index)
+    }
+
+    fn security_level_bits() -> u32 {
+        H::COLLISION_RESISTANCE
     }
 }
 

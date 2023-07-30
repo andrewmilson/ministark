@@ -1,6 +1,5 @@
 use crate::fri;
 use crate::fri::FriProof;
-use crate::merkle::MerkleTree;
 use crate::random::PublicCoin;
 use crate::stark::Stark;
 use crate::trace::Queries;
@@ -103,9 +102,9 @@ impl<'a, S: Stark> ProverChannel<'a, S> {
 
     pub fn build_proof(
         self,
-        trace_queries: Queries<S::Fp, S::Fq, <S::MerkleTree as MerkleTree>::Proof>,
+        trace_queries: Queries<S>,
         fri_proof: FriProof<S::Fq, S::Digest, S::MerkleTree>,
-    ) -> Proof<S::Fp, S::Fq, S::Digest, S::MerkleTree> {
+    ) -> Proof<S> {
         Proof {
             options: self.air.options(),
             trace_len: self.air.trace_len(),

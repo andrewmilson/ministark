@@ -26,7 +26,7 @@ pub fn default_prove<S: Stark>(
     this: &S,
     options: ProofOptions,
     witness: S::Witness,
-) -> Result<Proof<S::Fp, S::Fq, S::Digest, S::MerkleTree>, ProvingError> {
+) -> Result<Proof<S>, ProvingError> {
     let now = Instant::now();
     let trace = this.generate_trace(witness);
     println!(

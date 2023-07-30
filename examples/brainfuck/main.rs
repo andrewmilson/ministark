@@ -3,8 +3,10 @@
 use air::BrainfuckAirConfig;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+use ministark::hash::HashFn;
 use ministark::hash::Sha256HashFn;
 use ministark::merkle::MatrixMerkleTreeImpl;
+use ministark::random::PublicCoin;
 use ministark::random::PublicCoinImpl;
 use ministark::stark::Stark;
 use ministark::utils::SerdeOutput;
@@ -50,8 +52,6 @@ enum BrainfuckOptions {
     },
 }
 
-type BrainfuckProof = Proof<Fp, Fq3, SerdeOutput<Sha256>, MatrixMerkleTreeImpl<Sha256HashFn>>;
-
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct BrainfuckClaim {
     pub source_code: String,
@@ -64,11 +64,18 @@ impl Stark for BrainfuckClaim {
     type Fq = Fq3;
     type AirConfig = BrainfuckAirConfig;
     type Digest = SerdeOutput<Sha256>;
-    type HashFn = Sha256HashFn;
     type PublicCoin = PublicCoinImpl<Fq3, Sha256HashFn>;
     type MerkleTree = MatrixMerkleTreeImpl<Sha256HashFn>;
     type Witness = BrainfuckTrace;
     type Trace = BrainfuckTrace;
+
+    fn gen_public_coin(&self, air: &ministark::Air<Self::AirConfig>) -> Self::PublicCoin {
+        let mut seed = Vec::new();
+        air.public_inputs().serialize_compressed(&mut seed).unwrap();
+        air.trace_len().serialize_compressed(&mut seed).unwrap();
+        air.options().serialize_compressed(&mut seed).unwrap();
+        PublicCoinImpl::new(Sha256HashFn::hash_chunks([&*seed]))
+    }
 
     fn get_public_inputs(&self) -> Self {
         self.clone()
@@ -79,7 +86,7 @@ impl Stark for BrainfuckClaim {
     }
 }
 
-const SECURITY_LEVEL: usize = 128;
+const SECURITY_LEVEL: u32 = 128;
 
 /// Proof options for 128 bit security level
 const OPTIONS: ProofOptions = {
@@ -136,7 +143,7 @@ fn prove(source_code_path: PathBuf, input: String, output_path: PathBuf) {
     let now = Instant::now();
     let proof = pollster::block_on(claim.prove(OPTIONS, trace)).unwrap();
     println!("Proof generated in: {:.0?}", now.elapsed());
-    let security_level = BrainfuckClaim::security_level(&proof);
+    let security_level = proof.security_level_bits();
     println!("Proof security (conjectured): {security_level}bit",);
 
     let mut proof_bytes = Vec::new();
@@ -153,7 +160,7 @@ fn prove(source_code_path: PathBuf, input: String, output_path: PathBuf) {
 fn verify(source_code_path: PathBuf, input: String, output: String, proof_path: PathBuf) {
     let source_code = fs::read_to_string(source_code_path).unwrap();
     let proof_bytes = fs::read(proof_path).unwrap();
-    let (execution_info, proof): (BrainfuckClaim, BrainfuckProof) =
+    let (execution_info, proof): (BrainfuckClaim, Proof<BrainfuckClaim>) =
         <_>::deserialize_compressed(proof_bytes.as_slice()).unwrap();
     assert_eq!(input.as_bytes(), execution_info.input);
     assert_eq!(output.as_bytes(), execution_info.output);

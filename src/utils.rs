@@ -1,8 +1,10 @@
 use crate::hash::Digest;
 use alloc::vec::Vec;
+use ark_ff::BigInteger;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_ff::One;
+use ark_ff::PrimeField;
 use ark_ff::Zero;
 use ark_poly::domain::Radix2EvaluationDomain;
 use ark_poly::EvaluationDomain;
@@ -149,38 +151,11 @@ pub fn divide_out_point_into<
     }
 }
 
-// TODO: change name/add description
-const GRINDING_CONTRIBUTION_FLOOR: usize = 60;
-
-// taken from Winterfell
-// also https://github.com/starkware-libs/ethSTARK/blob/master/README.md#7-Measuring-Security
-// https://eprint.iacr.org/2020/654.pdf section 7.2 for proven security
-// TODO: must investigate and confirm all this.
-// TODO: determine if
-pub fn conjectured_security_level(
-    field_bits: usize,
-    hash_fn_security: usize,
-    lde_blowup_factor: usize,
-    trace_len: usize,
-    num_fri_quiries: usize,
-    grinding_factor: usize,
-) -> usize {
-    // compute max security we can get for a given field size
-    let field_security = field_bits - (lde_blowup_factor * trace_len).ilog2() as usize;
-
-    // compute security we get by executing multiple query rounds
-    let security_per_query = lde_blowup_factor.ilog2() as usize;
-    let mut query_security = security_per_query * num_fri_quiries;
-
-    // include grinding factor contributions only for proofs adequate security
-    if query_security >= GRINDING_CONTRIBUTION_FLOOR {
-        query_security += grinding_factor;
-    }
-
-    core::cmp::min(
-        core::cmp::min(field_security, query_security) - 1,
-        hash_fn_security,
-    )
+pub fn field_bits<F: Field>() -> u32 {
+    let base_field_modulus = <F::BasePrimeField as PrimeField>::MODULUS;
+    let base_field_bits = base_field_modulus.num_bits();
+    let extension_field_degree = u32::try_from(F::extension_degree()).unwrap();
+    extension_field_degree * base_field_bits
 }
 
 // TODO: docs
