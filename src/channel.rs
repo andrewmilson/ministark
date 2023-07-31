@@ -40,19 +40,19 @@ impl<'a, S: Stark> ProverChannel<'a, S> {
         }
     }
 
-    pub fn commit_base_trace(&mut self, commitment: &S::Digest) {
-        self.public_coin.reseed_with_digest(commitment);
-        self.base_trace_commitment = commitment.clone();
+    pub fn commit_base_trace(&mut self, commitment: S::Digest) {
+        self.public_coin.reseed_with_digest(&commitment);
+        self.base_trace_commitment = commitment;
     }
 
-    pub fn commit_extension_trace(&mut self, commitment: &S::Digest) {
-        self.public_coin.reseed_with_digest(commitment);
-        self.extension_trace_commitment = Some(commitment.clone());
+    pub fn commit_extension_trace(&mut self, commitment: S::Digest) {
+        self.public_coin.reseed_with_digest(&commitment);
+        self.extension_trace_commitment = Some(commitment);
     }
 
-    pub fn commit_composition_trace(&mut self, commitment: &S::Digest) {
-        self.public_coin.reseed_with_digest(commitment);
-        self.composition_trace_commitment = commitment.clone();
+    pub fn commit_composition_trace(&mut self, commitment: S::Digest) {
+        self.public_coin.reseed_with_digest(&commitment);
+        self.composition_trace_commitment = commitment;
     }
 
     pub fn get_ood_point(&mut self) -> S::Fq {
@@ -125,9 +125,9 @@ impl<'a, S: Stark> fri::ProverChannel for ProverChannel<'a, S> {
     type Digest = S::Digest;
     type Field = S::Fq;
 
-    fn commit_fri_layer(&mut self, commitment: &S::Digest) {
-        self.public_coin.reseed_with_digest(commitment);
-        self.fri_layer_commitments.push(commitment.clone());
+    fn commit_fri_layer(&mut self, commitment: S::Digest) {
+        self.public_coin.reseed_with_digest(&commitment);
+        self.fri_layer_commitments.push(commitment);
     }
 
     fn commit_remainder(&mut self, remainder_coeffs: &[Self::Field]) {

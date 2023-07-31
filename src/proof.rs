@@ -26,13 +26,13 @@ pub struct Proof<C: Stark> {
 impl<C: Stark> Clone for Proof<C> {
     fn clone(&self) -> Self {
         Self {
-            options: self.options.clone(),
-            trace_len: self.trace_len.clone(),
+            options: self.options,
+            trace_len: self.trace_len,
             base_trace_commitment: self.base_trace_commitment.clone(),
             extension_trace_commitment: self.extension_trace_commitment.clone(),
             composition_trace_commitment: self.composition_trace_commitment.clone(),
             fri_proof: self.fri_proof.clone(),
-            pow_nonce: self.pow_nonce.clone(),
+            pow_nonce: self.pow_nonce,
             trace_queries: self.trace_queries.clone(),
             execution_trace_ood_evals: self.execution_trace_ood_evals.clone(),
             composition_trace_ood_evals: self.composition_trace_ood_evals.clone(),
@@ -131,9 +131,9 @@ impl<C: Stark> Proof<C> {
         };
 
         let fri_query_security = {
-            let grinding_factor = self.options.grinding_factor as u32;
+            let grinding_factor = u32::from(self.options.grinding_factor);
             let security_per_query = self.options.lde_blowup_factor.ilog2();
-            let num_fri_quiries = self.options.num_queries as u32;
+            let num_fri_quiries = u32::from(self.options.num_queries);
             security_per_query * num_fri_quiries + grinding_factor
         };
 

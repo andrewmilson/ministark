@@ -7,8 +7,8 @@ use crate::stark::Stark;
 use crate::Matrix;
 
 /// Checks AIR constraints are valid
-pub fn default_validate_constraints<S: Stark>(
-    this: &S,
+pub const fn default_validate_constraints<S: Stark>(
+    _this: &S,
     _challenges: &Challenges<S::Fq>,
     _hints: &Hints<S::Fq>,
     _base_trace: &Matrix<S::Fp>,

@@ -25,16 +25,16 @@ pub trait HashFn: Send + Sync + 'static {
     fn merge(v0: &Self::Digest, v1: &Self::Digest) -> Self::Digest;
 
     /// Returns hash(`seed` || `value`). This method is intended for use in PRNG
-    /// and PoW contexts.
+    /// and proof-of-work contexts.
     fn merge_with_int(seed: &Self::Digest, value: u64) -> Self::Digest;
 }
 
-/// NOTE: ever so slightly modified ElementHasher trait from Winterfell
 /// Defines a cryptographic hash function for hashing field elements.
 ///
 /// This trait defines a hash procedure for a sequence of field elements. The
 /// elements can be either in the base field specified for this hasher, or in an
 /// extension of the base field.
+// NOTE: slightly modified ElementHasher trait from Winterfell
 pub trait ElementHashFn<F: Field>: HashFn {
     /// Returns a hash of the provided field elements.
     fn hash_elements(elements: impl IntoIterator<Item = F>) -> Self::Digest;

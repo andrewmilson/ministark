@@ -91,7 +91,7 @@ where
 }
 
 struct FriLayer<F: GpuField, M: MerkleTree> {
-    tree: M,
+    merkle_tree: M,
     evaluations: Matrix<F>,
 }
 
@@ -192,18 +192,15 @@ where
         mut evaluations: GpuVec<F>,
     ) {
         assert!(self.layers.is_empty());
-        // let codeword = evaluations.0[0];
-
-        for i in 0..self.options.num_layers(evaluations.len()) {
+        for _ in 0..self.options.num_layers(evaluations.len()) {
             evaluations = match self.options.folding_factor {
-                2 => self.build_layer::<2>(channel, evaluations, i),
-                4 => self.build_layer::<4>(channel, evaluations, i),
-                8 => self.build_layer::<8>(channel, evaluations, i),
-                16 => self.build_layer::<16>(channel, evaluations, i),
+                2 => self.build_layer::<2>(channel, evaluations),
+                4 => self.build_layer::<4>(channel, evaluations),
+                8 => self.build_layer::<8>(channel, evaluations),
+                16 => self.build_layer::<16>(channel, evaluations),
                 folding_factor => unreachable!("folding factor {folding_factor} not supported"),
             }
         }
-
         self.set_remainder(channel, evaluations);
     }
 
@@ -212,27 +209,25 @@ where
     fn build_layer<const N: usize>(
         &mut self,
         channel: &mut impl ProverChannel<Field = F, Digest = D>,
-        mut evaluations: GpuVec<F>,
-        layer_idx: usize,
+        evaluations: GpuVec<F>,
     ) -> GpuVec<F> {
         // Each layer requires decommitting to `folding_factor` many evaluations e.g.
         // `folding_factor = 2` decommits to an evaluation for LHS_i and RHS_i
         // (0 ≤ i < n/2) which requires two merkle paths if the evaluations are
-        // committed to in their natural order. If we instead commit to interleaved
-        // evaluations i.e. [[LHS0, RHS0], [LHS1, RHS1], ...] LHS_i and RHS_i
-        // only require a single merkle path for their decommitment.
-        // let interleaved_evals: Vec<[F; N]> = interleave(&evaluations);
+        // committed to in their natural order. If we instead commit to bit-reversed
+        // evaluations then LHS_i and RHS_i are next to each other and only require a
+        // single merkle path for their decommitment.
 
         // TODO: update docs with bit reversed evals
-        let (interleaved_evals, remainder) = evaluations.as_chunks::<N>();
+        let (cosets, remainder) = evaluations.as_chunks::<N>();
         assert!(remainder.is_empty());
 
-        let matrix = Matrix::from_arrays(interleaved_evals);
-        let evals_merkle_tree = M::from_matrix(&matrix);
-        channel.commit_fri_layer(evals_merkle_tree.root());
+        let matrix = Matrix::from_arrays(cosets);
+        let merkle_tree = M::from_matrix(&matrix);
+        channel.commit_fri_layer(merkle_tree.root());
 
         self.layers.push(FriLayer {
-            tree: evals_merkle_tree,
+            merkle_tree,
             evaluations: matrix,
         });
 
@@ -240,9 +235,6 @@ where
         apply_drp(
             evaluations,
             F::FftField::ONE,
-            // self.options
-            //     .domain_offset::<F>()
-            //     .pow([N.pow(layer_idx as u32) as u64]),
             channel.draw_fri_alpha(),
             self.options.folding_factor,
         )
@@ -275,14 +267,10 @@ pub enum VerificationError {
     InvalidDegreeRespectingProjection { layer: usize },
     #[snafu(display("the number of query positions does not match the number of evaluations"))]
     NumPositionEvaluationMismatch,
-    #[snafu(display("remainder does not resolve to its commitment"))]
+    #[snafu(display("remainder is invalid"))]
     RemainderCommitmentInvalid,
-    #[snafu(display("number of remainder values is less than the expected degree"))]
-    RemainderTooSmall,
-    #[snafu(display("remainder can not be represented as a degree {degree} polynomial"))]
+    #[snafu(display("remainder is not a degree {degree} polynomial"))]
     RemainderDegreeMismatch { degree: usize },
-    #[snafu(display("degree-respecting projection is invalid at the last layer"))]
-    InvalidRemainderDegreeRespectingProjection,
     #[snafu(display("{size} can't be divided by {folding_factor} (layer {layer})"))]
     CodewordTruncation {
         size: usize,
@@ -380,7 +368,7 @@ where
         let mut domain_generator = self.domain.group_gen();
 
         // verify all layers except remainder
-        for i in 0..self.options.num_layers(domain_size).saturating_sub(1) {
+        for i in 0..self.options.num_layers(domain_size) {
             let folded_positions = fold_positions(&positions, N);
             let layer_alpha = layer_alphas.next().unwrap();
             let layer_commitment = layer_commitments.next().unwrap();
@@ -434,22 +422,14 @@ where
             domain_generator = domain_generator.pow([N as u64]);
             domain_size /= N;
         }
-
-        // TODO: add back in
-        // for (position, evaluation) in positions.into_iter().zip(evaluations)
-        // {     if self.proof.remainder[position] != evaluation {
-        //         return
-        // Err(VerificationError::InvalidRemainderDegreeRespectingProjection);
-        //     }
-        // }
-
-        // TODO: add back in
-        // verify_remainder::<F, D, N>(
-        //     &layer_commitments.next().unwrap(),
-        //     self.proof.remainder,
-        //     domain_size - 1,
-        // )
-        Ok(())
+        verify_remainder::<F>(
+            self.proof.remainder_coeffs,
+            &positions,
+            &evaluations,
+            domain_generator,
+            domain_size,
+            self.options.blowup_factor,
+        )
     }
 
     pub fn verify(self, positions: &[usize], evaluations: &[F]) -> Result<(), VerificationError> {
@@ -468,61 +448,47 @@ where
     }
 }
 
-fn verify_remainder<F: GpuField + Field + DomainCoeff<F::FftField>, D: Digest, const N: usize>(
-    commitment: &D,
-    mut remainder_evals: Vec<F>,
-    max_degree: usize,
+fn verify_remainder<F: GpuField + Field + DomainCoeff<F::FftField>>(
+    remainder_coeffs: Vec<F>,
+    positions: &[usize],
+    expected_evaluations: &[F],
+    domain_generator: F::FftField,
+    domain_size: usize,
+    blowup_factor: usize,
 ) -> Result<(), VerificationError>
 where
     F::FftField: FftField,
 {
-    todo!()
-
-    // if max_degree >= remainder_evals.len() {
-    //     return Err(VerificationError::RemainderTooSmall);
-    // }
-
-    // let interleaved_evals: Vec<[F; N]> = interleave(&remainder_evals);
-    // let hashed_evals = interleaved_evals
-    //     .into_iter()
-    //     .map(|chunk| {
-    //         let mut buff = Vec::with_capacity(chunk.compressed_size());
-    //         chunk.serialize_compressed(&mut buff).unwrap();
-    //         D::digest(&buff)
-    //     })
-    //     .collect();
-    // let remainder_merkle_tree =
-    // merkle::MerkleTree::<D>::new(hashed_evals).unwrap();
-
-    // if commitment != remainder_merkle_tree.root() {
-    //     return Err(VerificationError::RemainderCommitmentInvalid);
-    // }
-
-    // if max_degree == 0 {
-    //     if remainder_evals.array_windows().all(|[a, b]| a == b) {
-    //         Ok(())
-    //     } else {
-    //         Err(VerificationError::RemainderDegreeMismatch { degree:
-    // max_degree })     }
-    // } else {
-    //     let domain =
-    // Radix2EvaluationDomain::new(remainder_evals.len()).unwrap();
-    //     domain.ifft_in_place(&mut remainder_evals);
-    //     let poly = DensePolynomial::from_coefficients_vec(remainder_evals);
-
-    //     if poly.degree() > max_degree {
-    //         Err(VerificationError::RemainderDegreeMismatch { degree:
-    // max_degree })     } else {
-    //         Ok(())
-    //     }
-    // }
+    let remainder_poly = DensePolynomial::from_coefficients_vec(remainder_coeffs);
+    let expected_degree = domain_size / blowup_factor - 1;
+    if remainder_poly.degree() > expected_degree {
+        return Err(VerificationError::RemainderDegreeMismatch {
+            degree: expected_degree,
+        });
+    }
+    let xs = positions
+        .iter()
+        .map(|p| domain_generator.pow([bit_reverse_index(domain_size, *p) as u64]));
+    for (i, x) in xs.enumerate() {
+        // TODO: fix types and just call horner_evaluate
+        let y = remainder_poly
+            .iter()
+            .rfold(F::zero(), move |mut result, coeff| {
+                result *= x;
+                result + coeff
+            });
+        if expected_evaluations[i] != y {
+            return Err(VerificationError::RemainderCommitmentInvalid);
+        }
+    }
+    Ok(())
 }
 
 pub trait ProverChannel {
     type Digest: Digest;
     type Field: GpuField;
 
-    fn commit_fri_layer(&mut self, layer_root: &Self::Digest);
+    fn commit_fri_layer(&mut self, layer_root: Self::Digest);
 
     fn commit_remainder(&mut self, remainder_coeffs: &[Self::Field]);
 
@@ -700,7 +666,7 @@ where
         .iter()
         .map(|pos| {
             layer
-                .tree
+                .merkle_tree
                 .prove_row(*pos)
                 .expect("failed to generate Merkle proof")
         })
@@ -710,5 +676,5 @@ where
         let row = layer.evaluations.get_row(position).unwrap();
         rows.push(row.try_into().unwrap());
     }
-    LayerProof::new(rows, proofs, layer.tree.root().clone())
+    LayerProof::new(rows, proofs, layer.merkle_tree.root().clone())
 }
