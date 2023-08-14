@@ -6,7 +6,7 @@ use core::fmt::Debug;
 use digest::Digest as _;
 use sha2::Sha256;
 
-/// NOTE: slightly modified Hasher trait from Winterfell
+/// Trait inspired by Winterfell: <https://github.com/facebook/winterfell/blob/main/crypto/src/hash/mod.rs#L33>
 pub trait HashFn: Send + Sync + 'static {
     /// Specifies a digest type returned by this hasher.
     type Digest: Digest;
@@ -34,14 +34,14 @@ pub trait HashFn: Send + Sync + 'static {
 /// This trait defines a hash procedure for a sequence of field elements. The
 /// elements can be either in the base field specified for this hasher, or in an
 /// extension of the base field.
-// NOTE: slightly modified ElementHasher trait from Winterfell
+/// Trait inspired by Winterfell: <https://github.com/facebook/winterfell/blob/main/crypto/src/hash/mod.rs#L55>
 pub trait ElementHashFn<F: Field>: HashFn {
     /// Returns a hash of the provided field elements.
     fn hash_elements(elements: impl IntoIterator<Item = F>) -> Self::Digest;
 }
 
-/// NOTE: Digest trait from winterfell
 /// Defines output type for a cryptographic hash function.
+/// Digest trait from Winterfell: <https://github.com/facebook/winterfell/blob/main/crypto/src/hash/mod.rs#L69>
 pub trait Digest:
     Debug + Default + Clone + Eq + PartialEq + Send + Sync + CanonicalSerialize + CanonicalDeserialize
 {

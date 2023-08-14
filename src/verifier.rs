@@ -1,12 +1,12 @@
 use crate::air::AirConfig;
 use crate::challenges::Challenges;
+use crate::channel::VerifierChannelArtifacts;
 use crate::composer::DeepCompositionCoeffs;
 use crate::constraints::AlgebraicItem;
 use crate::constraints::CompositionItem;
 use crate::fri;
 use crate::fri::FriVerifier;
 use crate::hints::Hints;
-use crate::merkle;
 use crate::merkle::MatrixMerkleTree;
 use crate::random::draw_multiple;
 use crate::random::PublicCoin;
@@ -28,7 +28,7 @@ pub fn default_verify<S: Stark>(
     this: &S,
     proof: Proof<S>,
     required_security_bits: u32,
-) -> Result<(), VerificationError> {
+) -> Result<VerifierChannelArtifacts<S::Fq>, VerificationError> {
     use VerificationError::*;
 
     if proof.security_level_bits() < required_security_bits {
@@ -54,8 +54,8 @@ pub fn default_verify<S: Stark>(
 
     public_coin.reseed_with_digest(&base_trace_commitment);
     let num_challenges = air.num_challenges();
-    let challenges = Challenges::new(draw_multiple(&mut public_coin, num_challenges));
-    let hints = air.gen_hints(&challenges);
+    let air_challenges = Challenges::new(draw_multiple(&mut public_coin, num_challenges));
+    let air_hints = air.gen_hints(&air_challenges);
 
     let extension_trace_commitment = extension_trace_commitment.map(|commitment| {
         public_coin.reseed_with_digest(&commitment);
@@ -81,8 +81,8 @@ pub fn default_verify<S: Stark>(
         .collect::<BTreeMap<(usize, isize), S::Fq>>();
     let calculated_ood_constraint_evaluation = ood_constraint_evaluation::<S::AirConfig>(
         &composition_coeffs,
-        &challenges,
-        &hints,
+        &air_challenges,
+        &air_hints,
         &trace_ood_eval_map,
         &air,
         z,
@@ -132,31 +132,30 @@ pub fn default_verify<S: Stark>(
         .collect::<Vec<&[S::Fq]>>();
 
     // base trace positions
-    verify_positions::<S::Fp, S::MerkleTree>(
+    S::MerkleTree::verify_rows(
         &base_trace_commitment,
         &query_positions,
         &base_trace_rows,
-        trace_queries.base_trace_proofs,
+        trace_queries.base_trace_proof,
     )
     .map_err(|_| BaseTraceQueryDoesNotMatchCommitment)?;
 
     if let Some(extension_trace_commitment) = extension_trace_commitment {
-        // extension trace positions
-        verify_positions::<S::Fq, S::MerkleTree>(
+        S::MerkleTree::verify_rows(
             &extension_trace_commitment,
             &query_positions,
             &extension_trace_rows,
-            trace_queries.extension_trace_proofs,
+            trace_queries.extension_trace_proof.unwrap(),
         )
         .map_err(|_| ExtensionTraceQueryDoesNotMatchCommitment)?;
     }
 
     // composition trace positions
-    verify_positions::<S::Fq, S::MerkleTree>(
+    S::MerkleTree::verify_rows(
         &composition_trace_commitment,
         &query_positions,
         &composition_trace_rows,
-        trace_queries.composition_trace_proofs,
+        trace_queries.composition_trace_proof,
     )
     .map_err(|_| CompositionTraceQueryDoesNotMatchCommitment)?;
 
@@ -172,7 +171,15 @@ pub fn default_verify<S: Stark>(
         z,
     );
 
-    Ok(fri_verifier.verify(&query_positions, &deep_evaluations)?)
+    let fri_alphas = fri_verifier.layer_alphas.clone();
+    fri_verifier.verify(&query_positions, &deep_evaluations)?;
+
+    Ok(VerifierChannelArtifacts {
+        air_challenges,
+        air_hints,
+        fri_alphas,
+        query_positions,
+    })
 }
 
 /// Errors that are returned during verification of a STARK proof
@@ -215,18 +222,6 @@ pub fn ood_constraint_evaluation<A: AirConfig>(
             &CompositionCoeff(i) => FieldVariant::Fq(composition_coefficients[i]),
         })
         .as_fq()
-}
-
-pub fn verify_positions<F: Field, M: MatrixMerkleTree<F>>(
-    commitment: &M::Root,
-    positions: &[usize],
-    rows: &[&[F]],
-    proofs: Vec<M::Proof>,
-) -> Result<(), merkle::Error> {
-    for ((position, proof), row) in positions.iter().zip(proofs).zip(rows) {
-        M::verify_row(commitment, *position, row, &proof)?;
-    }
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

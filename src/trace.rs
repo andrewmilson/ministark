@@ -39,9 +39,9 @@ pub struct Queries<C: Stark> {
     pub base_trace_values: Vec<C::Fp>,
     pub extension_trace_values: Vec<C::Fq>,
     pub composition_trace_values: Vec<C::Fq>,
-    pub base_trace_proofs: Vec<<C::MerkleTree as MerkleTree>::Proof>,
-    pub extension_trace_proofs: Vec<<C::MerkleTree as MerkleTree>::Proof>,
-    pub composition_trace_proofs: Vec<<C::MerkleTree as MerkleTree>::Proof>,
+    pub base_trace_proof: <C::MerkleTree as MerkleTree>::Proof,
+    pub extension_trace_proof: Option<<C::MerkleTree as MerkleTree>::Proof>,
+    pub composition_trace_proof: <C::MerkleTree as MerkleTree>::Proof,
 }
 
 impl<C: Stark> CanonicalSerialize for Queries<C> {
@@ -56,11 +56,11 @@ impl<C: Stark> CanonicalSerialize for Queries<C> {
             .serialize_with_mode(&mut writer, compress)?;
         self.composition_trace_values
             .serialize_with_mode(&mut writer, compress)?;
-        self.base_trace_proofs
+        self.base_trace_proof
             .serialize_with_mode(&mut writer, compress)?;
-        self.extension_trace_proofs
+        self.extension_trace_proof
             .serialize_with_mode(&mut writer, compress)?;
-        self.composition_trace_proofs
+        self.composition_trace_proof
             .serialize_with_mode(&mut writer, compress)?;
         Ok(())
     }
@@ -69,9 +69,9 @@ impl<C: Stark> CanonicalSerialize for Queries<C> {
         self.base_trace_values.serialized_size(compress)
             + self.extension_trace_values.serialized_size(compress)
             + self.composition_trace_values.serialized_size(compress)
-            + self.base_trace_proofs.serialized_size(compress)
-            + self.extension_trace_proofs.serialized_size(compress)
-            + self.composition_trace_proofs.serialized_size(compress)
+            + self.base_trace_proof.serialized_size(compress)
+            + self.extension_trace_proof.serialized_size(compress)
+            + self.composition_trace_proof.serialized_size(compress)
     }
 }
 
@@ -91,9 +91,9 @@ impl<C: Stark> CanonicalDeserialize for Queries<C> {
             base_trace_values: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
             extension_trace_values: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
             composition_trace_values: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
-            base_trace_proofs: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
-            extension_trace_proofs: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
-            composition_trace_proofs: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
+            base_trace_proof: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
+            extension_trace_proof: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
+            composition_trace_proof: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
         })
     }
 }
@@ -104,9 +104,9 @@ impl<C: Stark> Clone for Queries<C> {
             base_trace_values: self.base_trace_values.clone(),
             extension_trace_values: self.extension_trace_values.clone(),
             composition_trace_values: self.composition_trace_values.clone(),
-            base_trace_proofs: self.base_trace_proofs.clone(),
-            extension_trace_proofs: self.extension_trace_proofs.clone(),
-            composition_trace_proofs: self.composition_trace_proofs.clone(),
+            base_trace_proof: self.base_trace_proof.clone(),
+            extension_trace_proof: self.extension_trace_proof.clone(),
+            composition_trace_proof: self.composition_trace_proof.clone(),
         }
     }
 }
@@ -121,43 +121,38 @@ impl<C: Stark> Queries<C> {
         composition_tree: &C::MerkleTree,
         positions: &[usize],
     ) -> Self {
+        let base_trace_proof = MatrixMerkleTree::<C::Fp>::prove_rows(base_tree, positions).unwrap();
+        let extension_trace_proof = extension_tree.map(|extension_tree| {
+            MatrixMerkleTree::<C::Fq>::prove_rows(extension_tree, positions).unwrap()
+        });
+        let composition_trace_proof =
+            MatrixMerkleTree::<C::Fq>::prove_rows(composition_tree, positions).unwrap();
+
         let mut base_trace_values = Vec::new();
         let mut extension_trace_values = Vec::new();
         let mut composition_trace_values = Vec::new();
-        let mut base_trace_proofs = Vec::new();
-        let mut extension_trace_proofs = Vec::new();
-        let mut composition_trace_proofs = Vec::new();
         for &position in positions {
             // execution trace
             let base_trace_row = base_trace_lde.get_row(position).unwrap();
             base_trace_values.extend(base_trace_row);
-            let base_proof = MatrixMerkleTree::<C::Fp>::prove_row(base_tree, position).unwrap();
-            base_trace_proofs.push(base_proof);
 
             if let Some(extension_trace_lde) = extension_trace_lde {
                 // TODO: suport ark DomainCoeff on evaluate_at
                 let extension_trace_row = extension_trace_lde.get_row(position).unwrap();
                 extension_trace_values.extend(extension_trace_row);
-                let extension_tree = extension_tree.unwrap();
-                let extension_proof =
-                    MatrixMerkleTree::<C::Fp>::prove_row(extension_tree, position).unwrap();
-                extension_trace_proofs.push(extension_proof);
             }
 
             // composition trace
             let composition_trace_row = composition_trace_lde.get_row(position).unwrap();
             composition_trace_values.extend(composition_trace_row);
-            let composition_proof =
-                MatrixMerkleTree::<C::Fp>::prove_row(composition_tree, position).unwrap();
-            composition_trace_proofs.push(composition_proof);
         }
         Self {
             base_trace_values,
             extension_trace_values,
             composition_trace_values,
-            base_trace_proofs,
-            extension_trace_proofs,
-            composition_trace_proofs,
+            base_trace_proof,
+            extension_trace_proof,
+            composition_trace_proof,
         }
     }
 }

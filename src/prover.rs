@@ -54,22 +54,28 @@ pub fn default_prove<S: Stark>(
     let base_trace = trace.base_columns();
     assert_eq!(S::AirConfig::NUM_BASE_COLUMNS, base_trace.num_cols());
     let base_trace_polys = base_trace.interpolate(trace_xs);
+    println!("Base trace interpolation: {:?}", now.elapsed());
+    let now = Instant::now();
     let base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
     let base_trace_ce_lde =
         reduduce_blowup_factor(&base_trace_lde, lde_blowup_factor, ce_blowup_factor);
-    println!("made it herre");
+    println!("Base trace reduction and bit rev: {:?}", now.elapsed());
+    let now = Instant::now();
     let base_trace_tree = S::MerkleTree::from_matrix(&base_trace_lde);
+    println!("Base trace commitment: {:?}", now.elapsed());
     channel.commit_base_trace(base_trace_tree.root());
     let num_challenges = air.num_challenges();
     let challenges = Challenges::new(draw_multiple(&mut channel.public_coin, num_challenges));
     let hints = air.gen_hints(&challenges);
-    println!("Base trace: {:?}", now.elapsed());
 
     let now = Instant::now();
     let extension_trace = trace.build_extension_columns(&challenges);
     let num_extension_cols = extension_trace.as_ref().map_or(0, Matrix::num_cols);
     assert_eq!(S::AirConfig::NUM_EXTENSION_COLUMNS, num_extension_cols);
+    println!("build extension trace: {:?}", now.elapsed());
+    let now = Instant::now();
     let extension_trace_polys = extension_trace.as_ref().map(|t| t.interpolate(trace_xs));
+    println!("extension trace polys: {:?}", now.elapsed());
     let extension_trace_lde = extension_trace_polys
         .as_ref()
         .map(|p| p.bit_reversed_evaluate(lde_xs));

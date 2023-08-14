@@ -1,5 +1,6 @@
 use crate::air::AirConfig;
 use crate::challenges::Challenges;
+use crate::channel::VerifierChannelArtifacts;
 use crate::composer::DeepCompositionCoeffs;
 use crate::debug::default_validate_constraints;
 use crate::hash::Digest;
@@ -78,7 +79,7 @@ pub trait Stark: Sized + Send + Sync {
         &self,
         proof: Proof<Self>,
         required_security_bits: u32,
-    ) -> Result<(), VerificationError> {
+    ) -> Result<VerifierChannelArtifacts<Self::Fq>, VerificationError> {
         default_verify(self, proof, required_security_bits)
     }
 }

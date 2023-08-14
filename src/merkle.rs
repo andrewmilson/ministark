@@ -6,18 +6,19 @@ use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use ark_serialize::Valid;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use snafu::Snafu;
+use std::collections::VecDeque;
 use std::fmt::Debug;
+use std::iter::zip;
 use std::marker::PhantomData;
 
 /// Merkle tree error
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("tree must contain `{expected}` leaves, but `{actual}` were provided"))]
-    TooFewLeaves { expected: usize, actual: usize },
+    #[snafu(display("tree must contain `{min}` leaves, but `{actual}` were provided"))]
+    TooFewLeaves { min: usize, actual: usize },
     #[snafu(display("number of leaves must be a power of two, but `{n}` were provided"))]
     NumberOfLeavesNotPowerOfTwo { n: usize },
     #[snafu(display("leaf index `{i}` cannot exceed the number of leaves (`{n}`)"))]
@@ -26,9 +27,9 @@ pub enum Error {
     InvalidProof,
 }
 
-pub trait MerkleTree: Clone {
+pub trait MerkleTree: Sized + Send + Sync + Clone {
     type Proof: CanonicalSerialize + CanonicalDeserialize + Clone + Send + Sync;
-    type Root: Clone;
+    type Root: Digest;
 
     /// Returns the root of the merkle tree
     fn root(&self) -> Self::Root;
@@ -38,14 +39,14 @@ pub trait MerkleTree: Clone {
     /// # Errors
     ///
     /// Returns an error if the leaf index is out of bounds.
-    fn prove(&self, index: usize) -> Result<Self::Proof, Error>;
+    fn prove(&self, indices: &[usize]) -> Result<Self::Proof, Error>;
 
     /// Verifies a merkle proof
     ///
     /// # Errors
     ///
     /// This function returns an error if the proof fails verification.
-    fn verify(root: &Self::Root, proof: &Self::Proof, index: usize) -> Result<(), Error>;
+    fn verify(root: &Self::Root, proof: Self::Proof, indices: &[usize]) -> Result<(), Error>;
 
     /// Returns the number of security bits
     fn security_level_bits() -> u32;
@@ -57,109 +58,26 @@ pub trait MerkleTreeConfig: Send + Sync + Sized + 'static {
     type Digest: Digest;
     type Leaf: CanonicalDeserialize + CanonicalSerialize + Clone + Send + Sync + Sized + 'static;
 
-    fn hash_leaves(l0: &Self::Leaf, l1: &Self::Leaf) -> Self::Digest;
+    fn hash_leaves(depth: u32, l0: &Self::Leaf, l1: &Self::Leaf) -> Self::Digest;
 
-    // TODO: remove this from trait in favour of pre_process_node_hash
-    fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Self::Digest>;
-
-    fn verify_proof(
-        root: &Self::Digest,
-        proof: &MerkleProof<Self::Digest, Self::Leaf>,
-        index: usize,
-    ) -> Result<(), Error>;
+    fn hash_nodes(depth: u32, n0: &Self::Digest, n1: &Self::Digest) -> Self::Digest;
 
     fn security_level_bits() -> u32;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MerkleProof<
+/// Merkle View contains information needed to verify multiple Merkle paths.
+///
+/// Inspired by Starkware's Solidity verifier
+/// <https://etherscan.io/address/0xe9664D230490d5A515ef7Ef30033d8075a8D0E24#code#F24#L1>
+#[derive(Debug, Clone, PartialEq, Eq, CanonicalDeserialize, CanonicalSerialize)]
+pub struct MerkleView<
     N: CanonicalDeserialize + CanonicalSerialize + Clone,
     L: CanonicalDeserialize + CanonicalSerialize + Clone,
 > {
-    path: Vec<N>,
-    sibling: L,
-    leaf: L,
-}
-
-impl<
-        N: CanonicalDeserialize + CanonicalSerialize + Clone,
-        L: CanonicalDeserialize + CanonicalSerialize + Clone,
-    > MerkleProof<N, L>
-{
-    pub fn new(leaf: L, sibling: L, path: Vec<N>) -> Self {
-        Self {
-            path,
-            sibling,
-            leaf,
-        }
-    }
-
-    pub fn height(&self) -> usize {
-        self.path.len() + 1
-    }
-
-    pub fn path(&self) -> &[N] {
-        &self.path
-    }
-
-    pub const fn sibling(&self) -> &L {
-        &self.sibling
-    }
-
-    pub const fn leaf(&self) -> &L {
-        &self.leaf
-    }
-}
-
-impl<
-        N: CanonicalDeserialize + CanonicalSerialize + Clone,
-        L: CanonicalDeserialize + CanonicalSerialize + Clone,
-    > CanonicalSerialize for MerkleProof<N, L>
-{
-    fn serialize_with_mode<W: ark_serialize::Write>(
-        &self,
-        mut writer: W,
-        compress: ark_serialize::Compress,
-    ) -> Result<(), ark_serialize::SerializationError> {
-        self.path.serialize_with_mode(&mut writer, compress)?;
-        self.sibling.serialize_with_mode(&mut writer, compress)?;
-        self.leaf.serialize_with_mode(writer, compress)
-    }
-
-    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
-        self.path.serialized_size(compress)
-            + self.sibling.serialized_size(compress)
-            + self.leaf.serialized_size(compress)
-    }
-}
-
-impl<
-        N: CanonicalDeserialize + CanonicalSerialize + Clone,
-        L: CanonicalDeserialize + CanonicalSerialize + Clone,
-    > Valid for MerkleProof<N, L>
-{
-    #[inline]
-    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
-        Ok(())
-    }
-}
-
-impl<
-        N: CanonicalDeserialize + CanonicalSerialize + Clone,
-        L: CanonicalDeserialize + CanonicalSerialize + Clone,
-    > CanonicalDeserialize for MerkleProof<N, L>
-{
-    fn deserialize_with_mode<R: ark_serialize::Read>(
-        mut reader: R,
-        compress: ark_serialize::Compress,
-        validate: ark_serialize::Validate,
-    ) -> Result<Self, ark_serialize::SerializationError> {
-        Ok(Self {
-            path: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
-            sibling: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
-            leaf: <_>::deserialize_with_mode(&mut reader, compress, validate)?,
-        })
-    }
+    pub nodes: Vec<N>,
+    pub initial_leaves: Vec<L>,
+    pub sibling_leaves: Vec<L>,
+    pub height: u32,
 }
 
 /// Merkle tree implemented as a full power-of-two arity tree.
@@ -192,62 +110,181 @@ impl<C: MerkleTreeConfig> MerkleTreeImpl<C> {
     /// * there are less than two leaves
     /// * the number of leaves is not a power of two
     pub fn new(leaves: Vec<C::Leaf>) -> Result<Self, Error> {
+        const MIN_LEAVES: usize = 2;
+
         let n = leaves.len();
-        if n < 2 {
+        if n < MIN_LEAVES {
             return Err(Error::TooFewLeaves {
-                expected: 2,
+                min: MIN_LEAVES,
                 actual: n,
             });
         } else if !n.is_power_of_two() {
             return Err(Error::NumberOfLeavesNotPowerOfTwo { n });
         }
 
-        let nodes = C::build_merkle_nodes(&leaves);
+        let nodes = build_merkle_nodes::<C>(&leaves);
         Ok(Self { nodes, leaves })
+    }
+
+    /// Returns the height of the merkle tree
+    /// i.e. for the merkle tree below `height=1`
+    /// ```text
+    ///   +
+    ///  / \
+    /// +   +
+    /// ```
+    fn height(&self) -> u32 {
+        self.leaves.len().ilog2()
     }
 }
 
 impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
-    type Proof = MerkleProof<C::Digest, C::Leaf>;
+    type Proof = MerkleView<C::Digest, C::Leaf>;
     type Root = C::Digest;
 
     fn root(&self) -> C::Digest {
         self.nodes[1].clone()
     }
 
-    fn prove(&self, index: usize) -> Result<MerkleProof<C::Digest, C::Leaf>, Error> {
-        if index >= self.leaves.len() {
-            return Err(Error::LeafIndexOutOfBounds {
-                n: self.leaves.len(),
-                i: index,
-            });
+    fn prove(&self, indices: &[usize]) -> Result<MerkleView<C::Digest, C::Leaf>, Error> {
+        let num_leaves = self.leaves.len();
+        for &i in indices {
+            if i >= num_leaves {
+                return Err(Error::LeafIndexOutOfBounds { i, n: num_leaves });
+            }
         }
 
-        // TODO: batch proofs
-        // TODO: omit leaves[index]?
-        let leaf = self.leaves[index].clone();
-        let sibling = self.leaves[index ^ 1].clone();
+        let mut indices = indices.to_vec();
+        indices.sort_unstable();
+        indices.dedup();
 
-        let mut path = Vec::new();
-        let mut index = (index + self.nodes.len()) >> 1;
-        while index > 1 {
-            path.push(self.nodes[index ^ 1].clone());
-            index >>= 1;
+        let mut initial_leaves = Vec::new();
+        let mut sibling_leaves = Vec::new();
+
+        // handle leaves and specify the internal node indices
+        let mut node_queue = VecDeque::new();
+        let mut leaf_queue = VecDeque::from_iter(indices);
+        while let Some(index) = leaf_queue.pop_front() {
+            initial_leaves.push(self.leaves[index].clone());
+            node_queue.push_back((num_leaves + index) >> 1);
+
+            if let Some(&next_index) = leaf_queue.front() {
+                let are_siblings = index ^ 1 == next_index;
+                if are_siblings {
+                    initial_leaves.push(self.leaves[next_index].clone());
+                    leaf_queue.pop_front();
+                    continue;
+                }
+            }
+
+            sibling_leaves.push(self.leaves[index ^ 1].clone());
         }
 
-        Ok(MerkleProof {
-            path,
-            sibling,
-            leaf,
+        // handle internal nodes
+        let mut nodes = Vec::new();
+        while let Some(index) = node_queue.pop_front() {
+            if index > 2 {
+                node_queue.push_back(index >> 1);
+            }
+
+            if let Some(next_index) = node_queue.front() {
+                let are_siblings = index ^ 1 == *next_index;
+                if are_siblings {
+                    node_queue.pop_front();
+                    continue;
+                }
+            }
+
+            nodes.push(self.nodes[index ^ 1].clone());
+        }
+
+        Ok(MerkleView {
+            nodes,
+            initial_leaves,
+            sibling_leaves,
+            height: self.height(),
         })
     }
 
     fn verify(
         root: &C::Digest,
-        proof: &MerkleProof<C::Digest, C::Leaf>,
-        index: usize,
+        proof: MerkleView<C::Digest, C::Leaf>,
+        indices: &[usize],
     ) -> Result<(), Error> {
-        C::verify_proof(root, proof, index)
+        let height = proof.height;
+        let num_leaves = 1 << height;
+        for &i in indices {
+            if i >= num_leaves {
+                return Err(Error::LeafIndexOutOfBounds { i, n: num_leaves });
+            }
+        }
+
+        let mut indices = indices.to_vec();
+        indices.sort_unstable();
+        indices.dedup();
+
+        // handle leaves and specify the internal node indices
+        let mut node_queue = VecDeque::new();
+        let mut siblings = VecDeque::from_iter(proof.sibling_leaves);
+        let mut leaf_queue = zip(indices, proof.initial_leaves).collect::<VecDeque<_>>();
+        while let Some((index, leaf)) = leaf_queue.pop_front() {
+            let node_index = (num_leaves + index) >> 1;
+
+            if let Some((next_index, next_leaf)) = leaf_queue.front() {
+                let are_siblings = index ^ 1 == *next_index;
+                if are_siblings {
+                    let running_hash = C::hash_leaves(height - 1, &leaf, next_leaf);
+                    node_queue.push_back((node_index, running_hash));
+                    leaf_queue.pop_front();
+                    continue;
+                }
+            }
+
+            let sibling = siblings.pop_front().unwrap();
+            let running_hash = if index % 2 == 0 {
+                C::hash_leaves(height - 1, &leaf, &sibling)
+            } else {
+                C::hash_leaves(height - 1, &sibling, &leaf)
+            };
+            node_queue.push_back((node_index, running_hash));
+        }
+        assert!(siblings.is_empty());
+
+        // handle internal nodes
+        let mut nodes = VecDeque::from_iter(proof.nodes);
+        while let Some((index, hash)) = node_queue.pop_front() {
+            let depth = index.ilog2();
+
+            if depth == 0 {
+                assert!(node_queue.is_empty());
+                // compare against the root
+                return if *root == hash {
+                    Ok(())
+                } else {
+                    Err(Error::InvalidProof)
+                };
+            }
+
+            if let Some((next_index, next_hash)) = node_queue.front() {
+                let are_siblings = index ^ 1 == *next_index;
+                if are_siblings {
+                    let running_hash = C::hash_nodes(depth - 1, &hash, next_hash);
+                    node_queue.push_back((index >> 1, running_hash));
+                    node_queue.pop_front();
+                    continue;
+                }
+            }
+
+            let sibling = nodes.pop_front().unwrap();
+            let running_hash = if index % 2 == 0 {
+                C::hash_nodes(depth - 1, &hash, &sibling)
+            } else {
+                C::hash_nodes(depth - 1, &sibling, &hash)
+            };
+            node_queue.push_back((index >> 1, running_hash));
+        }
+
+        Ok(())
     }
 
     fn security_level_bits() -> u32 {
@@ -255,70 +292,23 @@ impl<C: MerkleTreeConfig> MerkleTree for MerkleTreeImpl<C> {
     }
 }
 
-// adapted from plonky3 MMCS
-pub trait MatrixCommitment<T> {
-    type Proof: CanonicalSerialize + CanonicalDeserialize + Clone + Send + Sync;
-    type Commitment: CanonicalSerialize + CanonicalDeserialize + Clone + Send + Sync;
-
-    fn from_matrix(m: &Matrix<T>) -> Self;
-
-    fn prove_rows(&self, row_ids: &[usize]) -> Result<Self::Proof, Error>;
-
-    fn verify_rows(
-        commitment: &Self::Commitment,
-        row_ids: &[usize],
-        rows: &[&[T]],
-        proof: &Self::Proof,
-    ) -> Result<(), Error>;
-}
-
-// impl MatrixMerkleCommitment<T> {
-// }
-
+/// Merkle tree that supports proving/verifying rows of a matrix
+///
+/// Inspired by plonky3's MMCS
+/// <https://github.com/Plonky3/Plonky3/blob/main/commit/src/mmcs.rs>
 pub trait MatrixMerkleTree<T>: MerkleTree + Sized {
     fn from_matrix(m: &Matrix<T>) -> Self;
 
-    fn prove_row(&self, row_idx: usize) -> Result<Self::Proof, Error>;
+    fn prove_rows(&self, row_ids: &[usize]) -> Result<Self::Proof, Error> {
+        self.prove(row_ids)
+    }
 
-    fn verify_row(
+    fn verify_rows(
         root: &Self::Root,
-        row_idx: usize,
-        row: &[T],
-        proof: &Self::Proof,
+        row_ids: &[usize],
+        rows: &[impl AsRef<[T]>],
+        proof: Self::Proof,
     ) -> Result<(), Error>;
-}
-
-pub struct HashedLeafConfig<H: HashFn>(PhantomData<H>);
-
-impl<H: HashFn> Clone for HashedLeafConfig<H> {
-    fn clone(&self) -> Self {
-        Self(PhantomData)
-    }
-}
-
-impl<H: HashFn> MerkleTreeConfig for HashedLeafConfig<H> {
-    type Digest = H::Digest;
-    type Leaf = H::Digest;
-
-    fn hash_leaves(l0: &H::Digest, l1: &H::Digest) -> H::Digest {
-        H::merge(l0, l1)
-    }
-
-    fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Self::Digest> {
-        build_merkle_nodes_default::<Self, H>(leaves)
-    }
-
-    fn verify_proof(
-        root: &Self::Digest,
-        proof: &MerkleProof<H::Digest, H::Digest>,
-        index: usize,
-    ) -> Result<(), Error> {
-        verify_proof_default::<Self, H>(root, proof, index)
-    }
-
-    fn security_level_bits() -> u32 {
-        H::COLLISION_RESISTANCE
-    }
 }
 
 pub struct MatrixMerkleTreeImpl<H: HashFn> {
@@ -343,19 +333,19 @@ impl<H: HashFn> MatrixMerkleTreeImpl<H> {
 }
 
 impl<H: HashFn> MerkleTree for MatrixMerkleTreeImpl<H> {
-    type Proof = MerkleProof<H::Digest, H::Digest>;
+    type Proof = MerkleView<H::Digest, H::Digest>;
     type Root = H::Digest;
 
     fn root(&self) -> Self::Root {
         self.merkle_tree.root()
     }
 
-    fn prove(&self, index: usize) -> Result<Self::Proof, Error> {
-        self.merkle_tree.prove(index)
+    fn prove(&self, indices: &[usize]) -> Result<Self::Proof, Error> {
+        self.merkle_tree.prove(indices)
     }
 
-    fn verify(root: &Self::Root, proof: &Self::Proof, index: usize) -> Result<(), Error> {
-        MerkleTreeImpl::<HashedLeafConfig<H>>::verify(root, proof, index)
+    fn verify(root: &Self::Root, proof: Self::Proof, indices: &[usize]) -> Result<(), Error> {
+        MerkleTreeImpl::<HashedLeafConfig<H>>::verify(root, proof, indices)
     }
 
     fn security_level_bits() -> u32 {
@@ -370,34 +360,56 @@ impl<F: Field, H: ElementHashFn<F> + Send + Sync + 'static> MatrixMerkleTree<F>
         Self::new(hash_rows::<F, H>(m)).unwrap()
     }
 
-    fn prove_row(&self, row_idx: usize) -> Result<Self::Proof, Error> {
-        <Self as MerkleTree>::prove(self, row_idx)
-    }
-
-    fn verify_row(
+    fn verify_rows(
         root: &Self::Root,
-        row_idx: usize,
-        row: &[F],
-        proof: &Self::Proof,
+        row_ids: &[usize],
+        rows: &[impl AsRef<[F]>],
+        proof: Self::Proof,
     ) -> Result<(), Error> {
-        let row_hash = H::hash_elements(row.iter().copied());
-        if proof.leaf == row_hash {
-            <Self as MerkleTree>::verify(root, proof, row_idx)
+        // remove duplicates and sort
+        let mut instances = zip(row_ids, rows).collect::<Vec<_>>();
+        instances.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+        instances.dedup_by(|(a, _), (b, _)| a == b);
+
+        let (indices, rows): (Vec<_>, Vec<_>) = instances.into_iter().unzip();
+        let initial_leaves = rows
+            .iter()
+            .map(|r| H::hash_elements(r.as_ref().iter().copied()))
+            .collect::<Vec<_>>();
+        if proof.initial_leaves == initial_leaves {
+            Self::verify(root, proof, &indices)
         } else {
             Err(Error::InvalidProof)
         }
     }
 }
 
-// #[inline]
-// fn hash_row_with_buffer<D: Digest, F: Field>(row: &[F], buffer: &mut Vec<u8>)
-// -> Output<D> {     row.serialize_compressed(&mut *buffer).unwrap();
-//     D::digest(buffer)
-// }
-// fn hash_row<F: Field, H: ElementHashFn<F>>(row: &[F]) -> H::Digest {
-// }
+pub struct HashedLeafConfig<H: HashFn>(PhantomData<H>);
 
-fn hash_rows<F: Field, H: ElementHashFn<F>>(matrix: &Matrix<F>) -> Vec<H::Digest> {
+impl<H: HashFn> Clone for HashedLeafConfig<H> {
+    fn clone(&self) -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<H: HashFn> MerkleTreeConfig for HashedLeafConfig<H> {
+    type Digest = H::Digest;
+    type Leaf = H::Digest;
+
+    fn hash_leaves(_: u32, l0: &H::Digest, l1: &H::Digest) -> H::Digest {
+        H::merge(l0, l1)
+    }
+
+    fn hash_nodes(_: u32, n0: &Self::Digest, n1: &Self::Digest) -> Self::Digest {
+        H::merge(n0, n1)
+    }
+
+    fn security_level_bits() -> u32 {
+        H::COLLISION_RESISTANCE
+    }
+}
+
+pub fn hash_rows<F: Field, H: ElementHashFn<F>>(matrix: &Matrix<F>) -> Vec<H::Digest> {
     let num_rows = matrix.num_rows();
     let mut row_hashes = vec![H::Digest::default(); num_rows];
 
@@ -424,14 +436,13 @@ fn hash_rows<F: Field, H: ElementHashFn<F>>(matrix: &Matrix<F>) -> Vec<H::Digest
 }
 
 #[cfg(feature = "parallel")]
-pub fn build_merkle_nodes_default<C: MerkleTreeConfig, H: HashFn<Digest = C::Digest>>(
-    leaves: &[C::Leaf],
-) -> Vec<C::Digest> {
+pub fn build_merkle_nodes<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C::Digest> {
     let n = leaves.len();
     let num_subtrees = core::cmp::min(rayon::current_num_threads().next_power_of_two(), n / 2);
     let mut nodes = vec![C::Digest::default(); n];
 
     // code adapted from winterfell
+    // https://github.com/facebook/winterfell
     rayon::scope(|s| {
         for i in 0..num_subtrees {
             let nodes = unsafe { &mut *core::ptr::addr_of_mut!(nodes[..]) };
@@ -439,21 +450,24 @@ pub fn build_merkle_nodes_default<C: MerkleTreeConfig, H: HashFn<Digest = C::Dig
                 // generate first layer of nodes from leaf nodes
                 let batch_size = n / num_subtrees;
                 let leaf_offset = batch_size * i;
+                let depth = (n / 2).ilog2();
                 for j in (0..batch_size).step_by(2) {
                     let lhs = &leaves[leaf_offset + j];
                     let rhs = &leaves[leaf_offset + j + 1];
-                    nodes[(n + leaf_offset + j) / 2] = C::hash_leaves(lhs, rhs);
+                    nodes[(n + leaf_offset + j) / 2] = C::hash_leaves(depth, lhs, rhs);
                 }
 
                 // generate remaining nodes
                 let mut batch_size = n / num_subtrees / 4;
                 let mut start_idx = n / 4 + batch_size * i;
+                let mut depth = (n / 4).ilog2();
                 while start_idx >= num_subtrees {
                     for k in (start_idx..(start_idx + batch_size)).rev() {
-                        nodes[k] = H::merge(&nodes[k * 2], &nodes[k * 2 + 1]);
+                        nodes[k] = C::hash_nodes(depth, &nodes[k * 2], &nodes[k * 2 + 1]);
                     }
                     start_idx /= 2;
                     batch_size /= 2;
+                    depth -= 1;
                 }
             });
         }
@@ -461,76 +475,54 @@ pub fn build_merkle_nodes_default<C: MerkleTreeConfig, H: HashFn<Digest = C::Dig
 
     // finish the tip of the tree
     for i in (1..num_subtrees).rev() {
-        nodes[i] = H::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
+        let layer = i.ilog2();
+        nodes[i] = C::hash_nodes(layer, &nodes[i * 2], &nodes[i * 2 + 1]);
     }
 
     nodes
 }
 
 #[cfg(not(feature = "parallel"))]
-pub fn build_merkle_nodes_default<C: MerkleTreeConfig, H: HashFn<Digest = C::Digest>>(
-    leaves: &[C::Leaf],
-) -> Vec<C::Digest> {
+pub fn build_merkle_nodes<C: MerkleTreeConfig>(leaves: &[C::Leaf]) -> Vec<C::Digest> {
     let n = leaves.len();
     assert!(n.is_power_of_two());
     let mut nodes = vec![C::Digest::default(); n];
 
     // generate first layer of nodes from leaf nodes
+    let depth = (n / 2).ilog2();
     for i in 0..n / 2 {
-        nodes[n / 2 + i] = C::hash_leaves(&leaves[i * 2], &leaves[i * 2 + 1]);
+        nodes[n / 2 + i] = C::hash_leaves(depth, &leaves[i * 2], &leaves[i * 2 + 1]);
     }
 
     // generate remaining nodes
-    for i in (1..n / 2).rev() {
-        nodes[i] = H::merge(&nodes[i * 2], &nodes[i * 2 + 1]);
+    let num_remaining_layers = (n / 2).ilog2();
+    for depth in (0..num_remaining_layers).rev() {
+        let size = 1 << depth;
+        let offset = size;
+        for i in offset..offset + size {
+            nodes[i] = C::hash_nodes(depth, &nodes[i * 2], &nodes[i * 2 + 1]);
+        }
     }
 
     nodes
 }
 
-pub fn verify_proof_default<C: MerkleTreeConfig, H: HashFn<Digest = C::Digest>>(
-    root: &C::Digest,
-    proof: &MerkleProof<C::Digest, C::Leaf>,
-    mut index: usize,
-) -> Result<(), Error> {
-    // hash the leaves
-    let mut running_hash = if index % 2 == 0 {
-        C::hash_leaves(&proof.leaf, &proof.sibling)
-    } else {
-        C::hash_leaves(&proof.sibling, &proof.leaf)
-    };
-
-    index >>= 1;
-    for node in &proof.path {
-        running_hash = if index % 2 == 0 {
-            H::merge(&running_hash, node)
-        } else {
-            H::merge(node, &running_hash)
-        };
-        index >>= 1;
-    }
-
-    if *root == running_hash {
-        Ok(())
-    } else {
-        Err(Error::InvalidProof)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::build_merkle_nodes_default;
-    use super::verify_proof_default;
     use super::Error;
-    use super::MerkleProof;
+    use super::MatrixMerkleTree;
+    use super::MatrixMerkleTreeImpl;
     use super::MerkleTree;
     use super::MerkleTreeConfig;
     use super::MerkleTreeImpl;
     use crate::hash::HashFn;
     use crate::hash::Sha256HashFn;
+    use crate::utils::GpuAllocator;
     use crate::utils::SerdeOutput;
+    use crate::Matrix;
+    use ark_ff::MontFp as Fp;
     use digest::Digest;
-    use ministark_gpu::metal::objc::runtime::Sel;
+    use ministark_gpu::fields::p3618502788666131213697322783095070105623107215331596699973092056135872020481::ark::Fp;
     use sha2::Sha256;
 
     #[test]
@@ -540,9 +532,23 @@ mod tests {
         let commitment = tree.root();
         let i = 3;
 
-        let proof = tree.prove(i)?;
+        let proof = tree.prove(&[i])?;
 
-        MerkleTreeImpl::<UnhashedLeafConfig>::verify(&commitment, &proof, i)
+        MerkleTreeImpl::<UnhashedLeafConfig>::verify(&commitment, proof, &[i])
+    }
+
+    #[test]
+    fn prove_all_leaves() -> Result<(), Error> {
+        let column: &[Fp] = &[Fp!("1"), Fp!("2"), Fp!("3"), Fp!("4")];
+        let matrix = Matrix::new(vec![column.to_vec_in(GpuAllocator)]);
+        let tree = MatrixMerkleTreeImpl::<Sha256HashFn>::from_matrix(&matrix);
+        let commitment = tree.root();
+        let row_ids = [0, 1, 2, 3];
+        let rows = row_ids.map(|i| [column[i]]);
+
+        let proof = MatrixMerkleTree::<Fp>::prove_rows(&tree, &row_ids)?;
+
+        MatrixMerkleTreeImpl::<Sha256HashFn>::verify_rows(&commitment, &row_ids, &rows, proof)
     }
 
     #[test]
@@ -557,9 +563,9 @@ mod tests {
         let commitment = tree.root();
         let i = 3;
 
-        let proof = tree.prove(i)?;
+        let proof = tree.prove(&[i])?;
 
-        MerkleTreeImpl::<HashedLeafConfig>::verify(&commitment, &proof, i)
+        MerkleTreeImpl::<HashedLeafConfig>::verify(&commitment, proof, &[i])
     }
 
     #[test]
@@ -569,9 +575,9 @@ mod tests {
         let commitment = tree.root();
         let i = 378;
 
-        let proof = tree.prove(i)?;
+        let proof = tree.prove(&[i])?;
 
-        MerkleTreeImpl::<UnhashedLeafConfig>::verify(&commitment, &proof, i)
+        MerkleTreeImpl::<UnhashedLeafConfig>::verify(&commitment, proof, &[i])
     }
 
     struct HashedLeafConfig;
@@ -580,20 +586,16 @@ mod tests {
         type Digest = SerdeOutput<Sha256>;
         type Leaf = SerdeOutput<Sha256>;
 
-        fn hash_leaves(l0: &SerdeOutput<Sha256>, l1: &SerdeOutput<Sha256>) -> SerdeOutput<Sha256> {
+        fn hash_leaves(
+            _: u32,
+            l0: &SerdeOutput<Sha256>,
+            l1: &SerdeOutput<Sha256>,
+        ) -> SerdeOutput<Sha256> {
             Sha256HashFn::merge(l0, l1)
         }
 
-        fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Self::Digest> {
-            build_merkle_nodes_default::<Self, Sha256HashFn>(leaves)
-        }
-
-        fn verify_proof(
-            root: &Self::Digest,
-            proof: &MerkleProof<Self::Digest, Self::Leaf>,
-            index: usize,
-        ) -> Result<(), Error> {
-            verify_proof_default::<Self, Sha256HashFn>(root, proof, index)
+        fn hash_nodes(_: u32, n0: &Self::Digest, n1: &Self::Digest) -> Self::Digest {
+            Sha256HashFn::merge(n0, n1)
         }
 
         fn security_level_bits() -> u32 {
@@ -607,22 +609,14 @@ mod tests {
         type Digest = SerdeOutput<Sha256>;
         type Leaf = u32;
 
-        fn hash_leaves(l0: &u32, l1: &u32) -> SerdeOutput<Sha256> {
+        fn hash_leaves(_: u32, l0: &u32, l1: &u32) -> SerdeOutput<Sha256> {
             let l0_bytes = l0.to_be_bytes();
             let l1_bytes = l1.to_be_bytes();
             Sha256HashFn::hash_chunks([&l0_bytes[..], &l1_bytes[..]])
         }
 
-        fn build_merkle_nodes(leaves: &[Self::Leaf]) -> Vec<Self::Digest> {
-            build_merkle_nodes_default::<Self, Sha256HashFn>(leaves)
-        }
-
-        fn verify_proof(
-            root: &Self::Digest,
-            proof: &MerkleProof<Self::Digest, Self::Leaf>,
-            index: usize,
-        ) -> Result<(), Error> {
-            verify_proof_default::<Self, Sha256HashFn>(root, proof, index)
+        fn hash_nodes(_: u32, n0: &Self::Digest, n1: &Self::Digest) -> Self::Digest {
+            Sha256HashFn::merge(n0, n1)
         }
 
         fn security_level_bits() -> u32 {

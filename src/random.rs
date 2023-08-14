@@ -22,7 +22,7 @@ use std::marker::PhantomData;
 // Seedable<FriRemainder<Self::Fq>>
 
 /// `PublicCoin` trait adapted from Winterfell
-pub trait PublicCoin: Sync + Debug {
+pub trait PublicCoin: Sized + Send + Sync + Debug {
     type Digest: Digest;
     type Field: Field;
 

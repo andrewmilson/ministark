@@ -73,12 +73,12 @@ impl FriOptions {
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct FriProof<F: Field, D: Digest, M: MerkleTree> {
+pub struct FriProof<F: Field, D: Digest, M: MatrixMerkleTree<F>> {
     pub layers: Vec<LayerProof<F, D, M>>,
     pub remainder_coeffs: Vec<F>,
 }
 
-impl<F: GpuField + Field, D: Digest, M: MerkleTree<Root = D>> FriProof<F, D, M>
+impl<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = D>> FriProof<F, D, M>
 where
     F::FftField: FftField,
 {
@@ -96,9 +96,9 @@ struct FriLayer<F: GpuField, M: MerkleTree> {
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
-pub struct LayerProof<F: Field, D: Digest, M: MerkleTree> {
+pub struct LayerProof<F: Field, D: Digest, M: MatrixMerkleTree<F>> {
     pub flattenend_rows: Vec<F>,
-    pub proofs: Vec<M::Proof>,
+    pub merkle_proof: M::Proof,
     pub commitment: D,
 }
 
@@ -106,28 +106,18 @@ impl<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = D>> LayerProo
 where
     F::FftField: FftField,
 {
-    pub fn new<const N: usize>(rows: Vec<[F; N]>, proofs: Vec<M::Proof>, commitment: D) -> Self {
+    pub fn new<const N: usize>(rows: Vec<[F; N]>, merkle_proof: M::Proof, commitment: D) -> Self {
         Self {
             flattenend_rows: rows.into_iter().flatten().collect(),
-            proofs,
+            merkle_proof,
             commitment,
         }
     }
 
-    pub fn verify<const N: usize>(&self, positions: &[usize]) -> Result<(), merkle::Error> {
+    pub fn verify<const N: usize>(self, positions: &[usize]) -> Result<(), merkle::Error> {
         let commitment = &self.commitment;
-        // TODO: could check raminder is empty but not critical
-        // TODO: could check positions has the same len as other vecs but not critical
         let (rows, _remainder) = &self.flattenend_rows.as_chunks::<N>();
-        // zip chains could be dangerous e.g. 2 positions but only 1 proof then loop
-        // stops after first iteration
-        for (i, position) in positions.iter().enumerate() {
-            let proof = &self.proofs[i];
-            let row = &rows[i];
-            let row_idx = position / N;
-            M::verify_row(commitment, row_idx, row, proof)?;
-        }
-        Ok(())
+        M::verify_rows(commitment, positions, rows, self.merkle_proof)
     }
 }
 
@@ -279,7 +269,7 @@ pub enum VerificationError {
     },
 }
 
-pub struct FriVerifier<F: GpuField + Field, D: Digest, M: MerkleTree<Root = D>>
+pub struct FriVerifier<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = D>>
 where
     F::FftField: FftField,
 {
@@ -379,12 +369,13 @@ where
             assert_eq!(rows.len(), folded_positions.len());
 
             // verify the layer values against the layer's commitment
-            for (j, position) in folded_positions.iter().enumerate() {
-                let proof = &layer.proofs[j];
-                let row = &rows[j];
-                M::verify_row(&layer_commitment, *position, row, proof)
-                    .map_err(|_| VerificationError::LayerCommitmentInvalid { layer: i })?;
-            }
+            M::verify_rows(
+                &layer_commitment,
+                &folded_positions,
+                rows,
+                layer.merkle_proof,
+            )
+            .map_err(|_| VerificationError::LayerCommitmentInvalid { layer: i })?;
 
             let query_values = get_query_values(rows, &positions, &folded_positions);
             // println!("evaluatinos: {:?}", evaluations);
@@ -662,19 +653,11 @@ fn query_layer<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = D>,
 where
     F::FftField: FftField,
 {
-    let proofs = positions
-        .iter()
-        .map(|pos| {
-            layer
-                .merkle_tree
-                .prove_row(*pos)
-                .expect("failed to generate Merkle proof")
-        })
-        .collect();
+    let merkle_proof = layer.merkle_tree.prove_rows(positions).unwrap();
     let mut rows: Vec<[F; N]> = Vec::new();
     for &position in positions {
         let row = layer.evaluations.get_row(position).unwrap();
         rows.push(row.try_into().unwrap());
     }
-    LayerProof::new(rows, proofs, layer.merkle_tree.root().clone())
+    LayerProof::new(rows, merkle_proof, layer.merkle_tree.root())
 }

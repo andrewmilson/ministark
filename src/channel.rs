@@ -1,11 +1,16 @@
+use crate::challenges::Challenges;
 use crate::fri;
 use crate::fri::FriProof;
+use crate::hints::Hints;
 use crate::random::PublicCoin;
 use crate::stark::Stark;
 use crate::trace::Queries;
 use crate::Air;
 use crate::Proof;
 use alloc::vec::Vec;
+use ark_ff::Field;
+use ark_serialize::CanonicalDeserialize;
+use ark_serialize::CanonicalSerialize;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::collections::BTreeSet;
@@ -121,6 +126,7 @@ impl<'a, S: Stark> ProverChannel<'a, S> {
 }
 
 // FRI prover channel implementation
+// Inspired by Winterfell: https://github.com/facebook/winterfell/blob/main/fri/src/prover/channel.rs
 impl<'a, S: Stark> fri::ProverChannel for ProverChannel<'a, S> {
     type Digest = S::Digest;
     type Field = S::Fq;
@@ -139,4 +145,13 @@ impl<'a, S: Stark> fri::ProverChannel for ProverChannel<'a, S> {
     fn draw_fri_alpha(&mut self) -> S::Fq {
         self.public_coin.draw()
     }
+}
+
+// TODO: maybe just have a VerifierChannel
+#[derive(Debug, Clone, CanonicalDeserialize, CanonicalSerialize)]
+pub struct VerifierChannelArtifacts<F: Field> {
+    pub air_challenges: Challenges<F>,
+    pub air_hints: Hints<F>,
+    pub fri_alphas: Vec<F>,
+    pub query_positions: Vec<usize>,
 }

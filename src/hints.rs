@@ -1,10 +1,12 @@
 use crate::constraints::Hint;
 use alloc::vec::Vec;
 use ark_ff::Field;
+use ark_serialize::CanonicalDeserialize;
+use ark_serialize::CanonicalSerialize;
 use core::ops::Deref;
 use core::ops::Index;
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone, CanonicalDeserialize, CanonicalSerialize)]
 pub struct Hints<F: Field>(Vec<F>);
 
 impl<F: Field> Hints<F> {

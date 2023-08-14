@@ -123,9 +123,9 @@ impl<F: Field> Matrix<F> {
     {
         use crate::utils::gpu_vec_to_vec;
         use crate::utils::vec_to_gpu_vec;
+        use ark_std::cfg_into_iter;
         Self(
-            self.0
-                .into_iter()
+            cfg_into_iter!(self.0)
                 .map(|column| {
                     // TODO: a little messy. arkworks only takes a Vec with global allocator. To
                     // prevent cloning the memory we have to reconstruct a Vec from a GpuVec and
@@ -170,13 +170,17 @@ impl<F: Field> Matrix<F> {
     {
         use crate::utils::gpu_vec_to_vec;
         use crate::utils::vec_to_gpu_vec;
+        use ark_std::cfg_into_iter;
         Self(
-            self.0
-                .into_iter()
+            cfg_into_iter!(self.0)
                 .map(|column| {
                     // TODO: a little messy. arkworks only takes a Vec with global allocator. To
                     // prevent cloning the memory we have to reconstruct a Vec from a GpuVec and
                     // convert it back to a GpuVec after the fft
+                    // NOTE: not really a safe operation anyway. Domain could be larger than the
+                    // original vector resulting an a resize and potential reallocation of the
+                    // underlying memory. This wouldn't necessarily be page aligned (what gpu vec
+                    // enforces) so it'll be unsafe to use for GPU.
                     let mut column = gpu_vec_to_vec(column);
                     domain.fft_in_place(&mut column);
                     vec_to_gpu_vec(column)
@@ -273,10 +277,6 @@ impl<F: Field> Matrix<F> {
 
         row_hashes
     }
-
-    // pub fn commit_to_rows<D: Digest>(&self) -> MerkleTree<D> {
-    //     MerkleTree::new(self.hash_rows::<D>()).expect("failed to construct Merkle
-    // tree") }
 
     pub fn evaluate_at<T: Field + for<'a> Add<&'a F, Output = T>>(&self, x: T) -> Vec<T> {
         ark_std::cfg_iter!(self.0)
