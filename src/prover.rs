@@ -19,6 +19,7 @@ use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_poly::EvaluationDomain;
 use ministark_gpu::utils::bit_reverse;
+use std::ops::Deref;
 use std::time::Instant;
 
 #[allow(clippy::too_many_lines)]
@@ -42,12 +43,6 @@ pub fn default_prove<S: Stark>(
     let mut channel = ProverChannel::<S>::new(&air, public_coin);
     println!("Init air: {:?}", now.elapsed());
 
-    let lde_blowup_factor = air.lde_blowup_factor();
-    let ce_blowup_factor = air.ce_blowup_factor();
-
-    // reverse engineering TODOs:
-    // 1. don't create leaf hash if row is single item
-    // 2. commit to out of order rows
     let now = Instant::now();
     let trace_xs = air.trace_domain();
     let lde_xs = air.lde_domain();
@@ -56,9 +51,7 @@ pub fn default_prove<S: Stark>(
     let base_trace_polys = base_trace.interpolate(trace_xs);
     println!("Base trace interpolation: {:?}", now.elapsed());
     let now = Instant::now();
-    let base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
-    let base_trace_ce_lde =
-        reduduce_blowup_factor(&base_trace_lde, lde_blowup_factor, ce_blowup_factor);
+    let mut base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
     println!("Base trace reduction and bit rev: {:?}", now.elapsed());
     let now = Instant::now();
     let base_trace_tree = S::MerkleTree::from_matrix(&base_trace_lde);
@@ -76,12 +69,9 @@ pub fn default_prove<S: Stark>(
     let now = Instant::now();
     let extension_trace_polys = extension_trace.as_ref().map(|t| t.interpolate(trace_xs));
     println!("extension trace polys: {:?}", now.elapsed());
-    let extension_trace_lde = extension_trace_polys
+    let mut extension_trace_lde = extension_trace_polys
         .as_ref()
         .map(|p| p.bit_reversed_evaluate(lde_xs));
-    let extension_trace_ce_lde = extension_trace_lde
-        .as_ref()
-        .map(|t| reduduce_blowup_factor(t, lde_blowup_factor, ce_blowup_factor));
     let extension_trace_tree = extension_trace_lde.as_ref().map(S::MerkleTree::from_matrix);
     if let Some(t) = extension_trace_tree.as_ref() {
         channel.commit_extension_trace(t.root());
@@ -92,40 +82,64 @@ pub fn default_prove<S: Stark>(
     this.validate_constraints(&challenges, &hints, base_trace, extension_trace.as_ref());
     drop((trace, extension_trace));
 
-    let now = Instant::now();
-    let num_composition_coeffs = air.num_composition_constraint_coeffs();
-    let composition_coeffs = draw_multiple(&mut channel.public_coin, num_composition_coeffs);
-    let ce_lde_xs = air.ce_domain();
-    let x_lde = ce_lde_xs.elements().collect::<Vec<_>>();
-    println!("X lde: {:?}", now.elapsed());
-    let now = Instant::now();
-    // TODO: improve
-    let composition_evals = S::AirConfig::eval_constraint(
-        air.composition_constraint(),
-        &challenges,
-        &hints,
-        &composition_coeffs,
-        air.ce_blowup_factor(),
-        x_lde.to_vec_in(GpuAllocator),
-        &base_trace_ce_lde,
-        extension_trace_ce_lde.as_ref(),
-    );
-    println!("Constraint eval: {:?}", now.elapsed());
-    let now = Instant::now();
-    let composition_poly = composition_evals.into_polynomials(air.ce_domain());
-    let composition_trace_cols = air.ce_blowup_factor();
-    let composition_trace_polys = Matrix::from_rows(
-        GpuVec::try_from(composition_poly)
-            .unwrap()
-            .chunks(composition_trace_cols)
-            .map(<[S::Fq]>::to_vec)
-            .collect(),
-    );
-    let composition_trace_lde = composition_trace_polys.bit_reversed_evaluate(air.lde_domain());
-    let composition_trace_tree = S::MerkleTree::from_matrix(&composition_trace_lde);
+    let composition_trace_polys: Matrix<S::Fq>;
+    let composition_trace_lde: Matrix<S::Fq>;
+    let composition_trace_tree: S::MerkleTree;
+    {
+        // To prevent allocating more memory, just re-order the values in the trace to
+        // be in natural order. Note that for the remainder of the protocol the trace
+        // should entirely be in bit-reversed order hence why this function is
+        // called again at the end of the block.
+        let now = Instant::now();
+        let ce_lde_xs = air.ce_domain();
+        let ce_domain_size = ce_lde_xs.size();
+        let base_trace_ce_cols = bit_reverse_ce_trace(ce_domain_size, &mut base_trace_lde);
+        let extension_trace_ce_cols = extension_trace_lde
+            .as_mut()
+            .map(|t| bit_reverse_ce_trace(ce_domain_size, t));
+        println!("CE trace reorder (natural): {:?}", now.elapsed());
 
-    channel.commit_composition_trace(composition_trace_tree.root());
-    println!("Constraint composition polys: {:?}", now.elapsed());
+        let now = Instant::now();
+        let num_composition_coeffs = air.num_composition_constraint_coeffs();
+        let composition_coeffs = draw_multiple(&mut channel.public_coin, num_composition_coeffs);
+        let x_lde = ce_lde_xs.elements().collect::<Vec<_>>();
+        println!("X lde: {:?}", now.elapsed());
+
+        let now = Instant::now();
+        let composition_evals = S::AirConfig::eval_constraint(
+            air.composition_constraint(),
+            &challenges,
+            &hints,
+            &composition_coeffs,
+            air.ce_blowup_factor(),
+            x_lde.to_vec_in(GpuAllocator),
+            &base_trace_ce_cols,
+            extension_trace_ce_cols.as_deref(),
+        );
+        println!("Constraint eval: {:?}", now.elapsed());
+
+        let now = Instant::now();
+        let composition_poly = composition_evals.into_polynomials(air.ce_domain());
+        let composition_trace_cols = air.ce_blowup_factor();
+        composition_trace_polys = Matrix::from_rows(
+            GpuVec::try_from(composition_poly)
+                .unwrap()
+                .chunks(composition_trace_cols)
+                .map(<[S::Fq]>::to_vec)
+                .collect(),
+        );
+        composition_trace_lde = composition_trace_polys.bit_reversed_evaluate(air.lde_domain());
+        composition_trace_tree = S::MerkleTree::from_matrix(&composition_trace_lde);
+        channel.commit_composition_trace(composition_trace_tree.root());
+        println!("Constraint composition polys: {:?}", now.elapsed());
+
+        let now = Instant::now();
+        bit_reverse_ce_trace(ce_domain_size, &mut base_trace_lde);
+        extension_trace_lde
+            .as_mut()
+            .map(|t| bit_reverse_ce_trace(ce_domain_size, t));
+        println!("CE trace reorder (bit-reversed): {:?}", now.elapsed());
+    }
 
     let now = Instant::now();
     let z = channel.get_ood_point();
@@ -190,4 +204,17 @@ fn reduduce_blowup_factor<F: Field>(
         columns.push(column);
     }
     Matrix::new(columns)
+}
+
+/// Bit reverses the first ce_domain_size many values of the matrix columns.
+/// Returns a slice to the portion of the columns that were bit reversed
+fn bit_reverse_ce_trace<F: Field>(ce_domain_size: usize, trace: &mut Matrix<F>) -> Vec<&[F]> {
+    trace
+        .0
+        .iter_mut()
+        .map(|column| {
+            bit_reverse(&mut column[0..ce_domain_size]);
+            &**column
+        })
+        .collect()
 }

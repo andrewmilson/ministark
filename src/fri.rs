@@ -269,6 +269,8 @@ pub enum VerificationError {
     },
 }
 
+/// Fri verifier adapted from Winterfell to match Starkware's verifier
+/// <https://github.com/facebook/winterfell/blob/main/fri/src/verifier/mod.rs#L58>
 pub struct FriVerifier<F: GpuField + Field, D: Digest, M: MatrixMerkleTree<F, Root = D>>
 where
     F::FftField: FftField,
@@ -321,7 +323,6 @@ where
             layer_codeword_len /= folding_factor;
         }
 
-        println!("remainder alpha {}", layer_alphas.last().unwrap());
         public_coin.reseed_with_field_element_vector(&proof.remainder_coeffs);
 
         // TODO: add back in

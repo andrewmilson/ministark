@@ -90,8 +90,8 @@ pub trait AirConfig: Send + Sync + Sized + 'static {
         composition_constraint_coeffs: &[Self::Fq],
         lde_step: usize,
         x_lde: GpuVec<Self::Fp>,
-        base_trace_lde: &Matrix<Self::Fp>,
-        extension_trace_lde: Option<&Matrix<Self::Fq>>,
+        base_trace_lde_cols: &[&[Self::Fp]],
+        extension_trace_lde_cols: Option<&[&[Self::Fq]]>,
     ) -> Matrix<Self::Fq> {
         let eval_expr = composition_constraint.map_leaves(&mut |leaf| match leaf {
             CompositionItem::Item(item) => *item,
@@ -120,8 +120,8 @@ pub trait AirConfig: Send + Sync + Sized + 'static {
             hints,
             lde_step,
             &x_lde,
-            base_trace_lde,
-            extension_trace_lde,
+            base_trace_lde_cols,
+            extension_trace_lde_cols,
         )
     }
 }

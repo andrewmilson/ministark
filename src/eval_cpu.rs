@@ -29,8 +29,8 @@ pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>
     hints: &[Fq],
     lde_step: usize,
     x_lde: &[Fp],
-    base_trace_lde: &Matrix<Fp>,
-    extension_trace_lde: Option<&Matrix<Fq>>,
+    base_trace_lde_cols: &[&[Fp]],
+    extension_trace_lde_cols: Option<&[&[Fq]]>,
 ) -> Matrix<Fq> {
     let n = x_lde.len();
     let mut result = Vec::with_capacity_in(n, GpuAllocator);
@@ -42,8 +42,8 @@ pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>
             hints,
             lde_step,
             x_lde,
-            base_trace_lde,
-            extension_trace_lde,
+            base_trace_lde_cols,
+            extension_trace_lde_cols,
             &mut result,
         ),
         512.. => eval_impl::<Fp, Fq, 512>(
@@ -52,8 +52,8 @@ pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>
             hints,
             lde_step,
             x_lde,
-            base_trace_lde,
-            extension_trace_lde,
+            base_trace_lde_cols,
+            extension_trace_lde_cols,
             &mut result,
         ),
         0 => {}
@@ -73,16 +73,16 @@ fn eval_impl<
     hints: &[Fq],
     lde_step: usize,
     x_lde: &[Fp],
-    base_trace_lde: &Matrix<Fp>,
-    extension_trace_lde: Option<&Matrix<Fq>>,
+    base_trace_lde_cols: &[&[Fp]],
+    extension_trace_lde_cols: Option<&[&[Fq]]>,
     result: &mut [Fq],
 ) {
     use AlgebraicItem::*;
     let n = result.len();
     #[allow(clippy::cast_possible_wrap)]
     let step = lde_step as isize;
-    let num_base_columns = base_trace_lde.num_cols();
-    let num_extension_columns = extension_trace_lde.map_or(0, Matrix::num_cols);
+    let num_base_columns = base_trace_lde_cols.len();
+    let num_extension_columns = extension_trace_lde_cols.map_or(0, <[_]>::len);
     let base_column_range = 0..num_base_columns;
     let extension_column_range = num_base_columns..num_base_columns + num_extension_columns;
     cfg_chunks_mut!(result, CHUNK_SIZE)
@@ -117,7 +117,7 @@ fn eval_impl<
                             (chunk_offset as isize + shift).rem_euclid(n as isize) as usize;
                         #[allow(clippy::cast_possible_wrap)]
                         if base_column_range.contains(&col_idx) {
-                            let column = &base_trace_lde[col_idx];
+                            let column = &base_trace_lde_cols[col_idx];
                             if n >= position + CHUNK_SIZE {
                                 EvalItem::Evals(Box::new(FieldVariant::Fp(Cow::Borrowed(
                                     (&column[position..position + CHUNK_SIZE])
@@ -134,7 +134,8 @@ fn eval_impl<
                             }
                         } else if extension_column_range.contains(&col_idx) {
                             let extension_column_offset = col_idx - num_base_columns;
-                            let column = &extension_trace_lde.unwrap()[extension_column_offset];
+                            let column =
+                                &extension_trace_lde_cols.unwrap()[extension_column_offset];
                             if n >= position + CHUNK_SIZE {
                                 EvalItem::Evals(Box::new(FieldVariant::Fq(Cow::Borrowed(
                                     (&column[position..position + CHUNK_SIZE])
