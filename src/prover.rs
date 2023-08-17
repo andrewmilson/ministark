@@ -196,7 +196,7 @@ fn bit_reverse_ce_trace<F: Field>(ce_domain_size: usize, trace: &mut Matrix<F>) 
         .iter_mut()
         .map(|column| {
             bit_reverse(&mut column[0..ce_domain_size]);
-            &**column
+            &column[0..ce_domain_size]
         })
         .collect()
 }

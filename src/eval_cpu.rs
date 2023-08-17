@@ -79,6 +79,8 @@ fn eval_impl<
 ) {
     use AlgebraicItem::*;
     let n = result.len();
+    println!("n is: {n}");
+    println!("lde len is: {}", base_trace_lde_cols[0].len());
     #[allow(clippy::cast_possible_wrap)]
     let step = lde_step as isize;
     let num_base_columns = base_trace_lde_cols.len();
