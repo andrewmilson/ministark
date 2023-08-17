@@ -19,7 +19,6 @@ use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_poly::EvaluationDomain;
 use ministark_gpu::utils::bit_reverse;
-use std::ops::Deref;
 use std::time::Instant;
 
 #[allow(clippy::too_many_lines)]
@@ -187,23 +186,6 @@ pub fn default_prove<S: Stark>(
 pub enum ProvingError {
     Fail,
     // TODO
-}
-
-// TODO: this is a bit hacky fix
-fn reduduce_blowup_factor<F: Field>(
-    bit_rev_matrix: &Matrix<F>,
-    from_blowup: usize,
-    to_blowup: usize,
-) -> Matrix<F> {
-    let degree_bound = bit_rev_matrix.num_rows() / from_blowup;
-    let n = degree_bound * to_blowup;
-    let mut columns = Vec::new();
-    for column in &bit_rev_matrix.0 {
-        let mut column = column[0..n].to_vec_in(GpuAllocator);
-        bit_reverse(&mut column);
-        columns.push(column);
-    }
-    Matrix::new(columns)
 }
 
 /// Bit reverses the first ce_domain_size many values of the matrix columns.
