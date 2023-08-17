@@ -13,6 +13,7 @@ use core::ops::Mul;
 use core::ops::Neg;
 use core::ops::Sub;
 use num_traits::Pow;
+use std::fmt::Debug;
 use std::hash::Hash;
 
 // TODO: should really remove copy as this type might change in the future
@@ -21,18 +22,20 @@ pub enum AlgebraicItem<T> {
     X,
     Constant(T),
     Challenge(usize),
+    Periodic(PeriodicColumn<'static, T>),
     Hint(usize),
     Trace(/* =column */ usize, /* =offset */ isize),
 }
 
 impl<T> AlgebraicItem<T> {
-    // Returns the item's corresponding degree
+    // Returns an upper bound on the item's degree in `x`
     const fn degree(&self, trace_degree: usize) -> Degree {
         use AlgebraicItem::*;
         match &self {
             // TODO: handle implications of a zero?
             Constant(_) | Challenge(_) | Hint(_) => Degree(0, 0),
             Trace(_, _) => Degree(trace_degree, 0),
+            Periodic(col) => col.degree(trace_degree),
             X => Degree(1, 0),
         }
     }
@@ -99,8 +102,58 @@ forward_ref_binop!(impl< T: Clone > Div, div for AlgebraicItem<T>, AlgebraicItem
 forward_ref_binop!(impl< T: Clone > Add, add for AlgebraicItem<T>, AlgebraicItem<T>);
 forward_ref_binop!(impl< T: Clone > Sub, sub for AlgebraicItem<T>, AlgebraicItem<T>);
 
+/// A periodic column that repeats itself every `interval_size` many rows.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PeriodicColumn<'a, T> {
+    coeffs: &'a [T],
+    interval_size: usize,
+}
+
+impl<'a, T> Copy for PeriodicColumn<'a, T> {}
+
+impl<'a, T> Clone for PeriodicColumn<'a, T> {
+    fn clone(&self) -> Self {
+        Self {
+            coeffs: self.coeffs,
+            interval_size: self.interval_size,
+        }
+    }
+}
+
+impl<'a, T> PeriodicColumn<'a, T> {
+    /// # Panics
+    /// Panics if the number of coefficients or the
+    /// interval size is not a power of two.
+    pub const fn new(coeffs: &'a [T], interval_size: usize) -> Self {
+        assert!(coeffs.len().is_power_of_two());
+        assert!(interval_size.is_power_of_two());
+        assert!(coeffs.len() <= interval_size);
+        Self {
+            coeffs,
+            interval_size,
+        }
+    }
+
+    pub const fn interval_size(&self) -> usize {
+        self.interval_size
+    }
+
+    pub const fn coeffs(&self) -> &'static [T] {
+        self.coeffs
+    }
+
+    /// Returns an upper bound on the preiodic column's degree in `x`
+    pub const fn degree(&self, trace_degree: usize) -> Degree {
+        let trace_len = trace_degree + 1;
+        assert!(trace_len.is_power_of_two());
+        let poly_degree = self.coeffs.len() - 1;
+        let num_intervals = trace_len / self.interval_size;
+        Degree(poly_degree * num_intervals, 0)
+    }
+}
+
 #[derive(Clone)]
-pub struct Constraint<T>(Expr<AlgebraicItem<T>>);
+pub struct Constraint<T: 'static>(Expr<AlgebraicItem<T>>);
 
 impl<T> Constraint<T> {
     pub const fn new(expression: Expr<AlgebraicItem<T>>) -> Self {
@@ -224,7 +277,7 @@ impl<T> From<Expr<AlgebraicItem<T>>> for Constraint<T> {
     }
 }
 
-impl<T> Deref for Constraint<T> {
+impl<T: 'static> Deref for Constraint<T> {
     type Target = Expr<AlgebraicItem<T>>;
 
     fn deref(&self) -> &Self::Target {
@@ -239,7 +292,7 @@ impl<T> DerefMut for Constraint<T> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub enum CompositionItem<T> {
+pub enum CompositionItem<T: 'static> {
     Item(AlgebraicItem<T>),
     CompositionCoeff(usize),
 }
@@ -261,7 +314,7 @@ impl<T: Zero> Sum<Self> for Expr<CompositionItem<T>> {
     }
 }
 
-pub struct CompositionConstraint<T>(Expr<CompositionItem<T>>);
+pub struct CompositionConstraint<T: 'static>(Expr<CompositionItem<T>>);
 
 impl<T: Clone + Copy + Zero + Ord + Hash> CompositionConstraint<T> {
     pub const fn new(expression: Expr<CompositionItem<T>>) -> Self {

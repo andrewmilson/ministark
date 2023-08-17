@@ -1,4 +1,5 @@
 use crate::constraints::AlgebraicItem;
+use crate::constraints::PeriodicColumn;
 use crate::expression::Expr;
 use crate::utils::FieldVariant;
 use crate::utils::GpuAllocator;
@@ -10,6 +11,8 @@ use alloc::vec::Vec;
 use ark_ff::batch_inversion;
 use ark_ff::FftField;
 use ark_ff::Field;
+use ark_poly::domain::DomainCoeff;
+use ark_poly::Radix2EvaluationDomain;
 use ark_std::cfg_chunks_mut;
 use core::iter::zip;
 use core::ops::Add;
@@ -19,9 +22,11 @@ use core::ops::Mul;
 use core::ops::MulAssign;
 use core::ops::Neg;
 use ministark_gpu::GpuFftField;
+use ministark_gpu::GpuField;
 use num_traits::Pow;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::collections::BTreeSet;
 
 pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>(
     expr: &Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>,
@@ -85,6 +90,35 @@ fn eval_impl<
     let num_extension_columns = extension_trace_lde_cols.map_or(0, <[_]>::len);
     let base_column_range = 0..num_base_columns;
     let extension_column_range = num_base_columns..num_base_columns + num_extension_columns;
+
+    let mut periodic_columns_map = BTreeSet::new();
+    expr.traverse(&mut |node| {
+        if let &Expr::Leaf(AlgebraicItem::Periodic(col)) = node {
+            let is_fp = |&v| match v {
+                FieldVariant::Fp(_) => true,
+                FieldVariant::Fq(_) => false,
+            };
+
+            if col.coeffs().iter().all(is_fp) {
+                let vals: Vec<Self::Fp> = vals
+                    .iter()
+                    .map(|v| match v {
+                        FieldVariant::Fp(v) => *v,
+                        FieldVariant::Fq(_) => unreachable!(),
+                    })
+                    .collect();
+                let lde = gen_periodic_lde(blowup_factor, Self::domain_offset(), &vals);
+                PeriodicLde(FieldVariant::Fp(lde))
+            } else {
+                let vals: Vec<Self::Fq> = vals.iter().map(|v| v.as_fq()).collect();
+                let lde = gen_periodic_lde(blowup_factor, Self::domain_offset(), &vals);
+                PeriodicLde(FieldVariant::Fq(lde))
+            }
+
+            res.insert(col);
+        }
+    });
+
     cfg_chunks_mut!(result, CHUNK_SIZE)
         .enumerate()
         .for_each(|(i, chunk)| {
@@ -159,6 +193,70 @@ fn eval_impl<
             chunk.copy_from_slice(&chunk_res);
         });
 }
+
+/// Extracts the periodic columns from the expression
+fn periodic_columns<T>(expr: &Expr<AlgebraicItem<T>>) -> Vec<PeriodicColumn<T>> {
+    let mut res = BTreeSet::new();
+    self.traverse(&mut |node| {
+        if let &Expr::Leaf(AlgebraicItem::Periodic(col)) = node {
+            res.insert(col);
+        }
+    });
+    res.into_iter().collect()
+}
+
+/// Generates a preiodic low degree extension of a periodic column of values
+pub fn eval_periodic_column<'a, F: GpuField + Field + DomainCoeff<F::FftField>>(
+    domain_offset: F::FftField,
+    periodic_column: PeriodicColumn<'a, F>,
+) -> Vec<F>
+where
+    F::FftField: FftField,
+{
+    let interval_size = periodic_column.interval_size();
+    let domain = Radix2EvaluationDomain::new_coset(interval_size, domain_offset).unwrap();
+    domain.fft(periodic_column.coeffs())
+}
+
+// /// Generates a preiodic low degree extension of a periodic column of values
+// pub fn gen_periodic_lde<F: GpuField + Field + DomainCoeff<F::FftField>>(
+//     offset: F::FftField,
+//     periodic_values: &[F],
+// ) -> Vec<F>
+// where
+//     F::FftField: FftField,
+// {
+//     let n = periodic_values.len();
+//     assert!(n.is_power_of_two());
+//     let domain = Radix2EvaluationDomain::new(n).unwrap();
+//     let coeffs = domain.ifft(periodic_values);
+//     let coset = Radix2EvaluationDomain::new_coset(n * blowup_factor,
+// offset).unwrap();     coset.fft(&coeffs)
+// }
+
+// fn eval_periodic_column<Fp: Field, Fq: Field>(
+//     domain_offset: Fp,
+//     periodic_column: PeriodicColumn<FieldVariant<Fp, Fq>>,
+// ) -> FieldVariant<Vec<Fp>, Vec<Fq>> { fn eval<F: Field>(domain_offset: F,
+//   interval_size: usize, periodic_column: Vec<F>) -> Vec<F> { todo!() }
+
+//     // All coeffs must be of the same field
+//     // TODO: this is not nice design. find better solution
+//     let mut fp_coeffs = Vec::new();
+//     let mut fq_coeffs = Vec::new();
+//     for coeff in periodic_column.coeffs() {
+//         match coeff {
+//             FieldVariant::Fp(coeff) => fp_coeffs.push(*coeff),
+//             FieldVariant::Fq(coeff) => fq_coeffs.push(*coeff),
+//         }
+//     }
+//     match (fp_coeffs.is_empty(), fq_coeffs.is_empty()) {
+//         (true, false) => FieldVariant::Fp(eval(domain_offset, fp_coeffs)),
+//         (false, true) => FieldVariant::Fq(eval(domain_offset, fq_coeffs)),
+//         (true, true) => panic!("periodic colum coefficients must all belong
+// to the same field"),         (false, false) => unreachable!("periodic column
+// is empty"),     }
+// }
 
 #[derive(Clone)]
 #[allow(clippy::type_complexity)]
