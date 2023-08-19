@@ -115,6 +115,11 @@ impl<F: Field, H: ElementHashFn<F>> PublicCoin for PublicCoinImpl<F, H> {
         self.bytes = Vec::new();
     }
 
+    // /// Returns the nonce
+    // fn gen_proof_of_work(&self, proof_of_work_bits: u8) -> Option<u64> {
+    //     verify_proof_of_work
+    // }
+
     fn verify_proof_of_work(&self, proof_of_work_bits: u8, nonce: u64) -> bool {
         let digest = H::merge_with_int(&self.seed, nonce);
         leading_zeros(&digest.as_bytes()) >= u32::from(proof_of_work_bits)
