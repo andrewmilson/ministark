@@ -95,7 +95,7 @@ impl ProofOptions {
     pub const MIN_NUM_QUERIES: u8 = 1;
     pub const MAX_NUM_QUERIES: u8 = 128;
     pub const MIN_BLOWUP_FACTOR: u8 = 1;
-    pub const MAX_BLOWUP_FACTOR: u8 = 32;
+    pub const MAX_BLOWUP_FACTOR: u8 = 128;
     pub const MAX_GRINDING_FACTOR: u8 = 50;
 
     pub const fn new(
