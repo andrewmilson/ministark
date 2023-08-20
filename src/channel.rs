@@ -82,19 +82,15 @@ impl<'a, S: Stark> ProverChannel<'a, S> {
             return;
         }
 
-        #[cfg(not(feature = "parallel"))]
-        let nonce = (1..u64::MAX).find(|&nonce| {
-            self.public_coin
-                .verify_proof_of_work(grinding_factor, nonce)
-        });
+        let nonce = self
+            .public_coin
+            .grind_proof_of_work(grinding_factor)
+            .expect("nonce not found");
+        assert!(self
+            .public_coin
+            .verify_proof_of_work(grinding_factor, nonce));
 
-        #[cfg(feature = "parallel")]
-        let nonce = (1..u64::MAX).into_par_iter().find_any(|&nonce| {
-            self.public_coin
-                .verify_proof_of_work(grinding_factor, nonce)
-        });
-
-        self.pow_nonce = nonce.expect("nonce not found");
+        self.pow_nonce = nonce;
         self.public_coin.reseed_with_int(self.pow_nonce);
     }
 

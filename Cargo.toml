@@ -29,12 +29,6 @@ name = "merkle_tree"
 path = "benches/merkle_tree.rs"
 harness = false
 
-[[bench]]
-name = "matrix"
-path = "benches/matrix.rs"
-# required-features = ["asm", "parallel"]
-harness = false
-
 [dependencies]
 sha2 = "0.10"
 digest = "0.10"

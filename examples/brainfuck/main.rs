@@ -88,19 +88,19 @@ impl Stark for BrainfuckClaim {
 
 const SECURITY_LEVEL: u32 = 128;
 
-/// Proof options for 128 bit security level
+/// Proof options for 96 bit security level
 const OPTIONS: ProofOptions = {
-    let num_queries = 29;
+    let num_queries = 19;
     let lde_blowup_factor = 16;
-    let grinding_factor = 16;
+    let grinding_factor = 20;
     let fri_folding_factor = 16;
-    let fri_max_remainder_size = 8;
+    let fri_max_remainder_coeffs = 16;
     ProofOptions::new(
         num_queries,
         lde_blowup_factor,
         grinding_factor,
         fri_folding_factor,
-        fri_max_remainder_size,
+        fri_max_remainder_coeffs,
     )
 };
 

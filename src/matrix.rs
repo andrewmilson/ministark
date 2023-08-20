@@ -228,6 +228,7 @@ impl<F: Field> Matrix<F> {
         F::FftField: FftField,
     {
         let mut evaluations = self.into_evaluations(domain);
+        // TODO: remove this and just do regular in-order->out-of-order CT FFT
         evaluations.bit_reverse_rows();
         evaluations
     }

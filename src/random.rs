@@ -5,6 +5,8 @@ use alloc::vec::Vec;
 use ark_ff::Field;
 use rand::Rng;
 use rand::RngCore;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -42,6 +44,15 @@ pub trait PublicCoin: Sized + Send + Sync + Debug {
 
     /// Draws a maximum of n unique queries in the range `[0, domain_size)`
     fn draw_queries(&mut self, max_n: usize, domain_size: usize) -> BTreeSet<usize>;
+
+    fn grind_proof_of_work(&self, proof_of_work_bits: u8) -> Option<u64> {
+        #[cfg(not(feature = "parallel"))]
+        return (1..u64::MAX).find(|&nonce| self.verify_proof_of_work(proof_of_work_bits, nonce));
+        #[cfg(feature = "parallel")]
+        return (1..u64::MAX)
+            .into_par_iter()
+            .find_any(|&nonce| self.verify_proof_of_work(proof_of_work_bits, nonce));
+    }
 
     fn verify_proof_of_work(&self, proof_of_work_bits: u8, nonce: u64) -> bool;
 

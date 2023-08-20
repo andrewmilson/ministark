@@ -19,7 +19,6 @@ use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_poly::EvaluationDomain;
 use ministark_gpu::utils::bit_reverse;
-use std::ops::Deref;
 use std::time::Instant;
 
 #[allow(clippy::too_many_lines)]
@@ -49,13 +48,10 @@ pub fn default_prove<S: Stark>(
     let base_trace = trace.base_columns();
     assert_eq!(S::AirConfig::NUM_BASE_COLUMNS, base_trace.num_cols());
     let base_trace_polys = base_trace.interpolate(trace_xs);
-    println!("Base trace interpolation: {:?}", now.elapsed());
-    let now = Instant::now();
     let mut base_trace_lde = base_trace_polys.bit_reversed_evaluate(lde_xs);
-    println!("Base trace reduction and bit rev: {:?}", now.elapsed());
-    let now = Instant::now();
     let base_trace_tree = S::MerkleTree::from_matrix(&base_trace_lde);
     println!("Base trace commitment: {:?}", now.elapsed());
+
     channel.commit_base_trace(base_trace_tree.root());
     let num_challenges = air.num_challenges();
     let challenges = Challenges::new(draw_multiple(&mut channel.public_coin, num_challenges));
@@ -65,10 +61,7 @@ pub fn default_prove<S: Stark>(
     let extension_trace = trace.build_extension_columns(&challenges);
     let num_extension_cols = extension_trace.as_ref().map_or(0, Matrix::num_cols);
     assert_eq!(S::AirConfig::NUM_EXTENSION_COLUMNS, num_extension_cols);
-    println!("build extension trace: {:?}", now.elapsed());
-    let now = Instant::now();
     let extension_trace_polys = extension_trace.as_ref().map(|t| t.interpolate(trace_xs));
-    println!("extension trace polys: {:?}", now.elapsed());
     let mut extension_trace_lde = extension_trace_polys
         .as_ref()
         .map(|p| p.bit_reversed_evaluate(lde_xs));
@@ -76,7 +69,7 @@ pub fn default_prove<S: Stark>(
     if let Some(t) = extension_trace_tree.as_ref() {
         channel.commit_extension_trace(t.root());
     }
-    println!("Extension trace: {:?}", now.elapsed());
+    println!("Extension trace commitment: {:?}", now.elapsed());
 
     #[cfg(debug_assertions)]
     this.validate_constraints(&challenges, &hints, base_trace, extension_trace.as_ref());
@@ -97,13 +90,10 @@ pub fn default_prove<S: Stark>(
         let extension_trace_ce_cols = extension_trace_lde
             .as_mut()
             .map(|t| bit_reverse_ce_trace(ce_domain_size, t));
-        println!("CE trace reorder (natural): {:?}", now.elapsed());
 
-        let now = Instant::now();
         let num_composition_coeffs = air.num_composition_constraint_coeffs();
         let composition_coeffs = draw_multiple(&mut channel.public_coin, num_composition_coeffs);
         let x_lde = ce_lde_xs.elements().collect::<Vec<_>>();
-        println!("X lde: {:?}", now.elapsed());
 
         let now = Instant::now();
         let composition_evals = S::AirConfig::eval_constraint(
@@ -119,26 +109,26 @@ pub fn default_prove<S: Stark>(
         println!("Constraint eval: {:?}", now.elapsed());
 
         let now = Instant::now();
-        let composition_poly = composition_evals.into_polynomials(air.ce_domain());
-        let composition_trace_cols = air.ce_blowup_factor();
-        composition_trace_polys = Matrix::from_rows(
-            GpuVec::try_from(composition_poly)
-                .unwrap()
-                .chunks(composition_trace_cols)
-                .map(<[S::Fq]>::to_vec)
-                .collect(),
-        );
+        let composition_poly =
+            GpuVec::try_from(composition_evals.into_polynomials(air.ce_domain())).unwrap();
+        let mut composition_trace_cols = (0..air.ce_blowup_factor())
+            .map(|_| Vec::with_capacity_in(air.trace_len(), GpuAllocator))
+            .collect::<Vec<_>>();
+        for chunk in composition_poly.chunks(composition_trace_cols.len()) {
+            for i in 0..composition_trace_cols.len() {
+                composition_trace_cols[i].push(chunk[i]);
+            }
+        }
+        composition_trace_polys = Matrix::new(composition_trace_cols);
         composition_trace_lde = composition_trace_polys.bit_reversed_evaluate(air.lde_domain());
         composition_trace_tree = S::MerkleTree::from_matrix(&composition_trace_lde);
         channel.commit_composition_trace(composition_trace_tree.root());
-        println!("Constraint composition polys: {:?}", now.elapsed());
+        println!("Composition trace commitment: {:?}", now.elapsed());
 
-        let now = Instant::now();
         bit_reverse_ce_trace(ce_domain_size, &mut base_trace_lde);
         extension_trace_lde
             .as_mut()
             .map(|t| bit_reverse_ce_trace(ce_domain_size, t));
-        println!("CE trace reorder (bit-reversed): {:?}", now.elapsed());
     }
 
     let now = Instant::now();
@@ -164,7 +154,9 @@ pub fn default_prove<S: Stark>(
     let mut fri_prover = FriProver::<S::Fq, S::Digest, S::MerkleTree>::new(fri_options);
     fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
 
+    let now = Instant::now();
     channel.grind_fri_commitments();
+    println!("Proof of work: {:?}", now.elapsed());
 
     let query_positions = Vec::from_iter(channel.get_fri_query_positions());
     let fri_proof = fri_prover.into_proof(&query_positions);
@@ -189,23 +181,6 @@ pub enum ProvingError {
     // TODO
 }
 
-// TODO: this is a bit hacky fix
-fn reduduce_blowup_factor<F: Field>(
-    bit_rev_matrix: &Matrix<F>,
-    from_blowup: usize,
-    to_blowup: usize,
-) -> Matrix<F> {
-    let degree_bound = bit_rev_matrix.num_rows() / from_blowup;
-    let n = degree_bound * to_blowup;
-    let mut columns = Vec::new();
-    for column in &bit_rev_matrix.0 {
-        let mut column = column[0..n].to_vec_in(GpuAllocator);
-        bit_reverse(&mut column);
-        columns.push(column);
-    }
-    Matrix::new(columns)
-}
-
 /// Bit reverses the first ce_domain_size many values of the matrix columns.
 /// Returns a slice to the portion of the columns that were bit reversed
 fn bit_reverse_ce_trace<F: Field>(ce_domain_size: usize, trace: &mut Matrix<F>) -> Vec<&[F]> {
@@ -214,7 +189,7 @@ fn bit_reverse_ce_trace<F: Field>(ce_domain_size: usize, trace: &mut Matrix<F>) 
         .iter_mut()
         .map(|column| {
             bit_reverse(&mut column[0..ce_domain_size]);
-            &**column
+            &column[0..ce_domain_size]
         })
         .collect()
 }
