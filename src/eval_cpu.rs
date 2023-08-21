@@ -12,6 +12,7 @@ use ark_ff::batch_inversion;
 use ark_ff::FftField;
 use ark_ff::Field;
 use ark_poly::domain::DomainCoeff;
+use ark_poly::EvaluationDomain;
 use ark_poly::Radix2EvaluationDomain;
 use ark_std::cfg_chunks_mut;
 use core::iter::zip;
@@ -26,13 +27,15 @@ use ministark_gpu::GpuField;
 use num_traits::Pow;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
+#[allow(clippy::too_many_arguments)]
 pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>(
     expr: &Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>,
     challenges: &[Fq],
     hints: &[Fq],
     lde_step: usize,
+    domain_offset: Fp,
     x_lde: &[Fp],
     base_trace_lde_cols: &[&[Fp]],
     extension_trace_lde_cols: Option<&[&[Fq]]>,
@@ -46,6 +49,7 @@ pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>
             challenges,
             hints,
             lde_step,
+            domain_offset,
             x_lde,
             base_trace_lde_cols,
             extension_trace_lde_cols,
@@ -56,6 +60,7 @@ pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>
             challenges,
             hints,
             lde_step,
+            domain_offset,
             x_lde,
             base_trace_lde_cols,
             extension_trace_lde_cols,
@@ -77,6 +82,7 @@ fn eval_impl<
     challenges: &[Fq],
     hints: &[Fq],
     lde_step: usize,
+    domain_offset: Fp,
     x_lde: &[Fp],
     base_trace_lde_cols: &[&[Fp]],
     extension_trace_lde_cols: Option<&[&[Fq]]>,
@@ -86,106 +92,55 @@ fn eval_impl<
     let n = result.len();
     #[allow(clippy::cast_possible_wrap)]
     let step = lde_step as isize;
+    let trace_len = n / lde_step;
     let num_base_columns = base_trace_lde_cols.len();
     let num_extension_columns = extension_trace_lde_cols.map_or(0, <[_]>::len);
     let base_column_range = 0..num_base_columns;
     let extension_column_range = num_base_columns..num_base_columns + num_extension_columns;
-
-    let mut periodic_columns_map = BTreeSet::new();
-    expr.traverse(&mut |node| {
-        if let &Expr::Leaf(AlgebraicItem::Periodic(col)) = node {
-            let is_fp = |&v| match v {
-                FieldVariant::Fp(_) => true,
-                FieldVariant::Fq(_) => false,
-            };
-
-            if col.coeffs().iter().all(is_fp) {
-                let vals: Vec<Self::Fp> = vals
-                    .iter()
-                    .map(|v| match v {
-                        FieldVariant::Fp(v) => *v,
-                        FieldVariant::Fq(_) => unreachable!(),
-                    })
-                    .collect();
-                let lde = gen_periodic_lde(blowup_factor, Self::domain_offset(), &vals);
-                PeriodicLde(FieldVariant::Fp(lde))
-            } else {
-                let vals: Vec<Self::Fq> = vals.iter().map(|v| v.as_fq()).collect();
-                let lde = gen_periodic_lde(blowup_factor, Self::domain_offset(), &vals);
-                PeriodicLde(FieldVariant::Fq(lde))
-            }
-
-            res.insert(col);
-        }
-    });
-
+    let periodic_column_evals_map =
+        build_periodic_column_evals_map(expr, domain_offset, trace_len, lde_step, CHUNK_SIZE);
     cfg_chunks_mut!(result, CHUNK_SIZE)
         .enumerate()
         .for_each(|(i, chunk)| {
             let chunk_offset = CHUNK_SIZE * i;
-            let chunk_res = expr
+            let chunk_res: [Fq; CHUNK_SIZE] = expr
                 .graph_eval(&mut |leaf| match *leaf {
-                    X => {
-                        if n >= chunk_offset + CHUNK_SIZE {
-                            EvalItem::Evals(Box::new(FieldVariant::Fp(Cow::Borrowed(
-                                (&x_lde[chunk_offset..chunk_offset + CHUNK_SIZE])
-                                    .try_into()
-                                    .unwrap(),
-                            ))))
-                        } else {
-                            let prefix = &x_lde[chunk_offset..];
-                            let suffix = &x_lde[0..chunk_offset + CHUNK_SIZE - n];
-                            let mut chunk = [Fp::zero(); CHUNK_SIZE];
-                            chunk[0..prefix.len()].copy_from_slice(prefix);
-                            chunk[prefix.len()..].copy_from_slice(suffix);
-                            EvalItem::Evals(Box::new(FieldVariant::Fp(Cow::Owned(chunk))))
-                        }
-                    }
+                    X => EvalItem::Evals(Box::new(FieldVariant::Fp(extract_lde_chunk(
+                        x_lde,
+                        chunk_offset,
+                    )))),
                     Constant(v) => EvalItem::Constant(v),
                     Challenge(i) => EvalItem::Constant(FieldVariant::Fq(challenges[i])),
                     Hint(i) => EvalItem::Constant(FieldVariant::Fq(hints[i])),
                     Trace(col_idx, row_offset) => {
                         let shift = step * row_offset;
+                        let chunk_offset = isize::try_from(chunk_offset).unwrap();
                         #[allow(clippy::cast_possible_wrap)]
-                        let position =
-                            (chunk_offset as isize + shift).rem_euclid(n as isize) as usize;
-                        #[allow(clippy::cast_possible_wrap)]
+                        let position = (chunk_offset + shift).rem_euclid(n as isize) as usize;
                         if base_column_range.contains(&col_idx) {
                             let column = &base_trace_lde_cols[col_idx];
-                            if n >= position + CHUNK_SIZE {
-                                EvalItem::Evals(Box::new(FieldVariant::Fp(Cow::Borrowed(
-                                    (&column[position..position + CHUNK_SIZE])
-                                        .try_into()
-                                        .unwrap(),
-                                ))))
-                            } else {
-                                let prefix = &column[position..];
-                                let suffix = &column[0..position + CHUNK_SIZE - n];
-                                let mut chunk = [Fp::zero(); CHUNK_SIZE];
-                                chunk[0..prefix.len()].copy_from_slice(prefix);
-                                chunk[prefix.len()..].copy_from_slice(suffix);
-                                EvalItem::Evals(Box::new(FieldVariant::Fp(Cow::Owned(chunk))))
-                            }
+                            EvalItem::Evals(Box::new(FieldVariant::Fp(extract_lde_chunk(
+                                column, position,
+                            ))))
                         } else if extension_column_range.contains(&col_idx) {
-                            let extension_column_offset = col_idx - num_base_columns;
-                            let column =
-                                &extension_trace_lde_cols.unwrap()[extension_column_offset];
-                            if n >= position + CHUNK_SIZE {
-                                EvalItem::Evals(Box::new(FieldVariant::Fq(Cow::Borrowed(
-                                    (&column[position..position + CHUNK_SIZE])
-                                        .try_into()
-                                        .unwrap(),
-                                ))))
-                            } else {
-                                let prefix = &column[position..];
-                                let suffix = &column[0..position + CHUNK_SIZE - n];
-                                let mut chunk = [Fq::zero(); CHUNK_SIZE];
-                                chunk[0..prefix.len()].copy_from_slice(prefix);
-                                chunk[prefix.len()..].copy_from_slice(suffix);
-                                EvalItem::Evals(Box::new(FieldVariant::Fq(Cow::Owned(chunk))))
-                            }
+                            let extension_column_idx = col_idx - num_base_columns;
+                            let column = &extension_trace_lde_cols.unwrap()[extension_column_idx];
+                            EvalItem::Evals(Box::new(FieldVariant::Fq(extract_lde_chunk(
+                                column, position,
+                            ))))
                         } else {
                             panic!("invalid column {col_idx}")
+                        }
+                    }
+                    Periodic(col) => {
+                        let lde = periodic_column_evals_map.get(&col).unwrap();
+                        match lde {
+                            FieldVariant::Fp(lde) => EvalItem::Evals(Box::new(FieldVariant::Fp(
+                                extract_lde_chunk(lde, chunk_offset),
+                            ))),
+                            FieldVariant::Fq(lde) => EvalItem::Evals(Box::new(FieldVariant::Fq(
+                                extract_lde_chunk(lde, chunk_offset),
+                            ))),
                         }
                     }
                 })
@@ -194,69 +149,111 @@ fn eval_impl<
         });
 }
 
-/// Extracts the periodic columns from the expression
-fn periodic_columns<T>(expr: &Expr<AlgebraicItem<T>>) -> Vec<PeriodicColumn<T>> {
-    let mut res = BTreeSet::new();
-    self.traverse(&mut |node| {
+/// Extracts a chunk of evaluations from a low-degree-extension
+#[inline]
+pub fn extract_lde_chunk<F: Field, const CHUNK_SIZE: usize>(
+    lde: &'_ [F],
+    offset: usize,
+) -> Cow<'_, [F; CHUNK_SIZE]> {
+    let n = lde.len();
+    let lde_offset = offset % n;
+    if n >= lde_offset + CHUNK_SIZE {
+        Cow::Borrowed(
+            (&lde[lde_offset..lde_offset + CHUNK_SIZE])
+                .try_into()
+                .unwrap(),
+        )
+    } else {
+        let prefix = &lde[lde_offset..];
+        let suffix = &lde[0..lde_offset + CHUNK_SIZE - n];
+        let mut chunk = [F::ZERO; CHUNK_SIZE];
+        chunk[0..prefix.len()].copy_from_slice(prefix);
+        chunk[prefix.len()..].copy_from_slice(suffix);
+        Cow::Owned(chunk)
+    }
+}
+
+/// Build a map from periodic column to evaluations
+#[allow(clippy::type_complexity)]
+pub fn build_periodic_column_evals_map<
+    Fp: GpuFftField<FftField = Fp> + FftField,
+    Fq: StarkExtensionOf<Fp>,
+>(
+    expr: &Expr<AlgebraicItem<FieldVariant<Fp, Fq>>>,
+    domain_offset: Fp,
+    trace_len: usize,
+    blowup_factor: usize,
+    min_domain_size: usize,
+) -> BTreeMap<PeriodicColumn<'static, FieldVariant<Fp, Fq>>, FieldVariant<Vec<Fp>, Vec<Fq>>> {
+    let mut res = BTreeMap::new();
+    expr.traverse(&mut |node| {
         if let &Expr::Leaf(AlgebraicItem::Periodic(col)) = node {
-            res.insert(col);
+            let interval_size = col.interval_size();
+            let coeffs = col.coeffs();
+            let is_fp = |&v| match v {
+                FieldVariant::Fp(_) => true,
+                FieldVariant::Fq(_) => false,
+            };
+
+            let lde = if coeffs.iter().all(is_fp) {
+                let coeffs: Vec<Fp> = coeffs
+                    .iter()
+                    .map(|v| match v {
+                        FieldVariant::Fp(v) => *v,
+                        FieldVariant::Fq(_) => unreachable!(),
+                    })
+                    .collect();
+                let col = PeriodicColumn::new(&coeffs, interval_size);
+                let lde = eval_periodic_column(
+                    domain_offset,
+                    trace_len,
+                    blowup_factor,
+                    col,
+                    min_domain_size,
+                );
+                FieldVariant::Fp(lde)
+            } else {
+                let coeffs: Vec<Fq> = coeffs.iter().map(FieldVariant::as_fq).collect();
+                let col = PeriodicColumn::new(&coeffs, interval_size);
+                let lde = eval_periodic_column(
+                    domain_offset,
+                    trace_len,
+                    blowup_factor,
+                    col,
+                    min_domain_size,
+                );
+                FieldVariant::Fq(lde)
+            };
+
+            res.insert(col, lde);
         }
     });
-    res.into_iter().collect()
+    res
 }
 
 /// Generates a preiodic low degree extension of a periodic column of values
-pub fn eval_periodic_column<'a, F: GpuField + Field + DomainCoeff<F::FftField>>(
+pub fn eval_periodic_column<F: GpuField + Field + DomainCoeff<F::FftField>>(
     domain_offset: F::FftField,
-    periodic_column: PeriodicColumn<'a, F>,
+    trace_len: usize,
+    blowup_factor: usize,
+    periodic_column: PeriodicColumn<'_, F>,
+    min_len: usize,
 ) -> Vec<F>
 where
     F::FftField: FftField,
 {
     let interval_size = periodic_column.interval_size();
-    let domain = Radix2EvaluationDomain::new_coset(interval_size, domain_offset).unwrap();
-    domain.fft(periodic_column.coeffs())
+    let domain_size = interval_size * blowup_factor;
+    let domain_offset = domain_offset.pow([(trace_len / interval_size) as u64]);
+    let domain = Radix2EvaluationDomain::new_coset(domain_size, domain_offset).unwrap();
+    let mut evals = domain.fft(periodic_column.coeffs());
+    let mut i = 0;
+    while evals.len() < min_len {
+        evals.push(evals[i]);
+        i += 1;
+    }
+    evals
 }
-
-// /// Generates a preiodic low degree extension of a periodic column of values
-// pub fn gen_periodic_lde<F: GpuField + Field + DomainCoeff<F::FftField>>(
-//     offset: F::FftField,
-//     periodic_values: &[F],
-// ) -> Vec<F>
-// where
-//     F::FftField: FftField,
-// {
-//     let n = periodic_values.len();
-//     assert!(n.is_power_of_two());
-//     let domain = Radix2EvaluationDomain::new(n).unwrap();
-//     let coeffs = domain.ifft(periodic_values);
-//     let coset = Radix2EvaluationDomain::new_coset(n * blowup_factor,
-// offset).unwrap();     coset.fft(&coeffs)
-// }
-
-// fn eval_periodic_column<Fp: Field, Fq: Field>(
-//     domain_offset: Fp,
-//     periodic_column: PeriodicColumn<FieldVariant<Fp, Fq>>,
-// ) -> FieldVariant<Vec<Fp>, Vec<Fq>> { fn eval<F: Field>(domain_offset: F,
-//   interval_size: usize, periodic_column: Vec<F>) -> Vec<F> { todo!() }
-
-//     // All coeffs must be of the same field
-//     // TODO: this is not nice design. find better solution
-//     let mut fp_coeffs = Vec::new();
-//     let mut fq_coeffs = Vec::new();
-//     for coeff in periodic_column.coeffs() {
-//         match coeff {
-//             FieldVariant::Fp(coeff) => fp_coeffs.push(*coeff),
-//             FieldVariant::Fq(coeff) => fq_coeffs.push(*coeff),
-//         }
-//     }
-//     match (fp_coeffs.is_empty(), fq_coeffs.is_empty()) {
-//         (true, false) => FieldVariant::Fp(eval(domain_offset, fp_coeffs)),
-//         (false, true) => FieldVariant::Fq(eval(domain_offset, fq_coeffs)),
-//         (true, true) => panic!("periodic colum coefficients must all belong
-// to the same field"),         (false, false) => unreachable!("periodic column
-// is empty"),     }
-// }
 
 #[derive(Clone)]
 #[allow(clippy::type_complexity)]

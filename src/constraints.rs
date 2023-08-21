@@ -18,7 +18,7 @@ use std::hash::Hash;
 
 // TODO: should really remove copy as this type might change in the future
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub enum AlgebraicItem<T> {
+pub enum AlgebraicItem<T: 'static> {
     X,
     Constant(T),
     Challenge(usize),
@@ -103,21 +103,10 @@ forward_ref_binop!(impl< T: Clone > Add, add for AlgebraicItem<T>, AlgebraicItem
 forward_ref_binop!(impl< T: Clone > Sub, sub for AlgebraicItem<T>, AlgebraicItem<T>);
 
 /// A periodic column that repeats itself every `interval_size` many rows.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PeriodicColumn<'a, T> {
     coeffs: &'a [T],
     interval_size: usize,
-}
-
-impl<'a, T> Copy for PeriodicColumn<'a, T> {}
-
-impl<'a, T> Clone for PeriodicColumn<'a, T> {
-    fn clone(&self) -> Self {
-        Self {
-            coeffs: self.coeffs,
-            interval_size: self.interval_size,
-        }
-    }
 }
 
 impl<'a, T> PeriodicColumn<'a, T> {
@@ -138,12 +127,12 @@ impl<'a, T> PeriodicColumn<'a, T> {
         self.interval_size
     }
 
-    pub const fn coeffs(&self) -> &'static [T] {
+    pub const fn coeffs(&self) -> &'a [T] {
         self.coeffs
     }
 
     /// Returns an upper bound on the preiodic column's degree in `x`
-    pub const fn degree(&self, trace_degree: usize) -> Degree {
+    const fn degree(&self, trace_degree: usize) -> Degree {
         let trace_len = trace_degree + 1;
         assert!(trace_len.is_power_of_two());
         let poly_degree = self.coeffs.len() - 1;

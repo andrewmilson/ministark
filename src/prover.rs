@@ -153,6 +153,7 @@ pub fn default_prove<S: Stark>(
     let fri_options = options.into_fri_options();
     let mut fri_prover = FriProver::<S::Fq, S::Digest, S::MerkleTree>::new(fri_options);
     fri_prover.build_layers(&mut channel, deep_composition_lde.try_into().unwrap());
+    println!("FRI: {:?}", now.elapsed());
 
     let now = Instant::now();
     channel.grind_fri_commitments();
@@ -160,7 +161,6 @@ pub fn default_prove<S: Stark>(
 
     let query_positions = Vec::from_iter(channel.get_fri_query_positions());
     let fri_proof = fri_prover.into_proof(&query_positions);
-    println!("FRI: {:?}", now.elapsed());
 
     let queries = Queries::new(
         &base_trace_lde,

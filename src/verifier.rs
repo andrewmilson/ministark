@@ -218,6 +218,16 @@ pub fn ood_constraint_evaluation<A: AirConfig>(
             &Item(Constant(v)) => v,
             &Item(Challenge(i)) => FieldVariant::Fq(challenges[i]),
             &Item(Hint(i)) => FieldVariant::Fq(hints[i]),
+            &Item(Periodic(col)) => {
+                let trace_len = air.trace_len();
+                let point = x.pow([(trace_len / col.interval_size()) as u64]);
+                let coeffs = col
+                    .coeffs()
+                    .iter()
+                    .map(FieldVariant::as_fq)
+                    .collect::<Vec<_>>();
+                FieldVariant::Fq(horner_evaluate(&coeffs, &point))
+            }
             &Item(Trace(i, j)) => FieldVariant::Fq(trace_ood_eval_map[&(i, j)]),
             &CompositionCoeff(i) => FieldVariant::Fq(composition_coefficients[i]),
         })

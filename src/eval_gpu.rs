@@ -109,6 +109,9 @@ pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>
             };
             EvaluationItem::new_lde(&lde_calculator, &lde_cache, command_buffer, lde, j * step)
         }
+        &Periodic(col) => {
+            todo!()
+        }
         X => {
             // generate an LDE for the only X (we called reuse_shared_nodes)
             let mut x_lde = Option::take(&mut x_lde).unwrap();
