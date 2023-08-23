@@ -130,13 +130,10 @@ pub fn horner_evaluate<F: Field, T: Field + for<'a> Add<&'a F, Output = T>>(
         .rfold(T::zero(), move |result, coeff| result * point + coeff)
 }
 
-/// Calculates `c * (P(X) - P(z)) / (x^a - z)` using synthetic division
+/// Calculates `c * (P(X) - P(z)) / (X - z)` using synthetic division
 /// <https://en.wikipedia.org/wiki/Synthetic_division>
-// code taken from OpenZKP
-pub fn divide_out_point_into<
-    Fp: Field,
-    Fq: Field + for<'a> AddAssign<&'a Fp> + for<'a> Mul<&'a Fp>,
->(
+// adapted from OpenZKP <https://github.com/0xProject/OpenZKP/blob/master/crypto/stark/src/polynomial.rs#L120>
+pub fn divide_out_point<Fp: Field, Fq: Field + for<'a> AddAssign<&'a Fp> + for<'a> Mul<&'a Fp>>(
     dst_coeffs: &mut [Fq],
     src_coeffs: &[Fp],
     z: &Fq,
@@ -148,6 +145,32 @@ pub fn divide_out_point_into<
         *target += remainder * c;
         remainder *= z;
         remainder += coefficient;
+    }
+}
+
+/// Calculates `c * (P(X) - P(z)) / (X - z)` using synthetic division
+/// <https://en.wikipedia.org/wiki/Synthetic_division>
+// adapted from OpenZKP <https://github.com/0xProject/OpenZKP/blob/master/crypto/stark/src/polynomial.rs#L120>
+pub fn divide_out_point_into<F: Field>(p_coeffs: &mut [F], z: &F, c: &F) {
+    let mut remainder = F::ZERO;
+    for coeff in p_coeffs.iter_mut().rev() {
+        let tmp = *coeff;
+        *coeff = remainder * c;
+        remainder = remainder * z + tmp;
+    }
+}
+
+/// Calculates `sum(c_i * (P(X) - P(z_i)) / (X - z_i)` using synthetic
+/// division <https://en.wikipedia.org/wiki/Synthetic_division>
+// adapted from OpenZKP <https://github.com/0xProject/OpenZKP/blob/master/crypto/stark/src/polynomial.rs#L120>
+pub fn divide_out_points_into<F: Field>(p_coeffs: &mut [F], zs: &[F], cs: &[F]) {
+    assert_eq!(zs.len(), cs.len());
+    let mut remainders = vec![F::ZERO; zs.len()];
+    for coeff in p_coeffs.iter_mut().rev() {
+        let tmp = *coeff;
+        // TODO: F::sum_of_products
+        *coeff = zip(&remainders, cs).map(|(r, &c)| c * r).sum();
+        zip(&mut remainders, zs).for_each(|(r, &z)| *r = z * *r + tmp);
     }
 }
 

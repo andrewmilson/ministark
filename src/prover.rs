@@ -136,8 +136,8 @@ pub fn default_prove<S: Stark>(
     let mut deep_poly_composer = DeepPolyComposer::new(
         &air,
         z,
-        &base_trace_polys,
-        extension_trace_polys.as_ref(),
+        base_trace_polys,
+        extension_trace_polys,
         composition_trace_polys,
     );
     let (execution_trace_oods, composition_trace_oods) = deep_poly_composer.get_ood_evals();

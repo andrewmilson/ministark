@@ -25,7 +25,8 @@
     cow_is_borrowed,
     exclusive_range_pattern,
     vec_into_raw_parts,
-    return_position_impl_trait_in_trait
+    return_position_impl_trait_in_trait,
+    iter_collect_into
 )]
 
 // TODO: make some of these modules private

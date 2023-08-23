@@ -1,5 +1,6 @@
 use crate::air::AirConfig;
 use crate::utils::divide_out_point_into;
+use crate::utils::divide_out_points_into;
 use crate::utils::horner_evaluate;
 use crate::utils::GpuAllocator;
 use crate::utils::GpuVec;
@@ -11,12 +12,13 @@ use ark_ff::Zero;
 use ark_poly::EvaluationDomain;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use std::iter::zip;
 
 pub struct DeepPolyComposer<'a, A: AirConfig> {
     z: A::Fq,
     air: &'a Air<A>,
-    base_trace_polys: &'a Matrix<A::Fp>,
-    extension_trace_polys: Option<&'a Matrix<A::Fq>>,
+    base_trace_polys: Matrix<A::Fp>,
+    extension_trace_polys: Option<Matrix<A::Fq>>,
     composition_trace_polys: Matrix<A::Fq>,
 }
 
@@ -24,8 +26,8 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
     pub const fn new(
         air: &'a Air<A>,
         z: A::Fq,
-        base_trace_polys: &'a Matrix<A::Fp>,
-        extension_trace_polys: Option<&'a Matrix<A::Fq>>,
+        base_trace_polys: Matrix<A::Fp>,
+        extension_trace_polys: Option<Matrix<A::Fq>>,
         composition_trace_polys: Matrix<A::Fq>,
     ) -> Self {
         Self {
@@ -45,7 +47,6 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
             base_trace_polys,
             extension_trace_polys,
             composition_trace_polys,
-            ..
         } = self;
 
         let trace_domain = air.trace_domain();
@@ -66,7 +67,8 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
                     let coeffs = &base_trace_polys[col_idx];
                     horner_evaluate(coeffs, &x)
                 } else if extension_column_range.contains(&col_idx) {
-                    let coeffs = &extension_trace_polys.unwrap()[col_idx - A::NUM_BASE_COLUMNS];
+                    let coeffs =
+                        &extension_trace_polys.as_deref().unwrap()[col_idx - A::NUM_BASE_COLUMNS];
                     horner_evaluate(coeffs, &x)
                 } else {
                     panic!("column is {col_idx} but there are only {num_columns} columns")
@@ -90,7 +92,6 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
             base_trace_polys,
             extension_trace_polys,
             composition_trace_polys,
-            ..
         } = self;
 
         let DeepCompositionCoeffs {
@@ -105,51 +106,61 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
 
         // divide out OOD point from composition trace polys
         let z_n = self.z.pow([composition_trace_polys.num_cols() as u64]);
-        let composition_trace_quotients = Matrix::new(
-            ark_std::cfg_into_iter!(composition_trace_polys.0)
-                .zip(composition_trace_alphas)
-                .map(|(coeffs, alpha)| {
-                    let mut res = Vec::new_in(GpuAllocator);
-                    res.resize(trace_domain.size(), A::Fq::zero());
-                    divide_out_point_into(&mut res, &coeffs, &z_n, &alpha);
-                    res
-                })
-                .collect(),
-        );
+        let composition_trace_quotients = ark_std::cfg_into_iter!(composition_trace_polys.0)
+            .zip(composition_trace_alphas)
+            .map(|(mut coeffs, alpha)| {
+                divide_out_point_into(&mut coeffs, &z_n, &alpha);
+                coeffs
+            });
 
         let num_columns = A::NUM_BASE_COLUMNS + A::NUM_EXTENSION_COLUMNS;
         let base_column_range = 0..A::NUM_BASE_COLUMNS;
         let extension_column_range = A::NUM_BASE_COLUMNS..num_columns;
-
-        // divide out OOD points from execution trace polys
-        // NOTE: ark_std::cfg_into_iter! doesn't work with
-        // .zip() on BTreeSet but works with Vec.
-        #[allow(clippy::needless_collect)]
-        let trace_arguments = air.trace_arguments().into_iter().collect::<Vec<_>>();
-        let execution_trace_quotients = Matrix::new(
-            ark_std::cfg_into_iter!(trace_arguments)
-                .zip(execution_trace_alphas)
-                .map(|((col_idx, offset), alpha)| {
-                    let mut res = Vec::new_in(GpuAllocator);
-                    res.resize(trace_domain.size(), A::Fq::zero());
+        let trace_arguments = air.trace_arguments();
+        let execution_trace_xs_and_alphas = |col_idx| {
+            let mut xs = Vec::new();
+            let mut alphas = Vec::new();
+            for (&(col, offset), &alpha) in zip(&trace_arguments, &execution_trace_alphas) {
+                if col == col_idx {
                     let generator = if offset >= 0 { g } else { g_inv };
                     let offset = offset.unsigned_abs() as u64;
                     let x = z * generator.pow([offset]);
-                    if base_column_range.contains(&col_idx) {
-                        let coeffs = &base_trace_polys[col_idx];
-                        divide_out_point_into(&mut res, coeffs, &x, &alpha);
-                    } else if extension_column_range.contains(&col_idx) {
-                        let coeffs = &extension_trace_polys.unwrap()[col_idx - A::NUM_BASE_COLUMNS];
-                        divide_out_point_into(&mut res, coeffs, &x, &alpha);
-                    } else {
-                        panic!("column is {col_idx} but there are only {num_columns} columns",)
-                    }
-                    res
-                })
+                    xs.push(x);
+                    alphas.push(alpha);
+                }
+            }
+            (xs, alphas)
+        };
+
+        let base_trace_quotients = ark_std::cfg_into_iter!(base_trace_polys.0)
+            .zip(base_column_range)
+            .map(|(coeffs, col_idx)| {
+                let (xs, alphas) = execution_trace_xs_and_alphas(col_idx);
+                // TODO: inefficient when Fp != Fq
+                let mut coeffs = coeffs
+                    .into_iter()
+                    .map(A::Fq::from)
+                    .collect::<Vec<_>>()
+                    .to_vec_in(GpuAllocator);
+                divide_out_points_into(&mut coeffs, &xs, &alphas);
+                coeffs
+            });
+
+        let extension_trace_quotients =
+            ark_std::cfg_into_iter!(extension_trace_polys.map_or(vec![], |t| t.0))
+                .zip(extension_column_range)
+                .map(|(mut coeffs, col_idx)| {
+                    let (xs, alphas) = execution_trace_xs_and_alphas(col_idx);
+                    divide_out_points_into(&mut coeffs, &xs, &alphas);
+                    coeffs
+                });
+
+        let quotients = Matrix::new(
+            composition_trace_quotients
+                .chain(base_trace_quotients)
+                .chain(extension_trace_quotients)
                 .collect(),
         );
-
-        let quotients = Matrix::join(vec![execution_trace_quotients, composition_trace_quotients]);
         let mut combined_coeffs = GpuVec::try_from(quotients.sum_columns()).unwrap();
 
         // Adjust the degree

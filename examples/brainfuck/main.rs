@@ -86,7 +86,7 @@ impl Stark for BrainfuckClaim {
     }
 }
 
-const SECURITY_LEVEL: u32 = 128;
+const SECURITY_LEVEL: u32 = 96;
 
 /// Proof options for 96 bit security level
 const OPTIONS: ProofOptions = {
