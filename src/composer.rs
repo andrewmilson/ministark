@@ -85,6 +85,7 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
         (execution_trace_evals, composition_trace_evals)
     }
 
+    // <https://medium.com/starkware/starkdex-deep-dive-the-stark-core-engine-497942d0f0ab>
     pub fn into_deep_poly(self, composition_coeffs: DeepCompositionCoeffs<A::Fq>) -> Matrix<A::Fq> {
         let Self {
             z,
@@ -163,14 +164,24 @@ impl<'a, A: AirConfig> DeepPolyComposer<'a, A> {
         );
         let mut combined_coeffs = GpuVec::try_from(quotients.sum_columns()).unwrap();
 
-        // Adjust the degree
-        // P(x) * (alpha + x * beta)
-        let mut last = A::Fq::zero();
-        for coeff in &mut combined_coeffs {
-            let tmp = *coeff;
-            *coeff *= degree_alpha;
-            *coeff += last * degree_beta;
-            last = tmp;
+        let chunk_size = 1 << 16;
+        if degree_beta.is_zero() {
+            // P(x) * alpha
+            ark_std::cfg_chunks_mut!(combined_coeffs, chunk_size).for_each(|coeff_chunk| {
+                for coeff in coeff_chunk {
+                    *coeff *= degree_alpha;
+                }
+            });
+        } else {
+            // Adjust the degree
+            // P(x) * (alpha + x * beta)
+            let mut last = A::Fq::zero();
+            for coeff in &mut combined_coeffs {
+                let tmp = *coeff;
+                *coeff *= degree_alpha;
+                *coeff += last * degree_beta;
+                last = tmp;
+            }
         }
 
         Matrix::new(vec![combined_coeffs])
