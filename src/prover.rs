@@ -83,7 +83,6 @@ pub fn default_prove<S: Stark>(
         // be in natural order. Note that for the remainder of the protocol the trace
         // should entirely be in bit-reversed order hence why this function is
         // called again at the end of the block.
-        let now = Instant::now();
         let ce_lde_xs = air.ce_domain();
         let ce_domain_size = ce_lde_xs.size();
         let base_trace_ce_cols = bit_reverse_ce_trace(ce_domain_size, &mut base_trace_lde);

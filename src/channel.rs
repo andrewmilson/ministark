@@ -11,8 +11,6 @@ use alloc::vec::Vec;
 use ark_ff::Field;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 use std::collections::BTreeSet;
 
 pub struct ProverChannel<'a, S: Stark> {

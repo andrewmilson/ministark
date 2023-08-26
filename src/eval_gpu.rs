@@ -109,7 +109,7 @@ pub fn eval<Fp: GpuFftField<FftField = Fp> + FftField, Fq: StarkExtensionOf<Fp>>
             };
             EvaluationItem::new_lde(&lde_calculator, &lde_cache, command_buffer, lde, j * step)
         }
-        &Periodic(col) => {
+        &Periodic(_col) => {
             todo!()
         }
         X => {
