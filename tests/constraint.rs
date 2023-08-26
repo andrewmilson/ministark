@@ -73,6 +73,7 @@ fn constraint_with_challenges() {
             X => unreachable!(),
             &Constant(v) => FieldVariant::Fp(v),
             &Hint(_) => unreachable!(),
+            &Periodic(_) => todo!(),
             &Challenge(i) => FieldVariant::Fp(challenges[i]),
             &Trace(i, j) => {
                 assert_eq!(0, j);
@@ -142,6 +143,7 @@ fn constraint_multiplication() {
             X => one,
             Challenge(_) => unreachable!(),
             Hint(_) => unreachable!(),
+            Periodic(_) => todo!(),
             &Constant(v) => v,
             &Trace(i, j) => {
                 assert_eq!(0, i, "for value {val}");
@@ -368,6 +370,7 @@ fn evaluate_symbolic<Fp: GpuFftField + FftField, Fq: StarkExtensionOf<Fp>>(
             &Constant(v) => v,
             &Hint(i) => FieldVariant::Fq(hints[i]),
             &Challenge(i) => FieldVariant::Fq(challenges[i]),
+            &Periodic(_col) => todo!(),
             &Trace(col_idx, offset) => {
                 let pos = (i as isize + blowup_factor * offset).rem_euclid(n as isize) as usize;
                 let column = &lde_matrix[col_idx];
