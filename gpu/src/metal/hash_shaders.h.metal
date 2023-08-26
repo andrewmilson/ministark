@@ -157,6 +157,8 @@ inline long3 block3(long3 in) {
     );
 }
 
+// Adapted from Miden: 
+// https://github.com/0xPolygonMiden/crypto/blob/main/src/hash/rpo/mds_freq.rs
 inline void mds_multiply_freq(unsigned long state[STATE_WIDTH]) {
     long4 u0 = fft4_real(ulong4(state[0], state[3], state[6], state[9]));
     long4 u1 = fft4_real(ulong4(state[1], state[4], state[7], state[10]));
