@@ -18,7 +18,7 @@ pub mod p18446744069414584321 {
             }
         }
 
-        impl GpuFrom<Fp> for Fp {}
+        impl GpuFrom<BaseElement> for BaseElement {}
 
         impl GpuMul<BaseElement> for BaseElement {}
 
