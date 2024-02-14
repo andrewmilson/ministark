@@ -38,7 +38,7 @@ ark-ff = "0.4"
 ark-poly = "0.4"
 ark-serialize = "0.4"
 ark-ff-optimized = "0.4"
-ministark-gpu = { version = "0.2", path = "./gpu", features = ["arkworks"] }
+ministark-gpu = { version = "0.3", path = "./gpu", features = ["arkworks"] }
 num-traits = "0.2"
 rand = "0.8"
 snafu = { version = "0.7", default-features = false }
