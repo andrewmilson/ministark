@@ -507,7 +507,7 @@ pub trait ProverChannel {
 // 2. perform a random linear combination of odd and even coefficients of f(x):
 //    f_e(x) = c0 + c2 * x + c4 * x^2 + c6 * x^3
 //    f_o(x) = c1 + c3 * x + c5 * x^2 + c7 * x^3
-//    f(x)   = f_e(x) + x * f_o(x)
+//    f(x)   = f_e(x^2) + x * f_o(x^2)
 //    f'(x)  = f_e(x) + α * f_o(x)
 //    α      = <random field element sent from verifier>
 //
